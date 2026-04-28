@@ -23,13 +23,17 @@ command -v create-dmg >/dev/null || { echo "create-dmg not installed (brew insta
 DMG="$OUTPUT/taOS-$VERSION.dmg"
 rm -f "$DMG"
 
+# --skip-jenkins bypasses the Finder-prettifying AppleScript that
+# intermittently fails with "AppleEvent timed out (-1712)". The
+# /Applications drop link is still created; only the custom icon
+# positioning is skipped.
 create-dmg \
   --volname "taOS $VERSION" \
   --window-size 600 400 \
   --icon-size 96 \
-  --icon "taOS.app" 150 200 \
   --app-drop-link 450 200 \
   --hdiutil-quiet \
+  --skip-jenkins \
   "$DMG" \
   "$APP"
 
