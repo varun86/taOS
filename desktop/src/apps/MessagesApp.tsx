@@ -64,6 +64,7 @@ import {
   readLastChannel,
   writeLastChannel,
 } from "./MessagesApp.a2aSelection";
+import { displayAuthor } from "./chat/format-author";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -163,9 +164,13 @@ interface Message {
     [key: string]: unknown;
   };
   state?: "pending" | "streaming" | "complete" | "error";
-  created_at: string;
+  // Server uses Python time.time() — Unix epoch in seconds. The runtime
+  // value is a number; the type was historically annotated string and
+  // fed straight into Date() (which expects ms), so every chat message
+  // rendered as 21/01/1970. Pass through toMs() before instantiating.
+  created_at: number | string;
   reactions?: Record<string, string[]>;
-  edited_at?: string;
+  edited_at?: number | string;
   deleted_at?: number | null;
   attachments?: AttachmentRecord[];
   reply_count?: number;
@@ -178,8 +183,22 @@ type WsStatus = "connecting" | "connected" | "disconnected";
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+/**
+ * Coerce a server timestamp (number = seconds since epoch, string = ISO
+ * or numeric) to milliseconds suitable for `new Date(...)`. The 1e12
+ * threshold safely distinguishes seconds (~1.7e9 today) from ms (~1.7e12).
+ */
+function toMs(ts: number | string): number {
+  if (typeof ts === "number") return ts < 1e12 ? ts * 1000 : ts;
+  if (ts === "" || ts == null) return Date.now();
+  const n = Number(ts);
+  if (!Number.isNaN(n)) return n < 1e12 ? n * 1000 : n;
+  return new Date(ts).getTime();
+}
+
+function relativeTime(ts: number | string): string {
+  const ms = toMs(ts);
+  const diff = Date.now() - ms;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "now";
   if (mins < 60) return `${mins}m ago`;
@@ -187,7 +206,7 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(ms).toLocaleDateString();
 }
 
 function renderContent(text: string) {
@@ -284,6 +303,7 @@ export function MessagesApp({
   const [pinnedPopoverOpen, setPinnedPopoverOpen] = useState(false);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const { openThread, openThreadFor, closeThread } = useThreadPanel();
 
@@ -575,9 +595,14 @@ export function MessagesApp({
 
   /* ---- fetch current user ---- */
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/auth/me")
       .then((r) => r.ok ? r.json() : null)
-      .then((u) => { if (u?.id) setCurrentUserId(u.id); })
+      .then((u) => {
+        if (u?.user?.id) {
+          setCurrentUserId(u.user.id);
+          setCurrentUserDisplayName(u.user.full_name || u.user.username || u.user.id);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -1514,6 +1539,7 @@ export function MessagesApp({
                   {pinnedPopoverOpen && (
                     <PinnedMessagesPopover
                       pins={pinnedMessages}
+                      authorCtx={{ currentUserId, currentUserDisplayName }}
                       onJumpTo={(id) => {
                         setPinnedPopoverOpen(false);
                         const el = document.querySelector(`[data-message-id="${id}"]`) as HTMLElement | null;
@@ -1637,7 +1663,7 @@ export function MessagesApp({
                         style={isDeadAgent ? { opacity: 0.55 } : undefined}
                         title={authorTooltip}
                       >
-                        {msg.author_id}
+                        {displayAuthor(msg, { currentUserId, currentUserDisplayName })}
                       </span>
                       {isAgent && !isDeadAgent && (
                         <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
@@ -2056,6 +2082,7 @@ export function MessagesApp({
           parentId={openThread.parentId}
           onClose={closeThread}
           isFullscreen={isMobile}
+          authorCtx={{ currentUserId, currentUserDisplayName }}
           onSend={async (content, attachments) => {
             const r = await fetch("/api/chat/messages", {
               method: "POST",
