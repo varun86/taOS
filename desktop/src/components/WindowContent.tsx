@@ -4,9 +4,11 @@ import { getApp } from "@/registry/app-registry";
 interface Props {
   appId: string;
   windowId: string;
+  props?: Record<string, unknown>;
+  launchNonce?: number;
 }
 
-export function WindowContent({ appId, windowId }: Props) {
+export function WindowContent({ appId, windowId, props, launchNonce = 0 }: Props) {
   const app = getApp(appId);
   const LazyComponent = useMemo(() => {
     if (!app) return null;
@@ -29,7 +31,7 @@ export function WindowContent({ appId, windowId }: Props) {
         </div>
       }
     >
-      <LazyComponent windowId={windowId} />
+      <LazyComponent key={`${windowId}:${launchNonce}`} windowId={windowId} {...(props ?? {})} />
     </Suspense>
   );
 }

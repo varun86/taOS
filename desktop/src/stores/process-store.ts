@@ -20,6 +20,7 @@ export interface WindowState {
   snapped: SnapPosition;
   focused: boolean;
   props?: Record<string, unknown>;
+  launchNonce: number;
 }
 
 interface ProcessStore {
@@ -47,7 +48,16 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
   openWindow(appId, defaultSize, props) {
     const existing = get().windows.find((w) => w.appId === appId);
     if (existing) {
-      get().focusWindow(existing.id);
+      if (props) {
+        set((s) => ({
+          windows: s.windows.map((w) =>
+            w.id === existing.id
+              ? { ...w, props: { ...w.props, ...props }, launchNonce: w.launchNonce + 1 }
+              : w
+          ),
+        }));
+      }
+      get().restoreWindow(existing.id);
       return existing.id;
     }
     const id = `win-${++idCounter}`;
@@ -64,6 +74,7 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
       snapped: null,
       focused: true,
       props,
+      launchNonce: 0,
     };
     set((s) => ({
       windows: s.windows.map((w) => ({ ...w, focused: false })).concat(win),

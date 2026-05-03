@@ -191,7 +191,12 @@ export function Window({ win, onDrag, onDragStop }: Props) {
 
         {/* Content */}
         <div className="flex-1 overflow-auto bg-shell-bg-deep">
-          <WindowContent appId={win.appId} windowId={win.id} />
+          <WindowContent
+            appId={win.appId}
+            windowId={win.id}
+            props={win.props}
+            launchNonce={win.launchNonce}
+          />
         </div>
       </div>
     </Rnd>
