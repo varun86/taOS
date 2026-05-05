@@ -20,6 +20,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from tinyagentos.auth import get_current_user
 from tinyagentos.routes.desktop_browser import router
+from tinyagentos.routes.desktop_browser import push
 
 _logger = logging.getLogger(__name__)
 
@@ -164,6 +165,29 @@ class CopilotHub:
         # in copilot_agent_ws.py. The agent-supplied msg["host"] is NOT trusted
         # for authorization; this tracker is the source of truth.
         self._tab_urls: dict[tuple[str, str, str], str] = {}
+        # Focused tab tracker: user_id → (window_id, tab_id) of the tab the user
+        # is currently looking at. Updated via 'tab-focus' WS messages from the
+        # iframe. Used by push triggers to suppress notifications when the user is
+        # already looking at the relevant tab.
+        self._focused_tabs: dict[str, tuple[str, str]] = {}
+
+    def set_focused_tab(self, user_id: str, window_id: str, tab_id: str) -> None:
+        """Track which tab the user is currently focused on. Called from the
+        iframe-side WS message router when a 'tab-focus' event arrives."""
+        self._focused_tabs[user_id] = (window_id, tab_id)
+
+    def get_focused_tab(self, user_id: str) -> tuple[str, str] | None:
+        """Return (window_id, tab_id) of the user's focused tab, or None if unknown."""
+        return self._focused_tabs.get(user_id)
+
+    def clear_focused_tab_if_matches(
+        self, user_id: str, window_id: str, tab_id: str,
+    ) -> None:
+        """Clear focused-tab cache if it matches the disconnecting tab. Prevents
+        stale focus state from suppressing pushes after a tab/window closes."""
+        current = self._focused_tabs.get(user_id)
+        if current == (window_id, tab_id):
+            del self._focused_tabs[user_id]
 
     def set_tab_url(
         self, *, user_id: str, profile_id: str, tab_id: str, url: str,
@@ -299,8 +323,47 @@ class CopilotHub:
 # Allowed event kinds from iframe → server. 'ack' is routed back to the agent runtime.
 _ALLOWED_EVENT_KINDS = {
     "page-changed", "url-changed", "scroll", "form-submit",
-    "download-started", "ack",
+    "download-started", "ack", "tab-focus",
 }
+
+
+async def _maybe_send_chat_push(
+    user_id: str,
+    agent_id: str,
+    agent_name: str,
+    msg_text: str,
+    window_id: str,
+    tab_id: str,
+    store: Any,
+    hub: "CopilotHub",
+    vapid: tuple[str, str],
+) -> None:
+    """Send a push notification for an agent chat message if the user is not
+    currently focused on the agent's pinned tab and they haven't muted chat
+    notifications for this agent."""
+    from tinyagentos.routes.desktop_browser.store import BrowserStore
+    if not isinstance(store, BrowserStore):
+        return
+    # Check mute
+    if await store.is_push_muted(user_id, agent_id, "chat"):
+        return
+    # Check focus
+    focused = hub.get_focused_tab(user_id)
+    if focused is not None:
+        if window_id:
+            if focused == (window_id, tab_id):
+                return
+        else:
+            # window_id unknown at the agent WS — fall back to tab_id match.
+            if focused[1] == tab_id:
+                return
+    payload = {
+        "title": agent_name or "Agent",
+        "body": msg_text[:200],
+        "tag": f"chat:{agent_id}",
+        "data": {"window_id": window_id, "tab_id": tab_id, "agent_id": agent_id},
+    }
+    await push.send(user_id, payload, store=store, vapid=vapid)
 
 
 @router.websocket("/api/desktop/browser/copilot")
@@ -335,6 +398,9 @@ async def copilot_ws(websocket: WebSocket, ticket: str):
         agent_id=consumed.agent_id,
         ws=websocket,
     )
+    # Track the (window_id, tab_id) this connection last reported as focused,
+    # so we can clear stale focus state when this connection closes.
+    _last_focus: tuple[str, str] | None = None
     try:
         while True:
             message = await websocket.receive_json()
@@ -350,6 +416,12 @@ async def copilot_ws(websocket: WebSocket, ticket: str):
                     agent_id=consumed.agent_id,
                     ack=message,
                 )
+            elif event_kind == "tab-focus":
+                window_id = message.get("window_id", "")
+                tab_id = message.get("tab_id", "")
+                if window_id and tab_id:
+                    hub.set_focused_tab(consumed.user_id, window_id, tab_id)
+                    _last_focus = (window_id, tab_id)
     except WebSocketDisconnect:
         pass
     finally:
@@ -359,3 +431,7 @@ async def copilot_ws(websocket: WebSocket, ticket: str):
             tab_id=consumed.tab_id,
             agent_id=consumed.agent_id,
         )
+        if _last_focus is not None:
+            hub.clear_focused_tab_if_matches(
+                consumed.user_id, _last_focus[0], _last_focus[1],
+            )

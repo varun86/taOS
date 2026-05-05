@@ -359,6 +359,9 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.copilot_ticket_store = CopilotTicketStore()
         app.state.copilot_hub = CopilotHub()
 
+        from tinyagentos.routes.desktop_browser.vapid import load_or_create_vapid_keypair
+        app.state.vapid_keypair = load_or_create_vapid_keypair(data_dir)
+
         await benchmark_store.init()
         await scheduler_history_store.init()
         app.state.config = config
@@ -895,6 +898,9 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     from tinyagentos.routes.desktop_browser.copilot_ws import CopilotTicketStore as _CopilotTicketStore, CopilotHub as _CopilotHub
     app.state.copilot_ticket_store = _CopilotTicketStore()
     app.state.copilot_hub = _CopilotHub()
+
+    from tinyagentos.routes.desktop_browser.vapid import load_or_create_vapid_keypair as _load_vapid
+    app.state.vapid_keypair = _load_vapid(data_dir)
 
     # Detect and set container runtime (eager, so tests work without lifespan)
     try:
