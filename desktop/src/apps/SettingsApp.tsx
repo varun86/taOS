@@ -27,7 +27,6 @@ import {
   Input,
   Label,
   Switch,
-  Textarea,
 } from "@/components/ui";
 import { useShortcuts } from "@/hooks/use-shortcut-registry";
 import { useServerPreference } from "@/hooks/use-server-preference";
@@ -864,78 +863,25 @@ function UpdatesSection() {
 /* ------------------------------------------------------------------ */
 
 function AdvancedSection() {
-  const [config, setConfig] = useState("# taOS Configuration\n# Edit YAML below\n\nserver:\n  port: 3000\n  host: 0.0.0.0\n\nagents:\n  max_concurrent: 5\n  default_model: qwen2.5-7b\n\nproviders:\n  - name: rkllama\n    url: http://localhost:8080\n");
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    safeFetch<{ config: string } | null>("/api/settings/config", null).then((data) => {
-      if (data?.config) setConfig(data.config);
-    });
-  }, []);
-
-  const validate = () => {
-    setError(null);
-    setSaved(false);
-    // Basic YAML validation: check for tab characters
-    if (config.includes("\t")) {
-      setError("YAML should use spaces, not tabs.");
-      return false;
-    }
-    return true;
-  };
-
-  const save = async () => {
-    if (!validate()) return;
-    try {
-      const res = await fetch("/api/settings/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config }),
-      });
-      if (res.ok) setSaved(true);
-      else setError(`Save failed (${res.status})`);
-    } catch {
-      setError("Could not reach backend. Changes saved locally only.");
-      setSaved(true);
-    }
-  };
-
   return (
     <section aria-label="Advanced configuration">
       <h2 className="text-lg font-semibold mb-5">Advanced Configuration</h2>
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-4 text-sm">
         <div>
-          <Label htmlFor="yaml-config">YAML Configuration</Label>
-          <Textarea
-            id="yaml-config"
-            value={config}
-            onChange={(e) => { setConfig(e.target.value); setSaved(false); setError(null); }}
-            rows={14}
-            spellCheck={false}
-            className="mt-1 font-mono resize-y"
-            aria-label="YAML configuration editor"
-          />
+          <h3 className="font-medium mb-1">Providers (LLMs, embeddings, NPU backends)</h3>
+          <p className="text-muted-foreground">
+            Configure model providers in the <span className="font-medium">Providers</span> app
+            (Launchpad → Providers). That's where API keys, base URLs, and per-provider
+            settings live.
+          </p>
         </div>
-
-        {error && (
-          <p className="text-xs text-red-400 flex items-center gap-1.5">
-            <AlertCircle size={12} /> {error}
+        <div>
+          <h3 className="font-medium mb-1">Raw server config</h3>
+          <p className="text-muted-foreground">
+            Advanced settings are stored in <code className="font-mono text-xs px-1 py-0.5 rounded bg-muted">data/config.yaml</code> on
+            the server. Edit the file directly and restart taOS to apply changes — there is
+            no in-app YAML editor.
           </p>
-        )}
-        {saved && !error && (
-          <p className="text-xs text-emerald-400 flex items-center gap-1.5">
-            <Check size={12} /> Configuration saved.
-          </p>
-        )}
-
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => validate()}>
-            <Code size={14} /> Validate
-          </Button>
-          <Button size="sm" onClick={save}>
-            <Check size={14} /> Save
-          </Button>
         </div>
       </Card>
     </section>
