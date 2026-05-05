@@ -98,7 +98,7 @@ Useful commands in any channel:
 Go to Agents → click the + button. Choose a name, framework, and model. taOS provisions the container and starts the agent.
 
 **How do I add a cloud API key?**
-Settings → Providers → Add Provider. Select the type (OpenAI, Anthropic, etc.), enter your API key, and save. The LiteLLM proxy will pick it up automatically.
+Open the Providers app (top-level app in the dock, alongside Models and Cluster) → click + Add Provider → select the type (OpenAI, Anthropic, Ollama, etc.) → enter your API key or endpoint URL → Save. The bundled LiteLLM proxy will pick it up automatically. Models served by the new provider then show up in the Models app for pinning.
 
 **How do I give an agent access to a file?**
 Upload the file in Files → User Workspace, then share it with the agent via Files → Shared Folders. The agent can read it via its `/workspaces/user/` path.
