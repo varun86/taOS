@@ -377,7 +377,16 @@ if [[ -z "${TAOS_SKIP_QMD:-}" ]]; then
             # (/usr/lib/node_modules on Debian).  HOME=/root ensures npm
             # uses root's own cache dir rather than the calling user's
             # ~/.npm directory (which root can't write to).
-            sudo HOME=/root npm install -g "github:jaylfc/qmd#feat/remote-llm-provider" \
+            #
+            # --unsafe-perm: required on npm >= 10.  When npm runs as root and
+            # the install dir has non-root ownership at any point during tar
+            # extraction, npm drops privileges to `nobody` to run lifecycle
+            # scripts.  `nobody` typically has no usable PATH/shell setup, so
+            # better-sqlite3's postinstall fails with `spawn sh ENOENT`
+            # (errno -2).  --unsafe-perm keeps npm running as root throughout,
+            # which is the historical behaviour and the only thing that works
+            # for native-binding packages on a system-global install.
+            sudo HOME=/root npm install -g --unsafe-perm "github:jaylfc/qmd#feat/remote-llm-provider" \
                 || die "npm install of qmd failed — cannot continue (qmd.service would never start)"
             # Confirm the binary is reachable before we proceed.
             if ! command -v qmd >/dev/null 2>&1; then
