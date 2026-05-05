@@ -25,7 +25,7 @@
 #     TAOS_RKNPU_SETUP        set to 1/true to skip interactive confirmation
 #     TAOS_RKLLAMA_DIR        install dir (default: ~<user>/rkllama)
 #     TAOS_RKLLAMA_REPO       git remote (default: https://github.com/jaylfc/rkllama.git)
-#     TAOS_RKLLAMA_REF        git ref  (default: 33002c82a2b8813042cce9ca2e5ed6bb899287f2)
+#     TAOS_RKLLAMA_REF        git ref  (default: 92cb27b380b8061ee03a2d4b8077d60ea4c0d312)
 #     TAOS_RKLLAMA_PORT       HTTP port (default: 8080)
 #     TAOS_QMD_EXPANSION_URL  override URL for qmd-query-expansion-1.7B-rk3588.rkllm
 #                             (default is the TAOS HF mirror at
@@ -63,7 +63,7 @@ LIBRKNNRT_DEST="/usr/lib/librknnrt.so"
 LIBRKNNRT_EXPECTED_VERSION="2.3.0"
 
 RKLLAMA_REPO="${TAOS_RKLLAMA_REPO:-https://github.com/jaylfc/rkllama.git}"
-RKLLAMA_REF="${TAOS_RKLLAMA_REF:-33002c82a2b8813042cce9ca2e5ed6bb899287f2}"
+RKLLAMA_REF="${TAOS_RKLLAMA_REF:-92cb27b380b8061ee03a2d4b8077d60ea4c0d312}"
 RKLLAMA_PORT="${TAOS_RKLLAMA_PORT:-8080}"
 
 # Qwen3-Embedding-0.6B rk3588 rkllm weights.
@@ -330,9 +330,12 @@ install_rkllama() {
     fi
     run_as_user "$RKLLAMA_VENV/bin/pip" install --quiet --upgrade pip wheel
     # rkllama ships pyproject.toml — install it editable so the
-    # rkllama_server entrypoint lands in the venv's bin/ dir.
+    # rkllama_server entrypoint lands in the venv's bin/ dir. Run pip from
+    # inside RKLLAMA_DIR because pyproject.toml uses relative `file:./...`
+    # URLs for the rknn-toolkit-lite2 wheel, and pip resolves them against
+    # the current working directory rather than the package source.
     log "installing rkllama into the venv (editable)"
-    run_as_user "$RKLLAMA_VENV/bin/pip" install --quiet -e "$RKLLAMA_DIR"
+    run_as_user sh -c "cd '$RKLLAMA_DIR' && '$RKLLAMA_VENV/bin/pip' install --quiet -e ."
 
     # huggingface-cli is used for model pulls below; it's a dep of
     # rkllama itself but we ensure it's callable from the venv.
@@ -427,9 +430,15 @@ User=$TARGET_USER
 Group=$TARGET_GROUP
 WorkingDirectory=$RKLLAMA_DIR
 Environment=PYTHONUNBUFFERED=1
+# rkllama spawns multiprocessing children that occasionally outlive the
+# parent if it crashes (e.g. during NPU model load). Without this hook
+# the orphans keep listening on the port and the next restart can't bind.
+ExecStartPre=-/usr/bin/pkill -9 -f $RKLLAMA_VENV/bin/rkllama_server
 ExecStart=$exec_start
 Restart=always
 RestartSec=5
+KillMode=mixed
+TimeoutStopSec=15
 
 [Install]
 WantedBy=multi-user.target
