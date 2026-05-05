@@ -164,6 +164,13 @@ async def install_app(request: Request):
                     ui_path=ui_path,
                 )
 
+        # Also mark as installed in the registry — /api/store/catalog reads
+        # `installed` from there, so without this the Store UI reverts to
+        # "Install" after a page reload (issue #317).
+        if registry is not None:
+            version = body.get("version") or (getattr(manifest, "version", "") if manifest else "")
+            registry.mark_installed(app_id, version)
+
         resp_target = target_remote or "local"
         return JSONResponse({"ok": True, "app_id": app_id, "status": "installed",
                              "target_remote": resp_target, **result})
@@ -171,6 +178,9 @@ async def install_app(request: Request):
     # Default: delegate to InstalledAppsStore (docker/pip/download).
     store = request.app.state.installed_apps
     await store.install(app_id, body.get("version", ""), meta)
+    if registry is not None:
+        version = body.get("version") or (getattr(manifest, "version", "") if manifest else "")
+        registry.mark_installed(app_id, version)
     return JSONResponse({"ok": True, "app_id": app_id, "status": "installed"})
 
 
@@ -236,6 +246,8 @@ async def uninstall_app(request: Request):
     store = request.app.state.installed_apps
     removed = await store.uninstall(app_id)
     await store.remove_runtime_location(app_id)
+    if registry is not None:
+        registry.mark_uninstalled(app_id)
     resp: dict = {"ok": removed, "app_id": app_id, "status": "uninstalled" if removed else "not_installed"}
     return JSONResponse(resp)
 

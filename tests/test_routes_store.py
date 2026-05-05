@@ -155,6 +155,44 @@ class TestStoreInstallAPI:
 
 
 @pytest.mark.asyncio
+class TestInstallV2PersistsAcrossReload:
+    """install-v2 must update the registry so /api/store/catalog reports the app
+    as installed after a page reload — otherwise the Install button reverts
+    (issue #317)."""
+
+    async def test_install_v2_default_backend_marks_registry_installed(
+        self, app_with_store, store_client
+    ):
+        await app_with_store.state.installed_apps.init()
+        # smolagents has install.method == "pip" → default branch.
+        resp = await store_client.post(
+            "/api/store/install-v2", json={"app_id": "smolagents"}
+        )
+        assert resp.status_code == 200
+
+        catalog = await store_client.get("/api/store/catalog")
+        assert catalog.status_code == 200
+        rows = catalog.json()
+        smol = next(a for a in rows if a["id"] == "smolagents")
+        assert smol["installed"] is True
+
+    async def test_uninstall_v2_default_backend_marks_registry_uninstalled(
+        self, app_with_store, store_client
+    ):
+        await app_with_store.state.installed_apps.init()
+        await store_client.post("/api/store/install-v2", json={"app_id": "smolagents"})
+        resp = await store_client.post(
+            "/api/store/uninstall-v2", json={"app_id": "smolagents"}
+        )
+        assert resp.status_code == 200
+
+        catalog = await store_client.get("/api/store/catalog")
+        rows = catalog.json()
+        smol = next(a for a in rows if a["id"] == "smolagents")
+        assert smol["installed"] is False
+
+
+@pytest.mark.asyncio
 class TestInstallV2UpdatesRuntimeLocation:
     """After a successful LXC install, update_runtime_location should be called."""
 
@@ -183,6 +221,7 @@ class TestInstallV2UpdatesRuntimeLocation:
             "image": "images:debian/bookworm",
             "ui_path": "/",
         }
+        mock_manifest.version = "1.22.6"
 
         # Replace the installed_apps store with a mock so we can track calls
         # without needing the DB initialised in this fixture context.
