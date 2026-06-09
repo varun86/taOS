@@ -33,6 +33,7 @@ import { openParentWs } from "./agent-ws-bridge";
 import type { AgentWsHandle } from "./agent-ws-bridge";
 import { detectLiveExclusion } from "./live-exclusion";
 import { ReaderMode } from "./ReaderMode";
+import { LiveBrowserView } from "./LiveBrowserView";
 import { AgentPanel } from "./AgentPanel";
 import { PageContextMenu } from "./PageContextMenu";
 import type { Tab } from "./types";
@@ -40,6 +41,12 @@ import type { Tab } from "./types";
 export const DISCARD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 export const MAX_LIVE_TABS = 12;
 const SCHEDULER_INTERVAL_MS = 60 * 1000; // 60 seconds
+
+// An iframe still on about:blank (ticket in flight / empty tab) has origin
+// "null"; posting to the proxy origin then is refused by the browser and the
+// message is dropped. Skip it — it'll be (re)sent once the proxy page loads.
+const onProxyOrigin = (f: HTMLIFrameElement, origin: string) =>
+  !!f.src && !f.src.startsWith("about:") && f.src.startsWith(origin);
 
 interface TabRendererProps {
   windowId: string;
@@ -145,7 +152,7 @@ export function TabRenderer({ windowId }: TabRendererProps) {
         // 1. Mint a ticket for the iframe-side WS and post it.
         mintCopilotTicket(profileId, tabId, agentId).then((ticket) => {
           if (cancelled || !ticket) return;
-          if (iframe.contentWindow) {
+          if (iframe.contentWindow && onProxyOrigin(iframe, proxyOrigin)) {
             iframe.contentWindow.postMessage(
               { type: "taos-copilot:open", ticket: ticket.ticket, agentId },
               proxyOrigin,
@@ -178,12 +185,13 @@ export function TabRenderer({ windowId }: TabRendererProps) {
       // Tell the iframe-side copilot.js to close its WS for each agent.
       // Resolve the proxy origin for the close messages too.
       getBrowserProxyOrigin().then((proxyOrigin) => {
-        if (!iframe.contentWindow) return;
         for (const agentId of pinnedAgentIdsForEffect) {
-          iframe.contentWindow.postMessage(
-            { type: "taos-copilot:close", agentId },
-            proxyOrigin,
-          );
+          if (iframe.contentWindow && onProxyOrigin(iframe, proxyOrigin)) {
+            iframe.contentWindow.postMessage(
+              { type: "taos-copilot:close", agentId },
+              proxyOrigin,
+            );
+          }
         }
       });
     };
@@ -206,15 +214,17 @@ export function TabRenderer({ windowId }: TabRendererProps) {
         ) as HTMLIFrameElement | null;
         if (!iframe?.contentWindow) continue;
         const focused = tab.id === activeId;
-        iframe.contentWindow.postMessage(
-          {
-            type: "taos-copilot:tab-focus",
-            window_id: windowId,
-            tab_id: tab.id,
-            focused,
-          },
-          proxyOrigin,
-        );
+        if (onProxyOrigin(iframe, proxyOrigin)) {
+          iframe.contentWindow.postMessage(
+            {
+              type: "taos-copilot:tab-focus",
+              window_id: windowId,
+              tab_id: tab.id,
+              focused,
+            },
+            proxyOrigin,
+          );
+        }
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,6 +287,22 @@ export function TabRenderer({ windowId }: TabRendererProps) {
           }
 
           const showReader = isActive && !!tab.readerActive && !!tab.readerExtract;
+
+          // Full Neko session replaces the proxy iframe for the active tab
+          if (isActive && tab.liveSession) {
+            return (
+              <div
+                key={tab.id}
+                style={{ position: "absolute", inset: 0 }}
+                data-window-tab={tab.id}
+              >
+                <LiveBrowserView
+                  nekoUrl={tab.liveSession.nekoUrl}
+                  streamToken={tab.liveSession.streamToken}
+                />
+              </div>
+            );
+          }
 
           return (
             <div

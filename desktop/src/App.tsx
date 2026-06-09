@@ -79,7 +79,7 @@ function SystemShortcuts({ toggleSearch, toggleLaunchpad, toggleAssistant }: Sys
 
   useShortcut("Ctrl+Space", toggleSearch, "Toggle search palette", "system");
   useShortcut("Ctrl+l", toggleLaunchpad, "Toggle launchpad", "system");
-  useShortcut("Ctrl+/", toggleAssistant, "Toggle taOS Assistant", "system");
+  useShortcut("Ctrl+/", toggleAssistant, "Toggle taOS agent", "system");
   useShortcut("Ctrl+w", closeFocused, "Close focused window", "system");
   useShortcut("Ctrl+m", minimizeFocused, "Minimize focused window", "system");
   useShortcut("Ctrl+f", maximizeFocused, "Maximize/restore focused window", "system");
@@ -152,6 +152,24 @@ export function App() {
     window.addEventListener("open-launchpad", handler);
     return () => window.removeEventListener("open-launchpad", handler);
   }, []);
+
+  // Surface a window opened programmatically from inside an app (e.g. an agent
+  // shortcut launching a terminal/browser). On mobile a window is only visible
+  // when it is the active window, so callers dispatch this with the new window
+  // id; on desktop the window manager already renders it, so this just focuses.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      // Validate the event's detail shape at runtime rather than trusting a cast.
+      const detail = (e as CustomEvent<unknown>).detail;
+      const wid =
+        detail && typeof (detail as { windowId?: unknown }).windowId === "string"
+          ? (detail as { windowId: string }).windowId
+          : null;
+      if (wid) setActiveWindowId(wid);
+    };
+    window.addEventListener("taos:activate-window", handler);
+    return () => window.removeEventListener("taos:activate-window", handler);
+  }, [setActiveWindowId]);
 
   useSessionPersistence();
 
@@ -302,6 +320,7 @@ export function App() {
         onToggleSwitcher={() => setCardSwitcherOpen((v) => !v)}
         onOpenLaunchpad={() => { setCardSwitcherOpen(false); setSearchOpen(false); setLaunchpadOpen((v) => !v); }}
         activeAppId={activeWindow?.appId ?? null}
+        isBrowserMobile={isBrowserMobile}
       />
       <CardSwitcher
         open={cardSwitcherOpen}

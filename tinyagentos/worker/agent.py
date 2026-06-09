@@ -66,10 +66,19 @@ def _detect_lan_ip(controller_url: str) -> str | None:
 
 
 class WorkerAgent:
-    def __init__(self, controller_url: str, name: str | None = None, worker_port: int = 0):
+    def __init__(
+        self,
+        controller_url: str,
+        name: str | None = None,
+        worker_port: int = 0,
+        extra_capabilities: list[str] | None = None,
+        advertise_url: str | None = None,
+    ):
         self.controller_url = controller_url.rstrip("/")
         self.name = name or socket.gethostname()
         self.worker_port = worker_port
+        self.extra_capabilities = list(extra_capabilities or [])
+        self.advertise_url = advertise_url
         self._running = False
         self._registered = False
 
@@ -97,7 +106,6 @@ class WorkerAgent:
             ("vllm", "http://localhost:8000"),
             ("vllm", "http://localhost:18000"),           # TAOS-bundled vLLM (future)
             ("sd-cpp", "http://localhost:7864"),
-            ("rknn-sd", "http://localhost:7863"),
             ("exo", "http://localhost:52415"),           # exo distributed inference (default port)
         ]
 
@@ -157,7 +165,7 @@ class WorkerAgent:
         probe. Track in #144.
         """
         try:
-            if backend_type in ("sd-cpp", "rknn-sd"):
+            if backend_type == "sd-cpp":
                 # Image-gen backends, KV quant is not applicable.
                 return {"k": [], "v": [], "boundary": False}
             # All current real backends return the default until one of them
@@ -226,13 +234,6 @@ class WorkerAgent:
                     {"name": m.get("title") or m.get("model_name") or "", "size_mb": 0}
                     for m in (resp.json() if isinstance(resp.json(), list) else [])
                 ]
-            if backend_type == "rknn-sd":
-                resp = await client.get(f"{base_url}/health")
-                if resp.status_code != 200:
-                    return None
-                data = resp.json()
-                name = data.get("model") or ""
-                return [{"name": name, "size_mb": 0}] if name else []
             # llama-cpp / vllm, OpenAI compat /v1/models
             resp = await client.get(f"{base_url}/v1/models")
             if resp.status_code != 200:
@@ -340,11 +341,11 @@ class WorkerAgent:
 
         hw = detect_hardware()
         backends = await self.detect_backends()
-        caps = self.detect_capabilities(backends)
+        caps = sorted(set(self.detect_capabilities(backends)) | set(self.extra_capabilities))
         kv_quant = self.detect_kv_quant_support(backends)
 
-        # Find the actual backend URL to use (first discovered)
-        worker_url = backends[0]["url"] if backends else self.get_worker_url()
+        # Use pinned advertise_url if provided; otherwise infer from backends or LAN IP.
+        worker_url = self.advertise_url or (backends[0]["url"] if backends else self.get_worker_url())
 
         payload = {
             "name": self.name,
@@ -398,7 +399,7 @@ class WorkerAgent:
         try:
             load = psutil.cpu_percent() / 100.0
             backends = await self.detect_backends()
-            caps = self.detect_capabilities(backends)
+            caps = sorted(set(self.detect_capabilities(backends)) | set(self.extra_capabilities))
             kv_quant = self.detect_kv_quant_support(backends)
             snap = capacity_snapshot()
             async with httpx.AsyncClient(timeout=5) as client:

@@ -10,6 +10,7 @@ import { filterCatalog, compatFromResolver, hasUnknownHardwareDevice } from "./f
 import { resolveModel, type ResolveResponse } from "./resolver-types";
 import { compatVisuals } from "./compat-visuals";
 import { loadFilter, saveFilter } from "./storage";
+import { emitAppEvent, APP_INSTALLED } from "@/lib/app-event-bus";
 
 /* ------------------------------------------------------------------ */
 /*  Categories                                                         */
@@ -194,10 +195,10 @@ const TYPE_ICON_GRADIENTS: Record<string, string> = {
 /*  3. Fallback to the Package placeholder icon                       */
 /* ------------------------------------------------------------------ */
 
-// Simple Icons CDN returns a white-on-transparent SVG so it blends with
-// the dark gunmetal card surface. Colour variants available via
-// /{slug}/{hex} but we stick to white for consistency.
-const si = (slug: string): string => `https://cdn.simpleicons.org/${slug}/ffffff`;
+// Simple Icons vendored locally under /static/store-icons/brands/ (white SVG).
+// Missing slugs (e.g. openai, removed upstream) 404 locally and fall back to
+// the Package placeholder via the onError handler on the <img> element.
+const si = (slug: string): string => `/static/store-icons/brands/${slug}.svg`;
 
 // GitHub org/user avatar — used for projects without a Simple Icons
 // entry. `?size=96` keeps the transfer small; we render at 40px.
@@ -299,7 +300,6 @@ const APP_ICONS: Record<string, string> = {
   "fastsdcpu": gh("rupeshs"),
   "rk-llama-cpp": gh("marty1885"),
   "rk3588-sd-gpu": gh("happyme531"),
-  "rknn-stable-diffusion": gh("happyme531"),
   "lcm-dreamshaper-rknn": gh("happyme531"),
   "ltx-video": gh("Lightricks"),
   "wan2gp": gh("alibaba"),
@@ -952,6 +952,7 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
   const handleInstall = useCallback((id: string) => {
     setApps((prev) => prev.map((a) => (a.id === id ? { ...a, installed: true } : a)));
     refreshInstalled();
+    emitAppEvent(APP_INSTALLED, id);
   }, [refreshInstalled]);
 
   const handleUninstall = useCallback((id: string) => {

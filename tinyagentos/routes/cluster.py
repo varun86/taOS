@@ -627,7 +627,7 @@ async def deploy_backend(request: Request, name: str, body: DeployRequest):
 async def worker_remote_command(request: Request, name: str, body: WorkerRemoteRequest):
     """Run an allowlisted command on a remote worker for debugging.
 
-    Used by the TAOS assistant/expert agent and the admin UI to
+    Used by the taOS agent/expert agent and the admin UI to
     diagnose worker issues without SSH access. Commands must match
     a prefix in the allowlist. The worker-side endpoint uses
     create_subprocess_exec (no shell) with the command split into
@@ -658,7 +658,7 @@ async def worker_remote_command(request: Request, name: str, body: WorkerRemoteR
         return JSONResponse({"error": str(exc)}, status_code=502)
 
 
-@router.get("/api/cluster/promote-archived")
+@router.post("/api/cluster/promote-archived")
 async def promote_archived_models(request: Request):
     """Manual trigger: scan all online workers and promote any archived
     models that are now compatible with cluster hardware.

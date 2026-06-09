@@ -17,12 +17,17 @@
 #     TAOS_INSTALL_DIR    where to install (default: ~/tinyagentos)
 #     TAOS_BRANCH         git branch or tag (default: master)
 #     TAOS_REPO           git remote (default: https://github.com/jaylfc/tinyagentos)
-#     TAOS_PORT                controller listen port (default: 6969)
-#     TAOS_BROWSER_PROXY_PORT  browser-proxy second-origin port (default: 6970); set to 0 to disable
-#     TAOS_QMD_PORT            qmd model service port (default: 7832)
-#     TAOS_SERVICE             install as system service: auto (default), system, user, skip
-#     TAOS_SKIP_QMD            if set, skip qmd.service install (useful for boxes without a model backend)
-#     TAOS_RKNPU_SETUP         if set to 1, auto-run install-rknpu.sh when RKNPU is detected but rkllama is missing
+#     TAOS_PORT                 controller listen port (default: 6969)
+#     TAOS_BROWSER_PROXY_PORT   browser-proxy second-origin port (default: 6970); set to 0 to disable
+#     TAOS_QMD_PORT             qmd model service port (default: 7832)
+#     TAOS_SERVICE              install as system service: auto (default), system, user, skip
+#     TAOS_SKIP_QMD             if set, skip qmd.service install (useful for boxes without a model backend)
+#     TAOS_RKNPU_SETUP          if set to 1, auto-run install-rknpu.sh when RKNPU is detected but rkllama is missing
+#     TAOS_PREFETCH_BASE_IMAGE  if set to 1, download the pre-built agent base image at startup (~300-500MB, one-time)
+#     TAOS_COW_POOL             incus storage driver: auto (default), btrfs, zfs, dir
+#                               auto = use btrfs/zfs if /var/lib is on CoW fs, fall back to dir
+#                               btrfs/zfs = force a specific CoW driver (requires matching fs)
+#                               dir = force directory-backed pool (no CoW, slower clones)
 set -euo pipefail
 
 INSTALL_DIR="${TAOS_INSTALL_DIR:-$HOME/tinyagentos}"
@@ -32,6 +37,7 @@ TAOS_PORT="${TAOS_PORT:-6969}"
 TAOS_BROWSER_PROXY_PORT="${TAOS_BROWSER_PROXY_PORT:-6970}"
 TAOS_QMD_PORT="${TAOS_QMD_PORT:-7832}"
 SERVICE_MODE="${TAOS_SERVICE:-auto}"
+COW_POOL_MODE="${TAOS_COW_POOL:-auto}"
 
 os_name="$(uname -s)"
 arch="$(uname -m)"
@@ -135,13 +141,72 @@ ensure_node22() {
     log "node ${node_major:-not found} is too old (need >=22) — upgrading to Node 22 LTS via NodeSource"
 
     if command -v apt-get >/dev/null 2>&1; then
-        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - \
-            || die "NodeSource setup script failed"
+        # Install Node 22 via NodeSource's GPG-signed apt repository.
+        # This mirrors how Zabbly/Caddy keys are handled in this file: download
+        # the key, verify its fingerprint against a known-good value, import to a
+        # named keyring, then add the signed-by sources entry.
+        #
+        # NodeSource repo GPG key fingerprint — verified 2026-06-08 against
+        # https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+        # and confirmed against NodeSource's official documentation at
+        # https://github.com/nodesource/distributions
+        # Update if NodeSource rotates their signing key.
+        local _ns_expected_fp="6F71F525282841EEDAF851B42F59B5F99B1BE0B4"
+        local _ns_key_tmp
+        _ns_key_tmp="$(mktemp /tmp/nodesource-key.XXXXXX.asc)"
+        # shellcheck disable=SC2064
+        trap "rm -f '$_ns_key_tmp'" RETURN
+        curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+            -o "$_ns_key_tmp" \
+            || die "failed to download NodeSource repo GPG key"
+        local _ns_actual_fp
+        _ns_actual_fp="$(gpg --with-colons --import-options show-only \
+            --import "$_ns_key_tmp" 2>/dev/null \
+            | awk -F: '/^fpr:/{print $10}' | head -1)"
+        _ns_actual_fp="${_ns_actual_fp//[[:space:]]/}"
+        if [[ "$_ns_actual_fp" != "$_ns_expected_fp" ]]; then
+            die "NodeSource repo key fingerprint mismatch: expected $_ns_expected_fp, got '$_ns_actual_fp' — refusing to import"
+        fi
+        log "NodeSource key fingerprint ok (${_ns_actual_fp:0:16}…)"
+        sudo mkdir -p /usr/share/keyrings
+        sudo gpg --dearmor -o /usr/share/keyrings/nodesource.gpg < "$_ns_key_tmp" \
+            || die "gpg --dearmor for NodeSource key failed"
+        sudo chmod 644 /usr/share/keyrings/nodesource.gpg
+        printf 'Types: deb\nURIs: https://deb.nodesource.com/node_22.x\nSuites: nodistro\nComponents: main\nSigned-By: /usr/share/keyrings/nodesource.gpg\n' \
+            | sudo tee /etc/apt/sources.list.d/nodesource.sources > /dev/null
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq \
+            || die "apt-get update after NodeSource repo add failed"
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs \
             || die "apt-get install nodejs (22) failed"
     elif command -v dnf >/dev/null 2>&1; then
-        curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo -E bash - \
-            || die "NodeSource setup script failed"
+        # Install Node 22 via NodeSource's GPG-signed dnf repository.
+        # Key fingerprint verified 2026-06-08 against
+        # https://rpm.nodesource.com/gpgkey/ns-operations-public.key
+        # Update if NodeSource rotates their RPM signing key.
+        local _ns_rpm_expected_fp="242B813831AF09562B6C46F76B88DA4E3AF28A14"
+        local _ns_rpm_key_tmp
+        _ns_rpm_key_tmp="$(mktemp /tmp/nodesource-rpm-key.XXXXXX.asc)"
+        # shellcheck disable=SC2064
+        trap "rm -f '$_ns_rpm_key_tmp'" RETURN
+        curl -fsSL https://rpm.nodesource.com/gpgkey/ns-operations-public.key \
+            -o "$_ns_rpm_key_tmp" \
+            || die "failed to download NodeSource RPM repo GPG key"
+        local _ns_rpm_actual_fp
+        _ns_rpm_actual_fp="$(gpg --with-colons --import-options show-only \
+            --import "$_ns_rpm_key_tmp" 2>/dev/null \
+            | awk -F: '/^fpr:/{print $10}' | head -1)"
+        _ns_rpm_actual_fp="${_ns_rpm_actual_fp//[[:space:]]/}"
+        if [[ "$_ns_rpm_actual_fp" != "$_ns_rpm_expected_fp" ]]; then
+            die "NodeSource RPM key fingerprint mismatch: expected $_ns_rpm_expected_fp, got '$_ns_rpm_actual_fp' — refusing to import"
+        fi
+        log "NodeSource RPM key fingerprint ok (${_ns_rpm_actual_fp:0:16}…)"
+        local _ns_rpm_arch
+        _ns_rpm_arch="$(uname -m)"
+        sudo rpm --import "$_ns_rpm_key_tmp" \
+            || die "rpm --import for NodeSource key failed"
+        printf '[nodesource-nodejs]\nname=Node.js Packages for Linux RPM based distros - %s\nbaseurl=https://rpm.nodesource.com/pub_22.x/nodistro/nodejs/%s\npriority=9\nenabled=1\ngpgcheck=1\ngpgkey=https://rpm.nodesource.com/gpgkey/ns-operations-public.key\nmodule_hotfixes=1\n' \
+            "$_ns_rpm_arch" "$_ns_rpm_arch" \
+            | sudo tee /etc/yum.repos.d/nodesource-nodejs.repo > /dev/null
         sudo dnf install -y nodejs \
             || die "dnf install nodejs (22) failed"
     elif command -v pacman >/dev/null 2>&1; then
@@ -454,6 +519,119 @@ install_rk3588_perf_if_needed() {
 
 detect_and_advise_accelerators
 
+# --- filesystem CoW detection ----------------------------------------------
+# Detect whether /var/lib is on a copy-on-write filesystem (btrfs or ZFS).
+# Incus auto-detects the best storage driver at init time, but we surface
+# this explicitly so users know whether they'll get fast CoW clones (<=5s)
+# or slow directory-backed copies (full file copy per container).
+#
+# TAOS_COW_POOL lets the user override the driver choice:
+#   auto  - let incus decide (uses btrfs/zfs if available, dir otherwise)
+#   btrfs - force btrfs pool (fails if /var/lib isn't btrfs)
+#   zfs   - force zfs pool (fails if /var/lib isn't zfs)
+#   dir   - force directory-backed pool even on CoW fs (slower, portable)
+
+detect_cow_filesystem() {
+    local target="/var/lib"
+    [[ -d /var/lib/incus ]] && target="/var/lib/incus"
+
+    local fs_type=""
+    # stat -f --format=%T is the most portable way to get the fs type name
+    # on Linux. Fall back to df -T if stat isn't available or doesn't support
+    # the format flag (busybox, some containers).
+    if stat -f --format=%T "$target" >/dev/null 2>&1; then
+        fs_type=$(stat -f --format=%T "$target" 2>/dev/null)
+    elif df -T "$target" >/dev/null 2>&1; then
+        fs_type=$(df -T "$target" 2>/dev/null | awk 'NR==2 {print $2}')
+    fi
+
+    [[ -z "$fs_type" ]] && fs_type="unknown"
+    log "filesystem at $target: $fs_type" >&2
+    echo "$fs_type"
+}
+
+# Initialise incus storage with an explicit driver choice. Called after
+# incus is installed but before incus admin init --auto. If the user
+# explicitly requested a CoW driver, we honour that; otherwise we let
+# incus auto-detect (which prefers btrfs > zfs > lvm > dir).
+_incus_storage_init() {
+    local fs_type="$1"
+
+    case "${COW_POOL_MODE}" in
+        btrfs)
+            if [[ "$fs_type" != "btrfs" ]]; then
+                warn "TAOS_COW_POOL=btrfs but /var/lib is $fs_type - btrfs pool requires btrfs filesystem"
+                warn "  falling back to incus auto-detection"
+                return 0
+            fi
+            log "creating incus btrfs storage pool for CoW container clones (<=5s deploys)"
+            if sudo incus storage create default btrfs 2>/dev/null; then
+                COW_EFFECTIVE_MODE="btrfs"
+                return 0
+            fi
+            warn "incus storage create default btrfs failed - falling back to incus admin init --auto"
+            ;;
+        zfs)
+            if [[ "$fs_type" != "zfs" ]]; then
+                warn "TAOS_COW_POOL=zfs but /var/lib is $fs_type - zfs pool requires zfs filesystem"
+                warn "  falling back to incus auto-detection"
+                return 0
+            fi
+            log "creating incus zfs storage pool for CoW container clones (<=5s deploys)"
+            if sudo incus storage create default zfs 2>/dev/null; then
+                COW_EFFECTIVE_MODE="zfs"
+                return 0
+            fi
+            warn "incus storage create default zfs failed - falling back to incus admin init --auto"
+            ;;
+        dir)
+            warn "TAOS_COW_POOL=dir - forcing directory-backed pool (no CoW, slower clones)"
+            if sudo incus storage list 2>/dev/null | grep -q '\bdefault\b'; then
+                log "incus storage pool 'default' already exists - skipping create"
+            else
+                sudo incus storage create default dir 2>/dev/null \
+                    || { warn "incus storage create default dir failed"; return 1; }
+                log "incus directory-backed storage pool 'default' created"
+            fi
+            COW_EFFECTIVE_MODE="dir"
+            return 0
+            ;;
+        auto|*)
+            case "$fs_type" in
+                btrfs|zfs)
+                    log "CoW filesystem ($fs_type) detected - auto-creating $fs_type storage pool for fast clones (<=5s deploys)"
+                    if sudo incus storage create default "$fs_type" 2>/dev/null; then
+                        log "incus $fs_type storage pool 'default' created - clones will use CoW"
+                        COW_EFFECTIVE_MODE="$fs_type"
+                        return 0
+                    fi
+                    warn "incus storage create default $fs_type failed - falling back to incus admin init --auto (dir pool)"
+                    ;;
+                ext[2-4]|xfs)
+                    log "$fs_type filesystem - CoW not available; container clones will be full copies (slower)"
+                    log "  for <=5s deploys, run incus on a btrfs or ZFS volume"
+                    COW_EFFECTIVE_MODE="none"
+                    ;;
+                *)
+                    log "filesystem type '$fs_type' - incus will auto-select the best available driver"
+                    COW_EFFECTIVE_MODE="none"
+                    ;;
+            esac
+            return 0
+            ;;
+    esac
+    return 0
+}
+
+detect_and_advise_cow() {
+    COW_FS_TYPE="$(detect_cow_filesystem)"
+}
+detect_and_advise_cow
+
+# Effective storage mode is set later by _incus_storage_init (btrfs/zfs/dir/none)
+# or left as "n/a" when no incus pool is configured (Docker/Podman/macOS).
+COW_EFFECTIVE_MODE="n/a"
+
 # --- container runtime — install Incus if nothing is present -------------
 #
 # taOS uses a container runtime (Incus, Docker, or Podman) to deploy
@@ -475,6 +653,15 @@ ensure_container_runtime() {
     # Check if any supported runtime is already present
     if command -v incus >/dev/null 2>&1; then
         log "container runtime: incus $(incus --version 2>/dev/null | head -1) — ok"
+        # incus pre-existed, so _incus_storage_init below never runs and
+        # COW_EFFECTIVE_MODE would stay "n/a" (which reads as "no incus").
+        # Reflect the existing default pool's driver in the summary instead.
+        local _existing_drv
+        _existing_drv=$(sudo incus storage show default 2>/dev/null | sed -n 's/^driver:[[:space:]]*//p' | head -1)
+        case "$_existing_drv" in
+            btrfs|zfs) COW_EFFECTIVE_MODE="$_existing_drv" ;;
+            *)         COW_EFFECTIVE_MODE="existing" ;;
+        esac
         return 0
     fi
     if command -v docker >/dev/null 2>&1; then
@@ -530,8 +717,35 @@ ensure_container_runtime() {
             else
                 log "incus not in default repos — using Zabbly for codename '$codename'"
                 sudo install -d -m 0755 /etc/apt/keyrings
-                sudo curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc \
-                    || { warn "failed to fetch Zabbly key — skipping Incus install"; return 0; }
+
+                # Fetch and verify Zabbly GPG key before importing.
+                # Expected key fingerprint (verified 2026-06-08 from https://pkgs.zabbly.com/key.asc
+                # and confirmed on keyserver.ubuntu.com):
+                #   4EFC 5906 96CB 15B8 7C73  A3AD 82CC 8797 C838 DCFD
+                # RESIDUAL RISK: Zabbly does not publish a separate SHA256 for
+                # key.asc; we verify via gpg --fingerprint after dearmoring.
+                # Update the expected fingerprint if Zabbly rotates their signing key.
+                local _zabbly_key_tmp
+                _zabbly_key_tmp="$(mktemp /tmp/zabbly-key.XXXXXX.asc)"
+                # shellcheck disable=SC2064
+                trap "rm -f '$_zabbly_key_tmp'" RETURN
+                if ! curl -fsSL https://pkgs.zabbly.com/key.asc -o "$_zabbly_key_tmp"; then
+                    warn "failed to fetch Zabbly key — skipping Incus install"
+                    return 0
+                fi
+                local _zabbly_expected_fp="4EFC590696CB15B87C73A3AD82CC8797C838DCFD"
+                local _zabbly_actual_fp
+                _zabbly_actual_fp="$(gpg --with-colons --import-options show-only \
+                    --import "$_zabbly_key_tmp" 2>/dev/null \
+                    | awk -F: '/^fpr:/{gsub(/ /,"",$10); print $10}' | head -1)"
+                _zabbly_actual_fp="${_zabbly_actual_fp//[[:space:]]/}"
+                if [[ "$_zabbly_actual_fp" != "$_zabbly_expected_fp" ]]; then
+                    warn "Zabbly key fingerprint mismatch: expected $_zabbly_expected_fp, got '$_zabbly_actual_fp'"
+                    warn "  Refusing to import — skipping Incus install via Zabbly"
+                    return 0
+                fi
+                log "Zabbly key fingerprint ok (${_zabbly_actual_fp:0:16}…)"
+                sudo cp "$_zabbly_key_tmp" /etc/apt/keyrings/zabbly.asc
                 echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/incus/stable $codename main" \
                     | sudo tee /etc/apt/sources.list.d/zabbly-incus-stable.list > /dev/null
                 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
@@ -572,6 +786,12 @@ ensure_container_runtime() {
 
     if (( installed )) && command -v incus >/dev/null 2>&1; then
         log "initialising Incus with default storage + network"
+        # Try explicit CoW pool first - if the user set TAOS_COW_POOL or the
+        # filesystem is btrfs/zfs, this creates the pool before incus init.
+        # Falls back gracefully to incus admin init --auto when:
+        #  - the fs isn't CoW and the user didn't force a driver
+        #  - the explicit pool creation fails
+        _incus_storage_init "$COW_FS_TYPE"
         if sudo incus admin init --auto >/dev/null 2>&1; then
             log "container runtime: incus initialised"
         else
@@ -993,11 +1213,15 @@ if [[ -z "${TAOS_SKIP_QMD:-}" ]]; then
             # pre-built (dist/ is not committed to the source repo),
             # so installing from a git SHA requires a TypeScript
             # build step — use the npm registry instead.
-            # To update: verify the new version against taOS, then
-            # bump the pinned version here.
+            # Pin to a specific published version rather than @latest.
+            # Update TAOS_QMD_NPM_VERSION when a new qmd release ships.
+            # npm packages are signed via the registry's package-lock integrity
+            # mechanism (sha512 in package-lock.json); pinning the version here
+            # is the supply-chain control available at install time.
+            qmd_npm_version="${TAOS_QMD_NPM_VERSION:-0.5.2}"
             qmd_install_log=$(mktemp /tmp/taos-qmd-install.XXXXXX.log)
-            log "npm install -g @jaylfc/qmd@2.1.1 (log: $qmd_install_log)"
-            if ! sudo HOME=/root npm install -g --unsafe-perm "@jaylfc/qmd@2.1.1" >"$qmd_install_log" 2>&1; then
+            log "npm install -g @jaylfc/qmd@${qmd_npm_version} (log: $qmd_install_log)"
+            if ! sudo HOME=/root npm install -g --unsafe-perm "@jaylfc/qmd@${qmd_npm_version}" >"$qmd_install_log" 2>&1; then
                 if grep -q "TAR_ENTRY_ERROR" "$qmd_install_log" \
                    && grep -q "spawn sh" "$qmd_install_log"; then
                     warn "npm install of qmd hit the node-llama-cpp tar-extraction"
@@ -1096,6 +1320,84 @@ else
     log "TAOS_SKIP_QMD is set — skipping qmd.service install"
 fi
 
+# --- dedicated service user -----------------------------------------------
+# The controller runs as an unprivileged system user 'taos' rather than root.
+# The installer itself still runs as root (via sudo bash); only the resulting
+# systemd unit drops to 'taos'.  The user needs access to the incus and docker
+# sockets (group membership) but no elevated privileges beyond that.
+
+ensure_taos_user() {
+    [[ "$os_name" == "Linux" ]] || return 0  # no-op on macOS (launchd agent)
+
+    # Create the system user if absent. useradd -r = system account (no home
+    # dir by default, no expiry). -M = do not create /home/taos. -d sets the
+    # "home" field in /etc/passwd to INSTALL_DIR (used by some tools for ~
+    # expansion, not an actual home directory on disk).
+    if ! id -u taos >/dev/null 2>&1; then
+        log "creating system user 'taos' for the controller service"
+        useradd -r -M -s /usr/sbin/nologin -d "$INSTALL_DIR" taos \
+            || useradd -r -M -s /sbin/nologin -d "$INSTALL_DIR" taos \
+            || { warn "useradd failed — the service will not run as 'taos'"; return 1; }
+        log "system user 'taos' created"
+    else
+        log "system user 'taos' already exists — skipping useradd"
+    fi
+
+    # Add 'taos' to the incus group so it can reach the incus socket without
+    # root. Warn (don't fail) if the group doesn't exist — the socket is still
+    # usable if incus is not installed on this host.
+    if getent group incus >/dev/null 2>&1; then
+        usermod -aG incus taos >/dev/null 2>&1 \
+            && log "added 'taos' to the 'incus' group" \
+            || warn "could not add 'taos' to the 'incus' group — agent container deploys may fail"
+    else
+        warn "'incus' group not found — skipping (install Incus first, then re-run to add 'taos' to the group)"
+    fi
+
+    # Mirror the existing docker-group handling: add 'taos' to docker so the
+    # controller can manage Store Docker apps. Warn if docker isn't present.
+    if getent group docker >/dev/null 2>&1; then
+        usermod -aG docker taos >/dev/null 2>&1 \
+            && log "added 'taos' to the 'docker' group" \
+            || warn "could not add 'taos' to the 'docker' group — Store Docker apps may fail"
+    else
+        warn "'docker' group not found — skipping (install Docker first, then re-run to add 'taos' to the group)"
+    fi
+}
+
+# --- data dir ownership + permissions ------------------------------------
+# After the venv + data dir are set up, hand ownership of the runtime data
+# tree to the 'taos' user so the service can read/write it.  Sensitive files
+# get tighter permissions (600).  Idempotent: chown/chmod are always safe
+# to re-run.
+
+set_data_dir_ownership() {
+    [[ "$os_name" == "Linux" ]] || return 0  # no-op on macOS
+    ! id -u taos >/dev/null 2>&1 && return 0  # no-op if user wasn't created
+
+    # Security trade-off: taos must OWN the entire install dir (repo, .git,
+    # .venv, static/desktop/) so the in-app self-updater can write to those
+    # paths while running non-root (git pull, pip install -e ., npm run build).
+    # Full update-privilege-separation (a dedicated updater suid helper that
+    # verifies signatures before writing) is a post-beta hardening task.
+    log "setting ownership of $INSTALL_DIR → taos:taos (required for non-root in-app self-update)"
+    chown -R taos:taos "$INSTALL_DIR" 2>/dev/null || true
+
+    # Tighten the data directory and sensitive credential files on top of the
+    # broad chown above — done AFTER so the restrictive perms win.
+    log "tightening $INSTALL_DIR/data/ → mode 0700 and secret files → 0600"
+    chmod 0700 "$INSTALL_DIR/data"
+    for f in \
+        "$INSTALL_DIR/data/.auth_password" \
+        "$INSTALL_DIR/data/.auth_user.json" \
+        "$INSTALL_DIR/data/.auth_sessions" \
+        "$INSTALL_DIR/data/.auth_local_token" \
+        "$INSTALL_DIR/data/.litellm_db_url" \
+        "$INSTALL_DIR/data/browser_cookie_key.hex"; do
+        [[ -f "$f" ]] && chmod 0600 "$f" || true
+    done
+}
+
 # --- tinyagentos.service install -----------------------------------------
 
 install_linux_systemd_system() {
@@ -1105,25 +1407,38 @@ install_linux_systemd_system() {
         sudo_cmd="sudo"
     fi
 
+    # Resolve base image prefetch opt-in: honour TAOS_PREFETCH_BASE_IMAGE
+    # if set at install time, default to 0 (disabled).
+    local taos_prefetch="${TAOS_PREFETCH_BASE_IMAGE:-0}"
+
+    # Create the dedicated service user and assign group memberships.
+    ensure_taos_user
+
     # Install graceful-stop script
     $sudo_cmd install -m 0755 "$INSTALL_DIR/scripts/taos-graceful-stop.sh" /usr/local/bin/taos-graceful-stop
     log "installed /usr/local/bin/taos-graceful-stop"
 
     # Stamp the template from the repo, substituting install-time variables.
+    # The service runs as the dedicated 'taos' system user, not the installer's
+    # $USER.  The installer itself still runs as root.
     sed \
-        -e "s|TAOS_USER|$USER|g" \
-        -e "s|TAOS_GROUP|$(id -gn)|g" \
+        -e "s|TAOS_USER|taos|g" \
+        -e "s|TAOS_GROUP|taos|g" \
         -e "s|TAOS_INSTALL_DIR|$INSTALL_DIR|g" \
         -e "s|TAOS_PYTHON|$INSTALL_DIR/.venv/bin/python|g" \
         -e "s|TAOS_PORT|$TAOS_PORT|g" \
         -e "s|TAOS_STOP_SCRIPT|/usr/local/bin/taos-graceful-stop|g" \
+        -e "s|TAOS_PREFETCH|$taos_prefetch|g" \
         "$INSTALL_DIR/scripts/systemd/tinyagentos.service" \
         | $sudo_cmd tee "$unit" > /dev/null
     # Inject bind host/port + proxy port into the unit's Environment block.
     # ExecStart now runs `python -m tinyagentos`, which reads these (rather
     # than uvicorn CLI args), so the dual-port browser-proxy origin starts.
     $sudo_cmd sed -i "s|^Environment=PYTHONUNBUFFERED=1|Environment=PYTHONUNBUFFERED=1\nEnvironment=TAOS_HOST=0.0.0.0\nEnvironment=TAOS_PORT=$TAOS_PORT\nEnvironment=TAOS_BROWSER_PROXY_PORT=$TAOS_BROWSER_PROXY_PORT|" "$unit"
-    log "installed $unit (system unit, runs as $USER)"
+    log "installed $unit (system unit, runs as 'taos')"
+
+    # Hand the data directory to the service user before the unit first starts.
+    set_data_dir_ownership
 
     # Install pre-shutdown hook
     if [[ -f "$INSTALL_DIR/systemd/taos-pre-shutdown.service" ]]; then
@@ -1136,7 +1451,7 @@ install_linux_systemd_system() {
     if [[ -f /etc/systemd/system/taos-pre-shutdown.service ]]; then
         $sudo_cmd systemctl enable taos-pre-shutdown.service
     fi
-    log "controller running as system service"
+    log "controller running as system service (user: taos)"
     log "check: systemctl status tinyagentos"
     log "logs:  journalctl -u tinyagentos -f"
 }
@@ -1149,6 +1464,8 @@ install_linux_systemd_user() {
     mkdir -p "$HOME/.local/bin"
     install -m 0755 "$INSTALL_DIR/scripts/taos-graceful-stop.sh" "$HOME/.local/bin/taos-graceful-stop"
 
+    local taos_prefetch="${TAOS_PREFETCH_BASE_IMAGE:-0}"
+
     # User unit: no User=/Group= (inherits the running user), no ExecStartPre
     # for debugfs (that needs root). ExecReload/Restart=always still apply.
     sed \
@@ -1158,6 +1475,7 @@ install_linux_systemd_user() {
         -e "s|TAOS_PYTHON|$INSTALL_DIR/.venv/bin/python|g" \
         -e "s|TAOS_PORT|$TAOS_PORT|g" \
         -e "s|TAOS_STOP_SCRIPT|$HOME/.local/bin/taos-graceful-stop|g" \
+        -e "s|TAOS_PREFETCH|$taos_prefetch|g" \
         -e "/^User=/d" \
         -e "/^Group=/d" \
         -e "s|WantedBy=multi-user.target|WantedBy=default.target|g" \
@@ -1437,6 +1755,28 @@ if [[ "$SERVICE_MODE" != "skip" ]]; then
     fi
 fi
 
+# --- pre-beta install hint -----------------------------------------------
+# If a root-based pre-beta install exists at a different location than the
+# new install, point the user to the migration script so they can preserve
+# their existing data.
+
+if [[ "$os_name" == "Linux" ]]; then
+    _prebeta_found=""
+    for _cand in /root/tinyagentos /home/*/tinyagentos; do
+        [[ -d "$_cand/data" ]] || continue
+        [[ "$(realpath "$_cand" 2>/dev/null)" == "$(realpath "$INSTALL_DIR" 2>/dev/null)" ]] && continue
+        _prebeta_found="$_cand"
+        break
+    done
+    if [[ -n "$_prebeta_found" ]]; then
+        warn ""
+        warn "Pre-beta install detected at $_prebeta_found"
+        warn "To migrate your existing data to this install, run:"
+        warn "  sudo bash $INSTALL_DIR/scripts/pre-beta-to-beta.sh"
+        warn ""
+    fi
+fi
+
 # --- success summary -----------------------------------------------------
 
 host_ip=""
@@ -1457,6 +1797,20 @@ if [[ "$TAOS_BROWSER_PROXY_PORT" != "0" ]]; then
     log "                open both ports in your firewall if accessing remotely"
 fi
 log "  Install dir : $INSTALL_DIR"
+log "  Storage pool: ${COW_EFFECTIVE_MODE:-n/a} (detected fs: ${COW_FS_TYPE:-unknown})"
+if [[ "${COW_EFFECTIVE_MODE:-}" == "btrfs" || "${COW_EFFECTIVE_MODE:-}" == "zfs" ]]; then
+    log "    * CoW clones enabled - container deploys <=5 seconds"
+elif [[ "${COW_EFFECTIVE_MODE:-}" == "dir" ]]; then
+    log "    i Directory-backed pool - no CoW (TAOS_COW_POOL=dir was set)"
+    log "    For faster deploys: re-run on a btrfs or ZFS volume (TAOS_COW_POOL=auto)"
+elif [[ "${COW_EFFECTIVE_MODE:-}" == "n/a" ]]; then
+    log "    i Storage pool not managed by taOS (Docker/Podman/macOS host)"
+elif [[ "${COW_EFFECTIVE_MODE:-}" == "existing" ]]; then
+    log "    i Using your pre-existing Incus storage pool"
+else
+    log "    i CoW not available - deploys are full file copies (slower)"
+    log "    For faster deploys: run incus on btrfs or ZFS (set TAOS_COW_POOL=btrfs or TAOS_COW_POOL=zfs)"
+fi
 log ""
 if have_root_or_sudo; then
     log "  Manage services:"

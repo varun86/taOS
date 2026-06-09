@@ -1,4 +1,6 @@
+import os
 import sqlite3
+import sys
 
 import pytest
 import pytest_asyncio
@@ -7,6 +9,86 @@ from httpx import ASGITransport, AsyncClient
 
 from tinyagentos.app import create_app
 from tinyagentos.routes.desktop import SPA_DIR
+
+# macOS + Python 3.14: after the interpreter loads ObjC-backed extension
+# modules (psutil, zeroconf, Pillow, lxml …), forking a child process with
+# subprocess violates macOS's "unsafe after ObjC runtime init" restriction and
+# produces SIGSEGV in git/bash children (exit code -11).  Setting this env var
+# tells the ObjC runtime to skip the fork-safety check in child processes.
+# The variable propagates automatically to every subprocess the test suite
+# spawns; it is a no-op on Linux (ignored) so CI is unaffected.
+if sys.platform == "darwin":
+    os.environ.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
+
+
+def _patch_aiosqlite_daemon_threads():
+    """Patch aiosqlite's Connection so its worker thread is a daemon thread.
+
+    When aiosqlite connections are not explicitly closed before the asyncio
+    event loop shuts down, their background worker threads remain blocked on
+    SimpleQueue.get().  Because the thread is NOT a daemon, Python's
+    interpreter shutdown joins it — waiting forever for a thread that will
+    never receive the stop sentinel.  This causes pytest to hang for tens of
+    minutes after printing the test summary.
+
+    Observed on CI (Python 3.12 / 3.13, Ubuntu): after the suite finishes
+    pytest is killed by the 45-minute Actions timeout rather than exiting
+    normally.  The same underlying issue causes a SIGSEGV on Python 3.14
+    macOS when the semaphore is torn down under the blocked thread.
+
+    Fix (two layers):
+    1. Mark the worker thread daemon=True so interpreter shutdown kills it
+       instead of joining it — avoids the indefinite block.
+    2. Guard call_soon_threadsafe with an is_closed() pre-check so the
+       worker does not crash if it receives a future tied to a dead loop.
+
+    Applied to all supported Python versions (3.11+) because the hang
+    reproduces on 3.12 and 3.13 in CI.  The patch is safe: daemon=True
+    only affects abnormal exit (loop closed before Connection.close());
+    normal teardown still sends the stop sentinel via the queue.
+    """
+    import aiosqlite.core as _core
+    from threading import Thread
+
+    _STOP = _core._STOP_RUNNING_SENTINEL
+
+    def _threadsafe_call(loop, callback, *args):
+        """Deliver result/exception only if the event loop is still alive."""
+        try:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(callback, *args)
+        except RuntimeError:
+            # Race: loop closed between the is_closed() check and the call.
+            pass
+
+    def _safe_worker(tx):
+        while True:
+            future, function = tx.get()
+            try:
+                result = function()
+                if future:
+                    _threadsafe_call(
+                        future.get_loop(), _core.set_result, future, result
+                    )
+                if result is _STOP:
+                    break
+            except BaseException as exc:
+                if future:
+                    _threadsafe_call(
+                        future.get_loop(), _core.set_exception, future, exc
+                    )
+
+    _core._connection_worker_thread = _safe_worker
+
+    # Monkey-patch Connection.__init__ to mark the worker thread daemon so
+    # interpreter shutdown does not wait (and deadlock) on it.
+    _orig_init = _core.Connection.__init__
+
+    def _patched_init(self, connector, iter_chunk_size, loop=None):
+        _orig_init(self, connector, iter_chunk_size, loop)
+        self._thread.daemon = True
+
+    _core.Connection.__init__ = _patched_init
 
 
 def pytest_configure(config):
@@ -28,6 +110,12 @@ def pytest_configure(config):
         f = SPA_DIR / name
         if not f.exists():
             f.write_text(body)
+
+    # Apply the aiosqlite daemon-thread patch unconditionally: the hang
+    # (pytest blocked after test summary) reproduces on 3.12 and 3.13 in
+    # CI, not just on 3.14.  The SIGSEGV on 3.14 macOS has the same root
+    # cause.  daemon=True is safe for all supported versions.
+    _patch_aiosqlite_daemon_threads()
 
 
 @pytest.fixture
@@ -151,6 +239,10 @@ async def client(app, tmp_data_dir):
     _record = app.state.auth.find_user("admin")
     _uid = _record["id"] if _record else ""
     _token = app.state.auth.create_session(user_id=_uid, long_lived=True)
+    # Mark startup complete so the guard middleware lets test requests through.
+    # The test client bypasses the lifespan, so we set this manually after all
+    # stores have been manually initialized above.
+    app.state._startup_complete = True
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport,
@@ -315,6 +407,7 @@ async def client_with_qmd(app_with_qmd):
     _record = app_with_qmd.state.auth.find_user("admin")
     _uid = _record["id"] if _record else ""
     _token = app_with_qmd.state.auth.create_session(user_id=_uid, long_lived=True)
+    app_with_qmd.state._startup_complete = True
     transport = ASGITransport(app=app_with_qmd)
     async with AsyncClient(
         transport=transport,
