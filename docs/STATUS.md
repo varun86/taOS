@@ -13,18 +13,29 @@
 
 # taOS — Live Status
 
-**Last updated:** 2026-06-10 ~14:00 BST · by @taOS (Mac session, claude-fable-5)
+**Last updated:** 2026-06-10 ~14:30 BST · by @taOS (Mac session, claude-fable-5)
 **Repo:** github.com/jaylfc/taOS · **Branches:** `master` (stable, installs track) ← `dev` (integration)
 
 ## Branch state
 - `master` tip: `a13692de` — promotion #727 (install fixes + registry governance PR2)
 - `dev` tip: `dfee2b0f` — consent scope validation (#733), ahead of master by 7 commits
-- **Open PR `#734`** (dev→master promotion): CI GREEN + mergeable, but a GitHub merge-endpoint 401 blocked auto-merge. **ACTION: needs a manual merge** — `gh pr merge 734 --squash --admin` (or the green button). Non-destructive; do NOT `--delete-branch` (deleting `dev` auto-closes every PR that targets it — burned once on 2026-06-10).
+- **Open PR `#734`** (dev→master promotion): CI GREEN + mergeable. The CLI admin-merge over API persistently 401s against the protected `master` branch (a token/branch-protection limitation, not a CI failure). **ACTION (Jay): click "Merge" on PR #734 in the GitHub UI** — one click, the browser session bypasses the CLI-token limitation. Squash. Do NOT `--delete-branch` (deleting `dev` auto-closes every PR that targets it — burned once on 2026-06-10).
 
 ## In flight
-- **Repo audit** (principal-level, 4-phase): Phases 1–2 mostly done (7 of 8 dimensions; testing dimension interrupted by rate limit, needs re-run). Findings being folded into GitHub issues. Deliverable doc → `docs/audit/2026-06-10-repo-audit.md` (pending).
-- **Multi-agent resilience workflow** (this file + `AGENT_HANDOFF.md` + issues): in progress.
-- **Bug/feedback tracker feature**: to be filed as an issue (in-taOS form → DB → curate → draft replies → file issues).
+- **Repo audit** (principal-level, 4-phase): Phases 1–2 done (8 dimensions; testing got lighter review after a rate limit). NEW findings folded into issues #737 #738 #739 #740 #743; many findings corroborate existing issues (#672 #648 #646 #653 #642 #639 #660 #657 #655). Synthesized report doc → `docs/audit/2026-06-10-repo-audit.md` still **pending** (exec summary + themes + milestone plan).
+- **Multi-agent resilience workflow** — DONE (this file + `AGENT_HANDOFF.md`, commit 29172153) + tracked in #741.
+- **Bug/feedback tracker feature** — filed as #735 (+ websites #736).
+
+## Open feature / improvement issues (filed 2026-06-10)
+- `#735` feedback & bug tracker (in-taOS form → curated DB → issue triage)
+- `#736` websites: taos.my + tinyagentos.com redirect
+- `#741` cross-agent resilience workflow (STATUS/HANDOFF/cron)
+- `#742` memory-unification migrate cutover (deferred until real data)
+- `#737` security: unauthenticated cluster worker register/heartbeat (High)
+- `#738` security: SSRF in knowledge ingest (Medium-High)
+- `#739` CI: enforce ruff + run vitest + npm audit (quick win)
+- `#740` deps: no Python lockfile / non-reproducible installs
+- `#743` docs drift (getting-started /opt path = High, design docs, CONTRIBUTING htmx)
 
 ## Recently merged (dev, last batch)
 `#733` consent scope allowlist + granted⊆requested · `c1fb3f98` live taosmd hit-shape fix · `#732` taosmd→PyPI pin · `#731` consent notification UI · `#730` governance audit panel · `#728` user-memory proxy hardening · `#729` registry approval UI.
