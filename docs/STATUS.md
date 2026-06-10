@@ -7,10 +7,12 @@
 
 # taOS: Live Status
 
-**Last updated:** 2026-06-10 ~18:55 BST, by @taOS (Mac session, claude-fable-5), handing off before a rate limit.
+**Last updated:** 2026-06-10 ~19:30 BST, by @taOS (Mac session). SESSION ENDING, Jay restarting Claude in the correct folder.
 **Repo:** github.com/jaylfc/taOS, branches `master` (stable) <- `dev` (integration).
 
 ## GOTCHA for the next agent
+- **FOLDER:** all taOS work is `jaylfc/taOS` at `~/Development/tinyagentos`. The prior session was launched from `~/Development/taosmd` by mistake (Claude then labels the session taOSmd, cosmetic). RESTART Claude in `~/Development/tinyagentos`, then say "read docs/AGENT_HANDOFF.md".
+- **#752 (safe cleanups) is OPEN, CI green-pending, NOT yet merged.** The auto-merge watcher died with the prior session. Merge it to dev when CI is green (approve-lock leak eviction + auth_requests indexes + shared httpx client #660; 45 tests passed on the Pi). Use the GitHub UI or a PAT.
 - **Merges/protected writes 401 on the gh OAuth token** intermittently (read calls are fine). Use the **GitHub UI merge button**, or a `ghp_` PAT via `GH_TOKEN=<pat> gh pr merge ...`. This is a token limitation, not a CI failure.
 - A background merge-watcher was auto-merging #746/#748/#749 via PAT, but **it dies when this session ends**, so finish them manually (below).
 - Never `--delete-branch` on a dev->master PR (auto-closes PRs targeting dev).
@@ -18,7 +20,7 @@
 
 ## Immediate next actions
 - M1 security CLEARED to master (93f395e2): SSRF #745, CSRF #746, CI-fix #748, docs #749 all merged + promoted.
-- NEXT BUILD: **#737** cluster-worker pairing-code auth (designed in the #737 comment, 4 phases, mechanical -> sonnet with a full spec). Then **#751** beads-inspired native task-graph (joint rec, awaiting Jay greenlight).
+- FIRST: merge #752 (safe cleanups) once CI green. Then NEXT BUILD: **#737** cluster-worker pairing-code auth (designed in the #737 comment, 4 phases, mechanical -> sonnet with a full spec). Then **#751** beads-inspired native task-graph (joint rec, awaiting Jay greenlight).
 
 ## In flight
 - **M1 security (audit milestone 1):** SSRF #738 DONE (#745 merged). CSRF #648 -> #746 (Strict session cookie + token wiring + fixed a latent silent-403 lock bug; per-route rollout tracked in #747). Remaining M1: **#737 cluster-worker auth** = a device-pairing-code flow, fully designed in the #737 comment (worker prints a code, admin pairs in taOS, mints the signing_key; 4 build phases). Not started.
