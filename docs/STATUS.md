@@ -1,52 +1,45 @@
 <!--
   SINGLE SOURCE OF TRUTH for cross-agent handoff. Committed so any agent on any
-  platform sees it. Update on merge / task-start / rate-limit / handoff. The Pi
-  :00/:30 cron also refreshes it. Keep it SHORT, link issues for detail.
-  See docs/AGENT_HANDOFF.md (local-only) for the on-arrival checklist + rules.
+  platform sees it. Update on merge / task-start / rate-limit / handoff. The
+  session freshness cron (:08/:38) also refreshes it. Keep it SHORT, link issues.
+  See docs/AGENT_HANDOFF.md for the on-arrival checklist + rules.
 -->
 
 # taOS: Live Status
 
-**Last updated:** 2026-06-11 ~04:50 BST, by @taOS (Mac session, overnight autonomous run).
+**Last updated:** 2026-06-11 ~10:30 BST, by @taOS (Mac session).
 **Repo:** github.com/jaylfc/taOS, branches `master` (stable) <- `dev` (integration).
 
 ## GOTCHA for the next agent
-- **Protected merges:** `gh pr merge` 401s on the OAuth token but `gh api -X PUT repos/jaylfc/taOS/pulls/N/merge -f merge_method=squash` WORKS with the same token (use `merge_method=merge` for dev->master promotions, never squash, never `--delete-branch`).
-- **Promotion #767 (pairing auth + backend naming) may still be in CI.** If open and green, merge it with the api method above. Everything else from the overnight queue is DONE.
-- CodeRabbit fake passes: a green CodeRabbit check can be a rate-limit notice; check the PR comments, use `@coderabbitai full review`.
-- `tests/` is NOT an importable package: never `from tests.conftest import X` in test files; expose shared helpers as function-returning fixtures (see `pair_and_register_worker` in tests/conftest.py).
+- **Protected merges:** `gh pr merge` 401s on the OAuth token but `gh api -X PUT repos/jaylfc/taOS/pulls/N/merge -f merge_method=squash` WORKS (use `merge_method=merge` for dev->master promotions; never squash a promotion, never `--delete-branch`).
+- **#775 (promotion: worker pairing + prefetch fix + pairing guards + README pairing note) may still be in CI.** If open and green, merge with the api method.
+- CodeRabbit fake passes: a green CodeRabbit check can be a rate-limit notice; check the PR comments, use `@coderabbitai full review`. Kilo often 504s ("Assistant request timed out") = infra flake, not findings.
+- `tests/` is NOT an importable package: never `from tests.conftest import X`; expose shared helpers as function-returning fixtures.
+- Worker onboarding now REQUIRES pairing (a worker prints a code, admin approves in Cluster, signing key minted) before register/heartbeat. The signing string + headers are in tinyagentos/cluster/worker_auth.py; worker side in tinyagentos/worker/pairing.py.
 
-## Overnight run summary (2026-06-10 evening -> 06-11 ~04:50)
-- **Beta Pi incident RESOLVED:** controller was half-alive (active in systemd, :6970 only). Root causes #755 (knowledge.db user_id migration never applied to existing DBs) + #756 (lifespan failure left process alive). Pi repaired + on master, verified healthy.
-- **Merged to dev:** #752 (perf cleanups), #754 (installer sudo gap, closes #753), #758 (controller-rescue runbook), #763 (self-healing knowledge migration + exit-on-startup-failure, closes #755/#756), #764 (worker backend names type:port, closes #759), #762 (cluster pairing-code auth Phase 1, the #737 backend).
-- **Promoted to master:** #766 (3fe1c490) carrying #752/#754/#758/#763. **#767** carrying #762/#764 in flight.
-- **#723 reporter replied** (Jay-approved draft) with recovery instructions; #753 fix on master.
-- **#762 review hardening:** admin gate on pairing pending/confirm, atomic claim (rowcount-gated), actionable 410/404 claim errors, store internals encapsulated (pairing_state()). One CodeRabbit suggestion rejected for cause: counting HMAC failures toward the pairing cap would create a re-pair DoS vector.
+## Recently landed
+- **#737 cluster-worker pairing auth:** Phase 1 backend (#762) + Phase 2 worker scripts/agent signing (#770) DONE, on master via #767 and (pending) #775. Phases 3 (UI pending-workers + enter-code dialog) and 4 (fleet migration UX) remain.
+- **Beta incident fixes on master:** #763 (knowledge user_id migration self-heals bricked installs + exit-on-startup-failure), #754 (installer sudo gap), #768 (installer re-run ownership / priv-esc), #752 (perf), #758 (controller-rescue runbook), #757 (prefetch placeholder).
+- Pi controller was repaired during the incident; it is on an OLD master (93f395e2) and LACKS the pairing backend. Update it before using it as the #772 test controller.
 
 ## Immediate next actions
-1. **POST the #765 reply** (drafted, awaiting Jay go-ahead per draft-first rule): installer re-run ownership bug fixed on master, re-run with sudo now works. Draft in the session transcript.
-2. **#737 Phase 2:** worker scripts (bash + powershell) generate + print the pairing code, announce, poll claim, persist signing_key, sign register/heartbeat. Spec pattern in the #737 issue comment; backend endpoints + HMAC header format are live on dev (see tinyagentos/cluster/worker_auth.py docstring). Sonnet with a full spec.
-3. **#737 Phase 3:** taOS UI pending-workers list + enter-code dialog (frontend-design pass; ties into #760/#761 badge work).
-4. **#737 Phase 4:** migration story for existing fleet workers (clear re-pair prompt, not silent 401s).
-5. **#751** beads-inspired native task-graph: AWAITING Jay greenlight.
-
-Master is fully current: #766 + #767 + #769 all promoted. Whole overnight queue cleared.
+1. Merge **#775** when green; that puts worker pairing + the README pairing note on master.
+2. **#772 smoke test** (Pi controller + Fedora worker): gated on #775 + updating the Pi to that master. Fedora access via @taOSmd (SSH from Pi as jay; details in a 600 file on the Pi, delete after). HARD constraint: Fedora is mid-benchmark, pairing/heartbeat OK but NO GPU model loads / Ollama restarts. Use a throwaway worker name.
+3. **#737 Phase 3** (UI dialog): frontend-design pass, holds for a design session (Apple-grade bar), ties into #760/#761 badges.
+4. **#774 project/shelf registry:** design DONE + spec at docs/superpowers/specs/2026-06-11-project-shelf-registry-design.md (local, gitignored). Next = taOSmd integration thread for the shelf create/archive contract, then a plan.
 
 ## Open issues filed this stretch
-#753 (fixed, #754), #755/#756 (fixed, #763), #757 unit template env mangling (open, small), #759 (fixed, #764), #760 host badges everywhere (UI principle, design pass), #761 per-device emoji/badge identity (brainstorm first; hangs off #737 pairing store + #760).
-
-## In flight
-- **M1 security:** #737 Phase 1 DONE (#762). Phases 2-4 queued (see next actions).
-- **#744 external coding-agent onboarding:** 7 build tasks queued behind M1.
+#757 (fixed #771), #759 (fixed #764), #760 host badges everywhere (UI), #761 per-device emoji identity (brainstorm first), #772 fresh-install/pairing smoke (Pi+Fedora), #774 project/shelf registry (design done).
 
 ## Cross-project (taosmd / A2A)
-- Progress channels live: `taos-progress` (all overnight work posted), `taosmd-progress`. Durable 30-min freshness crons (taOS :00/:30, taosmd :15/:45).
+- #744 taosmd side MERGED (their PR #151): grant matching on (canonical_id, project_id) + verified-claim project binding; the `agent` field on data endpoints is a TARGET SHELF, not the caller. Our 7 #744 build tasks queued.
+- Progress channels live: `taos-progress`, `taosmd-progress`. Freshness crons: taOS session :08/:38 (re-armed 2026-06-11, was dark), Pi durable backstop NOT installed (decision pending Jay).
 
 ## Blocked / waiting on human (Jay)
 - `#15` exo fork deletion: needs `gh auth refresh -s delete_repo`.
-- `TAOSMD_REGISTRY_URL` cutover: gated on the consent UI shipping (deliberate).
-- #751 beads buy-vs-build greenlight.
-- #761 emoji identity brainstorm.
+- `TAOSMD_REGISTRY_URL` cutover: gated on the consent UI shipping.
+- #751 beads buy-vs-build greenlight; #761 emoji brainstorm; #774 -> taOSmd thread.
+- Whether to install a durable Pi-side freshness cron as a backstop to the session cron.
 
 ## Where to look
-1. GitHub issues = task list. 2. This file = snapshot. 3. docs/AGENT_HANDOFF.md (local) = rules + bootstrap. 4. A2A bus :7900 (taos-progress / general / integration). 5. @taOS Pi memory (Claude Code only).
+1. GitHub issues = task list. 2. This file = snapshot. 3. docs/AGENT_HANDOFF.md = rules + bootstrap. 4. A2A bus :7900. 5. @taOS Pi memory (Claude Code only).
