@@ -1,7 +1,5 @@
 # Agent Handoff Playbook
 
-> **RESTART CHECK (2026-06-10 ~19:30 BST):** If your working directory is `~/Development/tinyagentos` (remote `github.com/jaylfc/taOS`), you are in the RIGHT folder. The prior session was accidentally launched from `~/Development/taosmd` (a different repo), which made Claude label it "taOSmd" though all work was on taOS. Read `docs/STATUS.md` next for the live snapshot. Most-immediate item: **#752 (safe cleanups) is open and not yet merged**, merge it once CI is green.
-
 **Why this exists.** Work on taOS runs across rate-limit-prone agents on different platforms (Claude Code, Cursor, Codex, web, etc.). When one hits a limit, another picks up. The failure mode to prevent: an incoming agent acting on **stale knowledge**: re-doing finished work, missing in-flight tasks, or clobbering a branch. This playbook + `STATUS.md` + GitHub issues make the project's state **durable and platform-independent** so a handoff never loses work.
 
 The golden rule: **durable state lives in three committed/hosted places, not in any one agent's memory**: (1) GitHub issues, (2) `docs/STATUS.md`, (3) the A2A bus. If it isn't in one of those, the next agent can't see it.
