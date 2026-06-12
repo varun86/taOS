@@ -7,7 +7,12 @@
 
 # taOS: Live Status
 
-**Last updated:** 2026-06-12 ~06:00 BST, by @taOS (Mac session). 5h window ~13%, resets 08:20 UTC; resume pair armed (09:23/09:42 BST).
+**Last updated:** 2026-06-12 ~14:30 BST, freshness sweep by @taOS (Orange Pi session). docs/AGENT_HANDOFF.md committed (was local-only). STATUS.md footer tips fixed. 5h window ~8%, resets 13:20 UTC; resume pair armed (14:23/14:42 BST).
+
+**MORNING WRAP, all on master (tip 25f10402):**
+- **#795 CLOSED, port hygiene fully shipped:** rkllama 8080->7833 (#802/#803, promoted via #804) AND LiteLLM host port 4000->7834 (#805, promoted via #806). Container side stays 4000 via the proxy device so deployed agents never change; existing installs AUTO-PIN to their old ports on first boot (config litellm_port pin, verified the hole on the live Pi before it shipped); 783x block (7832 qmd, 7833 rkllama, 7834 LiteLLM) + 4000 + 8080 all in RESERVED_PORTS; breakage-log entries for both moves.
+- **#744 e2e VERIFIED 4/4 by taOSmd** (msg 383, recorded on the issue): verified-claim project binding + body anti-spoof + signature rejection + global behavior, real tokens, isolated serve. OPEN DECISION FOR JAY: taOSmd wants an admin/revoked-feed token to e2e the grants+revocation layer; options on the bus (msg 387): short-lived scoped read-only feed token (small build) vs supervised joint session. Core contract is verified regardless.
+- dev == master. Open PRs: only draft #476. Still waiting: @hermes search keys (task #8, msg 379, no reply yet).
 
 **POST-RESET BATCH (04:20-06:00 BST), all landed on dev:**
 - **#795 first half DONE: rkllama default port 8080 -> 7833** (#802 + verification follow-up #803, both merged to dev): installer default, ~10 controller fallbacks, docs, breakage-log entry, `default_rkllama_url()` legacy probe (7833 first, 8080 fallback with update hint, VERIFIED LIVE on the Pi where rkllama still runs on 8080), and the rknpu install verification now probes 7833-then-8080 so fresh installs do not fail their own check (bot-review catch). Second half (LiteLLM off 4000) still open on #795. NOT yet promoted to master: promote #802+#803 together when convenient.
@@ -20,7 +25,7 @@
 **OVERNIGHT (after the 00:30 snapshot below):** merged to dev and promoting via #789: #788 (docker shortcut allocated port), #790 (#744 project_id JWT claim + ApproveBody override + grants; taOSmd can now verify with real tokens), #791 (#743 docs drift, closed), #792 (#691 ufw bus port, closed), #793 (#606 model catalog cache, closed), #794 (multi-port allocation probe fix), update breakage log (docs/UPDATE_BREAKAGE_LOG.md + agent-manual pointer), README manifest-failure notice. PI SEARX TEST PASSED: legacy searx (8080) uninstalled, store reinstall landed on pool port 36130 with the /apps/searxng/ launcher URL serving 200, rkllama kept :8080 (Pi runs dev via git bundle because GitHub was unreachable from the Pi; bundle-dev branch). #783 auto-closed by the promotion keyword (HarMaximus has NOT yet confirmed; hourly repo watch will catch his reply). 40 merged branches deleted (~26 done, rest failed on the GitHub outage, retry later). Hourly repo watch cron live (~/.taos-repo-watch/poll.sh, QUIET-mode, re-arm every session, now playbook item 9). Kilo Code Review timed out on EVERY PR tonight (504 "Assistant request timed out"); it is a required check so every merge needed the admin API; decision queued for Jay (make non-required vs drop). GitHub API was badly flaky all night (timeouts from Mac AND Pi); retry loops everywhere.
 
 **DONE THIS SESSION (the #783 priority is CLOSED):**
-- #786 install fix (rknpu no longer dies when `strings`/binutils missing) PROMOTED to master via **#787 merged (master tip 07d26067)**.
+- #786 install fix (rknpu no longer dies when `strings`/binutils missing) PROMOTED to master via **#787 merged (master tip 25f10402)**.
 - Pi rkllm VERIFIED (sonnet subagent, PASS): rkllama starts on the Orange Pi (RK3588), `/api/pull` reaches HuggingFace and streams a Qwen2.5-3B rkllm download, model loads + infers on the NPU (3 cores, rkllm-runtime 1.2.3). "All connection attempts failed" did NOT reproduce. So #783's error most likely = rkllama not running (the #786 install-died cause); secondary possibility = HF reachability from his board. rkllama server LEFT RUNNING on the Pi :8080.
 - **#783 reply POSTED** to HarMaximus (issue #783, comment 4685905715): explains the `strings` root cause + #786 fix + retry `curl -fsSL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scripts/install-server.sh | sudo bash`, honest about no Rock 5B + the RK3588 verification, HF-connectivity fallback, welcome. Issue left OPEN pending his retry.
 - **A2A channels migrated + old deleted** (Jay's ask): `observability`->`taOS-taOSmd-observability`, `integration`->`taOS-taOSmd-hermes-integration`. taOSmd ran it, caught + fixed a data-loss bug (commit 6c81afb, history was reverse-aliased not physically moved) before deleting; old names now 404, new names keep all history. archive/delete/wipe principle (delete==archive==safe, wipe==only true-delete) relayed + adopted by taOSmd. All 4 of taOSmd's nudge items (msg 349) answered on the bus. Left one stray probe (#357 "probe ignore") on `general` for taOSmd to sweep.
@@ -32,7 +37,7 @@
 4. Idea-issue drafts x6 (TaskList #11). #695 reopened (reserve core ports + migrate legacy apps off reserved ports). Web-search keys from hermes (TaskList #8).
 
 **GOTCHA THIS SESSION:** api.github.com (GraphQL + REST, IP 20.26.156.210) was intermittently timing out for ~1h while git over github.com worked fine; `gh` calls needed retry loops. taOSmd hit the same outage.
-**Repo:** github.com/jaylfc/taOS, branches `master` (stable) <- `dev` (integration). **master tip 07d26067 (PR #787, carries #785 Phase 4 + #786 install fix); dev tip 12429848.**
+**Repo:** github.com/jaylfc/taOS, branches `master` (stable) <- `dev` (integration). **master tip 25f10402 (PR #787, carries #785 Phase 4 + #786 install fix); dev tip df3b28a1.**
 
 ## GOTCHA for the next agent
 - **Protected merges:** `gh pr merge` 401s on the OAuth token but `gh api -X PUT repos/jaylfc/taOS/pulls/N/merge -f merge_method=squash` WORKS (use `merge_method=merge` for dev->master promotions; never squash a promotion, never `--delete-branch`).
