@@ -7,7 +7,9 @@
 
 # taOS: Live Status
 
-**Last updated:** 2026-06-12 ~00:30 BST, by @taOS (Mac session). SESSION WIND-DOWN / SAFE TO RESUME BY READING THIS. 5h window ~32%, resets 03:20 UTC 2026-06-12 (no pause needed).
+**Last updated:** 2026-06-12 ~03:10 BST, by @taOS (Mac session). OVERNIGHT PUSH COMPLETE; this commit rides the #789 promotion to master. 5h window ~75%, resets 03:20 UTC.
+
+**OVERNIGHT (after the 00:30 snapshot below):** merged to dev and promoting via #789: #788 (docker shortcut allocated port), #790 (#744 project_id JWT claim + ApproveBody override + grants; taOSmd can now verify with real tokens), #791 (#743 docs drift, closed), #792 (#691 ufw bus port, closed), #793 (#606 model catalog cache, closed), #794 (multi-port allocation probe fix), update breakage log (docs/UPDATE_BREAKAGE_LOG.md + agent-manual pointer), README manifest-failure notice. PI SEARX TEST PASSED: legacy searx (8080) uninstalled, store reinstall landed on pool port 36130 with the /apps/searxng/ launcher URL serving 200, rkllama kept :8080 (Pi runs dev via git bundle because GitHub was unreachable from the Pi; bundle-dev branch). #783 auto-closed by the promotion keyword (HarMaximus has NOT yet confirmed; hourly repo watch will catch his reply). 40 merged branches deleted (~26 done, rest failed on the GitHub outage, retry later). Hourly repo watch cron live (~/.taos-repo-watch/poll.sh, QUIET-mode, re-arm every session, now playbook item 9). Kilo Code Review timed out on EVERY PR tonight (504 "Assistant request timed out"); it is a required check so every merge needed the admin API; decision queued for Jay (make non-required vs drop). GitHub API was badly flaky all night (timeouts from Mac AND Pi); retry loops everywhere.
 
 **DONE THIS SESSION (the #783 priority is CLOSED):**
 - #786 install fix (rknpu no longer dies when `strings`/binutils missing) PROMOTED to master via **#787 merged (master tip 07d26067)**.
