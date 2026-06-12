@@ -4,6 +4,13 @@ Polls the configured git remote once an hour and notifies the user when new
 commits land. De-dupes notifications via the "last notified commit" marker so
 the user gets one notification per new release, not one per poll cycle.
 
+Also fires a single anonymous install-count ping per cycle to
+``TAOS_UPDATE_CHECK_URL`` (default ``https://taos.my/api/v1/version-check``).
+The ping carries a random per-install id (no PII, stored in the data dir) so
+the server keeps an exact historical install count. Disable with
+``TAOS_NO_UPDATE_PING=1`` or the ``update_ping_enabled`` preference in
+Settings. All failures degrade silently to debug logging.
+
 Uses ``asyncio.create_subprocess_exec`` (list-of-args, never shell) so
 untrusted paths cannot cause command injection.
 """
@@ -11,11 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
+import os
+import platform
+import sys
 from pathlib import Path
 from typing import Optional
 
 import tinyagentos.github_releases as github_releases
+import tinyagentos
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +60,83 @@ CHECK_INTERVAL = 60 * 60
 # Namespace used in /api/preferences/auto-update for user settings.
 PREF_NAMESPACE = "auto-update"
 
+# Default URL for the version-check/install-ping endpoint.
+_DEFAULT_UPDATE_CHECK_URL = "https://taos.my/api/v1/version-check"
+
 # Defaults the user gets on a fresh install.
 DEFAULT_PREFS = {
     "check_enabled": True,
+    "update_ping_enabled": True,
     "last_notified_commit": None,
     "last_reminder_at": None,
 }
+
+
+def _ping_enabled_by_env() -> bool:
+    """False when the operator sets TAOS_NO_UPDATE_PING=1 in the environment."""
+    return os.environ.get("TAOS_NO_UPDATE_PING", "").strip() not in ("1", "true", "yes")
+
+
+def _install_id(data_dir: Optional[Path]) -> str:
+    """Return this install's stable random id, creating it once if needed.
+
+    A random UUID with no PII and no hardware fingerprint, stored at
+    ``<data_dir>/.install_id``. The data dir is preserved across upgrades and
+    in-place reinstalls, so the id (and the install's place in the historical
+    count) is stable. A full wipe yields a new id, which is correct: that is a
+    genuinely new install.
+    """
+    if data_dir is None:
+        return ""
+    path = Path(data_dir) / ".install_id"
+    try:
+        if path.exists():
+            existing = path.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
+        import uuid
+        new_id = uuid.uuid4().hex
+        path.write_text(new_id, encoding="utf-8")
+        return new_id
+    except Exception:
+        return ""
+
+
+async def send_version_ping(http_client, data_dir: Optional[Path] = None) -> None:
+    """Fire the anonymous version-check/install-count ping.
+
+    Sends ``GET <url>?v=<version>&platform=<sys.platform>-<machine>&id=<uuid>``.
+    The id is a random per-install UUID (no PII) so the server keeps an exact
+    historical count. Any error (network, DNS, timeout, bad status) is logged
+    at DEBUG and silently dropped.
+    """
+    url = os.environ.get("TAOS_UPDATE_CHECK_URL", "").strip() or _DEFAULT_UPDATE_CHECK_URL
+    version = getattr(tinyagentos, "__version__", "unknown")
+    plat = f"{sys.platform}-{platform.machine()}"
+    params = {"v": version, "platform": plat}
+    iid = _install_id(data_dir)
+    if iid:
+        params["id"] = iid
+    try:
+        resp = await http_client.get(
+            url,
+            params=params,
+            timeout=5.0,
+            follow_redirects=True,
+        )
+        logger.debug(
+            "version-check ping: status=%s url=%s", resp.status_code, url
+        )
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+                latest = data.get("latest_version")
+                if latest:
+                    logger.debug("latest release from taos.my: %s", latest)
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.debug("version-check ping failed (ignored): %s", exc)
 
 
 async def poll_frameworks(manifests, *, http_client, arch, cache):
@@ -120,7 +201,7 @@ async def resolve_tracked_branch(settings_store, project_dir: Path) -> str:
 
 
 async def remote_is_strictly_ahead(project_dir: Path, current: str, remote: str) -> bool:
-    """True only if ``current`` is a strict ancestor of ``remote`` — i.e. the
+    """True only if ``current`` is a strict ancestor of ``remote`` -- i.e. the
     remote is genuinely newer. Prevents offering an older or divergent commit
     (e.g. master's tip when running ahead on dev) as an "update"."""
     if not current or not remote or current == remote:
@@ -137,7 +218,7 @@ class AutoUpdateService:
     Depends on:
         - ``notif_store`` for firing user notifications
         - ``settings_store`` for reading user prefs (check-enabled toggle,
-          dedupe marker)
+          dedupe marker, ping opt-out)
 
     Start with ``start()`` during app lifespan, stop with ``stop()``.
     """
@@ -169,7 +250,7 @@ class AutoUpdateService:
 
     async def _loop(self) -> None:
         # Small initial delay so we don't slam GitHub the instant the
-        # server boots — space out with the rest of startup.
+        # server boots -- space out with the rest of startup.
         try:
             await asyncio.wait_for(self._stop_event.wait(), timeout=90)
             return
@@ -192,13 +273,29 @@ class AutoUpdateService:
         if not prefs.get("check_enabled", True):
             return
 
-        # Fetch latest from origin/master
+        # Anonymous install-count ping. Two opt-out layers:
+        # 1. TAOS_NO_UPDATE_PING=1 env var (operator/system level)
+        # 2. update_ping_enabled pref (Settings UI toggle, per-user)
+        if _ping_enabled_by_env() and prefs.get("update_ping_enabled", True):
+            _app = self._app_state
+            _http = getattr(_app, "http_client", None)
+            _data_dir = getattr(_app, "data_dir", None)
+            if _http is not None:
+                await send_version_ping(_http, _data_dir)
+            else:
+                # No shared client available yet -- create a one-shot client.
+                try:
+                    import httpx
+                    async with httpx.AsyncClient() as tmp_client:
+                        await send_version_ping(tmp_client, _data_dir)
+                except Exception as exc:
+                    logger.debug("version-check ping (standalone client) failed: %s", exc)
+
+        # Fetch latest from origin/<tracked branch>
         new_commit = await self._probe_remote()
-        if new_commit is None:
-            pass
-        else:
+        if new_commit is not None:
             current = await self._current_commit()
-            # Only an update if the remote is strictly newer than us — never
+            # Only an update if the remote is strictly newer than us -- never
             # flag an older/divergent commit (e.g. master's tip while we run
             # ahead on dev) as available.
             if await remote_is_strictly_ahead(self._project_dir, current, new_commit):
@@ -270,5 +367,3 @@ class AutoUpdateService:
             await self._settings.save_preference("user", PREF_NAMESPACE, prefs)
         except Exception:
             logger.exception("failed to save auto-update prefs")
-
-
