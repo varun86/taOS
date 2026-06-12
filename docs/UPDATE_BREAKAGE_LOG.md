@@ -15,6 +15,30 @@ Format per entry: date, change (PR), affected installs, symptom, check, fix.
 
 ---
 
+## 2026-06-12 — LiteLLM host port default moved 4000 -> 7834 (#795, pinned in #805)
+
+- **Affected:** existing installs that have no `litellm_port` key under `server:`
+  in taos-config.yaml (i.e. installs created before #795 that have not yet been
+  updated).
+- **Symptom (before #805 fix):** agents could not reach models after a controller
+  restart; connection refused on 4000 because the new default of 7834 was in
+  effect but the incus proxy devices still targeted host:4000.
+- **Actual behavior (with #805, landed in this release):** no action needed. On
+  the first boot after update the controller detects the missing `litellm_port`
+  key, pins it to 4000, and persists that value to taos-config.yaml. Every
+  subsequent boot reads 4000 from disk. Existing agents and their incus proxy
+  devices continue to work without any change.
+- **Fresh installs:** get `litellm_port: 7834` written to taos-config.yaml at
+  creation time. Not affected by the legacy pin.
+- **Check:** after updating, `grep litellm_port /opt/tinyagentos/data/taos-config.yaml`
+  should show your recorded value. Controller log contains
+  `existing install: pinning LiteLLM host port 4000` once on first boot if the
+  pin was applied.
+- **To migrate an existing install to 7834:** set `server.litellm_port: 7834` in
+  taos-config.yaml AND redeploy each agent container so its incus proxy device
+  is recreated with the new host-side target port. Agents not redeployed will
+  lose model access until redeployed.
+
 ## 2026-06-12 — rkllama default port moved 8080 -> 7833 (#795)
 
 - **Affected:** installs that re-run `install-rknpu.sh` after this change while
