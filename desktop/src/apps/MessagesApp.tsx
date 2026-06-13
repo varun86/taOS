@@ -56,6 +56,7 @@ import { MessageTombstone } from "./chat/MessageTombstone";
 import { PinBadge } from "./chat/PinBadge";
 import { PinnedMessagesPopover, type PinnedMessage } from "./chat/PinnedMessagesPopover";
 import { AllThreadsList } from "./chat/AllThreadsList";
+import { ChannelSwitcher } from "./chat/ChannelSwitcher";
 import { PinRequestAffordance } from "./chat/PinRequestAffordance";
 import {
   pinMessage, unpinMessage, listPins,
@@ -416,6 +417,7 @@ export function MessagesApp({
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const [showAllThreads, setShowAllThreads] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showSwitcher, setShowSwitcher] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -916,6 +918,19 @@ export function MessagesApp({
     setShowSearch(false);
     openThreadFor(channelId, parentId);
   };
+
+  // Cmd/Ctrl+K opens the quick channel switcher (suppressing the browser
+  // default). Idempotent: re-pressing while open does not reset it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setShowSwitcher(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /* ---- send message ---- */
   const sendMessage = async () => {
@@ -2479,6 +2494,15 @@ export function MessagesApp({
           onClose={() => setShowSearch(false)}
           channels={allChannels.map((c) => ({ id: c.id, name: c.name }))}
           authorCtx={{ currentUserId, currentUserDisplayName }}
+        />
+      )}
+
+      {/* ---- Quick channel switcher (Cmd/Ctrl+K) ---- */}
+      {showSwitcher && (
+        <ChannelSwitcher
+          channels={channels.map((c) => ({ id: c.id, name: c.name }))}
+          onSelect={(id) => setSelectedChannel(id)}
+          onClose={() => setShowSwitcher(false)}
         />
       )}
 
