@@ -294,6 +294,22 @@ function renderInline(text: string, keyPrefix: string) {
 
 const EMOJI_PICKER = ["👍", "❤️", "😂", "🎉", "🤔", "👀", "🚀", "✅"];
 
+// Best-effort per-channel draft storage. Drafts are user input that may
+// contain sensitive material; they are kept in localStorage (the same
+// mechanism Slack's web client uses) and not synced to the server. Stored
+// unencrypted at rest in the browser profile. Users on shared machines
+// should clear site data to remove drafts.
+const draftKey = (channelId: string) => `taos-chat-draft:${channelId}`;
+function loadDraft(channelId: string): string {
+  try { return localStorage.getItem(draftKey(channelId)) || ""; } catch { return ""; }
+}
+function saveDraft(channelId: string, text: string) {
+  try {
+    if (text) localStorage.setItem(draftKey(channelId), text);
+    else localStorage.removeItem(draftKey(channelId));
+  } catch { /* storage full or unavailable: drafts are best-effort */ }
+}
+
 /* ------------------------------------------------------------------ */
 /*  MessagesApp                                                        */
 /* ------------------------------------------------------------------ */
@@ -732,10 +748,24 @@ export function MessagesApp({
 
   /* ---- channel selection ---- */
   useEffect(() => {
-    if (!selectedChannel) return;
-    // leave previous channel
-    if (prevChannelRef.current && prevChannelRef.current !== selectedChannel && wsRef.current?.readyState === 1) {
+    // Persist the draft for the channel we are leaving, regardless of socket
+    // state, so a switch while offline still saves the composer's contents.
+    if (prevChannelRef.current && prevChannelRef.current !== selectedChannel) {
+      saveDraft(prevChannelRef.current, input);
+    }
+    if (!selectedChannel) {
+      // No new channel: clear refs and stop here.
+      prevChannelRef.current = null;
+      return;
+    }
+    // leave previous channel (websocket signaling only)
+    if (prevChannelRef.current && wsRef.current?.readyState === 1) {
       wsRef.current.send(JSON.stringify({ type: "leave", channel_id: prevChannelRef.current }));
+    }
+    // load draft for the new channel
+    if (prevChannelRef.current !== selectedChannel) {
+      setInput(loadDraft(selectedChannel));
+      if (inputRef.current) inputRef.current.style.height = "auto";
     }
     prevChannelRef.current = selectedChannel;
     // join new
@@ -746,7 +776,7 @@ export function MessagesApp({
     markRead(selectedChannel);
     setTypingHumans([]);
     setTypingAgents([]);
-  }, [selectedChannel, fetchMessages, markRead]);
+  }, [selectedChannel, fetchMessages, markRead]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---- deep-link scroll on ?msg=<id> — latch so it fires once per URL ---- */
   const deepLinkSeenRef = useRef<string | null>(null);
@@ -852,6 +882,7 @@ export function MessagesApp({
           return;
         }
         setInput("");
+        if (selectedChannel) saveDraft(selectedChannel, "");
         setPendingAttachments([]);
         if (inputRef.current) inputRef.current.style.height = "auto";
         autoScrollRef.current = true;
@@ -883,6 +914,7 @@ export function MessagesApp({
           if ((body as { handled?: string }).handled) {
             setSendError(null);
             setInput("");
+            if (selectedChannel) saveDraft(selectedChannel, "");
             autoScrollRef.current = true;
             if (inputRef.current) inputRef.current.style.height = "auto";
             return;
@@ -919,6 +951,7 @@ export function MessagesApp({
       }
     }
     setInput("");
+    if (selectedChannel) saveDraft(selectedChannel, "");
     autoScrollRef.current = true;
     if (inputRef.current) inputRef.current.style.height = "auto";
   };
@@ -926,6 +959,7 @@ export function MessagesApp({
   /* ---- typing indicator ---- */
   const handleInputChange = (val: string) => {
     setInput(val);
+    if (selectedChannel) saveDraft(selectedChannel, val);
     // auto-resize textarea
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
