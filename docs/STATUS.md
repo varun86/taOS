@@ -14,17 +14,22 @@ Done (since last STATUS.md update, 2026-06-13):
 - Ideas filed: #796 benchmark pause/resume, #797 native phone, #798 native desktop shared-API, #799 TUI, #834 edit-before-send, #835 copy agent text, #836 deep-nav agent tool.
 - Untracked docs/AGENT_HANDOFF.md (was committed before .gitignore; exposed Pi LAN IP). Restored from memory backup after a branch-switch deleted the working copy.
 
-In flight: background agent doing website jobs 11/15/20/25 (repo jaylfc/taos-website, serial since they share index.html). On completion: integrate locally, serve, send Jay a Tailscale preview link.
+OPEN PRs (all need: merge on green CI + Kilo + my review; CodeRabbit is out of org credits so reviews are rate-limited fake-passes):
+- #838 feat(messages): empty states (job 24) on feat/msg-polish-2. Per Jay, BATCH more jobs onto this branch before merging (conserve CodeRabbit reviews). CodeRabbit rate-limited.
+- #839 ci: pytest-xdist -n auto. Investigation found the test job was NOT hanging, just slow (~22 min serial, 4845 tests). This parallelizes it. Validate via its own CI run timing, then merge first so the rest merge fast.
+- taos-website #1 stats / #2 changelog / #3 nav / #4 accessibility. Combined preview served from Mac tailscale :8899 for Jay; merge after Jay approves.
+
+Decisions (Jay, 2026-06-13): ALWAYS PR for code review (no direct-to-dev). Batch jobs into fewer big PRs (CodeRabbit credits exhausted). Investigate CI slowness (done: #839). Use impeccable + style skills for design work. Widget epic AFTER the job queue.
 
 Next queue (ordered):
-1. Finish remaining agent jobs (MessagesApp serial chain + tests/manual): 9, 10, 13, 14, 18, 19, 21, 22, 23, 24, 26
-2. Then (Jay-confirmed) the agent-builds-a-widget epic: slim userspace runtime from #476 + My Apps home + agent build tool + share gate
-3. #825 key-scope fix (LiteLLM routing bug)
-4. Theme-package engine (design+plan in docs/superpowers; inventory #837 says inline styles in WidgetLayer.tsx + MessagesApp.tsx are the real work)
-5. Userspace re-land (recon from #476 sources)
-6. #737 Phase 3 UI (design session with Jay)
+1. Land #839 (fast CI), then finish remaining agent jobs BATCHED onto feat/msg-polish-2/#838: 9, 10, 13, 14, 18, 19, 21, 22, 23, 26
+2. Bring website PRs #1-4 in after Jay views the preview
+3. Light theme (new separate theme; use impeccable skill; theme engine partial in desktop/src/theme)
+4. Agent-friendly API: #836 agent tool to dispatch taos:open-app (deep-nav already shipped)
+5. Build-widget epic: slim userspace runtime from #476 + My Apps home + agent build tool + share gate
+6. #825 key-scope fix; #737 Phase 3 UI (design with Jay)
 
-Pending Jay calls: promote dev->master (26 ahead)? store-UI install-path check if model store still errors?
+Pending Jay calls: promote dev->master? enable CodeRabbit add-on (billing) to restore real reviews? store-UI install-path check if model store still errors?
 
 Blockers: theme/userspace need a working session. taos.my Coolify deploy pending Jay.
 
