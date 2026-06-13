@@ -18,7 +18,7 @@
 </a>
 </p>
 
-Self-hosted AI agent platform that runs on whatever hardware you have. An old laptop, a Raspberry Pi, a gaming PC, an SBC gathering dust, or all of them at once. taOS (short for TinyAgentOS) turns your spare hardware into a distributed AI compute cluster.
+Self-hosted AI agent platform that runs on whatever hardware you have. An old laptop, a Raspberry Pi, a gaming PC, an SBC gathering dust, or all of them at once. taOS turns your spare hardware into a distributed AI compute cluster.
 
 A full web desktop environment with 36 bundled apps, 108 catalog apps, 47 MCP plugins, 16 agent frameworks, a curated local model catalog of 112 manifests covering LLMs, vision, embeddings, audio, and image generation (including RK3588 NPU variants via c01zaut/happyme531), plus 167k+ searchable models from HuggingFace, agent deployment, training, image/video/audio generation, and full system monitoring, all from a single web dashboard. Supports Apple Silicon (MLX), NVIDIA, AMD, Rockchip NPU, Raspberry Pi, Android phones, and more.
 
