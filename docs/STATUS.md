@@ -1,7 +1,7 @@
 SINGLE SOURCE OF TRUTH for cross-agent handoff.
 Last updated: 2026-06-13, @taOS (freshness sweep).
 
-Branch tips: master=6394a3ed (PR #845 batch). dev=d9aab978 (14 ahead of master). On dev since #845: rkllama install fix (#843), brand rename to taOS (#847), Light theme (#848), esbuild 0.28.1 RCE fix (#849), unified chat composer (#850), Agents redesign (#851), update reset-before-pull fix (#852), Chat Slack-polish (#853), agent kill switch (#857), doc fixes -- getting-started/CONTRIBUTING/README brand rename (#858-9-60 via GitHub API, parent d9aab978).
+Branch tips: master=6394a3ed (PR #845 batch). dev=9c7c91fe (18 ahead of master). On dev since #845: rkllama install fix (#843), brand rename to taOS (#847), Light theme (#848), esbuild 0.28.1 RCE fix (#849), unified chat composer (#850), Agents redesign (#851), update reset-before-pull fix (#852), Chat Slack-polish (#853), agent kill switch (#857), doc fixes -- getting-started/CONTRIBUTING/README brand rename (#858-9-60 via GitHub API, parent 9c7c91fe).
 
 Session state: freshness sweep only. No active session crons armed this session.
 
@@ -26,7 +26,7 @@ Done (since last STATUS.md update):
 - ALL 26 agent jobs COMPLETE and on master (via #845 batch).
 - Messages-polish (#838), agent manual templates (#842), CI parallelization (#839) all merged to dev then master.
 - Light theme (#848), esbuild RCE patch (#849), brand rename (#847), chat composer unified (#850), Agents redesign (#851), update flow fix (#852), Chat Slack-polish (#853), agent kill switch (#857) all on dev.
-- This sweep: docs/STATUS.md, docs/getting-started.md, CONTRIBUTING.md, README.md brand rename residue fixed.
+- This sweep: docs/STATUS.md (dev tip + #860), docs/agent-qmd-serve-setup.md + docs/mirror-policy.md (brand rename TinyAgentOS->taOS).
 
 Next queue:
 1. Land #859 and #860 after CI + review.
