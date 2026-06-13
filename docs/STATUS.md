@@ -1,9 +1,13 @@
 SINGLE SOURCE OF TRUTH for cross-agent handoff.
 Last updated: 2026-06-13, @taOS (freshness sweep).
 
-Branch tips: master=99cf786e. dev=960d5464 (27 ahead of master: Messages train + activity fix + deep-nav API + agent jobs 8/12/16/17).
+Branch tips: master=99cf786e. dev=355bb5ef (30 ahead of master; do NOT promote dev->master, Jay 2026-06-13: everything to dev only). On dev: Messages train, activity fix, deep-nav API, agent jobs 8/12/16/17, xdist CI fix (#839).
 
-Session state: ACTIVE. A2A poll monitor ARMED (seeded id 413). Freshness cron :08/:38 ARMED. 5h resume-pair ARMED (primary 15:53, retry 16:12 local; session-scoped). 5h usage 47%, weekly 5%.
+Session state: ACTIVE. A2A poll monitor ARMED. Freshness cron :08/:38 ARMED (now incl. 0f CodeRabbit retrigger). 5h resume-pair ARMED (primary 15:53, retry 16:12 local; session-scoped). 5h usage 60%, weekly 6%.
+NOTE: a parallel session's freshness cron keeps reverting this file to a stale dev tip; if you see an old tip + "usage 47%", it is that churn, re-sync to the real dev tip.
+WEBSITE: all 4 PRs merged to taos-website main (stats/changelog/nav/accessibility); Coolify redeploys taos.my.
+CI: test suite parallelized via #839 (xdist -n auto), ~22 min -> ~13 min. CodeRabbit out of org credits -> rate-limits; freshness 0f retriggers oldest unreviewed PR with "@coderabbitai full review", never merge on a fake pass.
+OPEN: #838 batching MessagesApp polish jobs 24 (empty states) + 21 (scroll-to-bottom); more (22/26/23/19/18/13/9) to batch before final CodeRabbit review + merge to dev.
 
 Done (since last STATUS.md update, 2026-06-13):
 - Messages-polish train (jobs 1-7) ALL on dev via #826/#829/#830 direct + #833 integration (#827/#828/#831/#832); sub-PRs closed superseded, branches deleted.
