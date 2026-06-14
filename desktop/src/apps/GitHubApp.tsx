@@ -18,7 +18,7 @@ import {
   CircleDot,
   Package,
 } from "lucide-react";
-import { Switch } from "@/components/ui";
+import { Switch, Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
 import {
   fetchStarred,
   fetchNotifications,
@@ -77,6 +77,7 @@ const formatBytes = (bytes: number): string => {
 
 const stateClass = (state: string) => {
   if (state === "open") return styles.stateOpen;
+  if (state === "merged") return styles.stateMerged;
   if (state === "closed") return styles.stateClosed;
   return styles.stateMerged;
 };
@@ -646,7 +647,13 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
           <div className={styles.dhead}>
             {/* Hide back button on mobile — MobileSplitView nav bar handles back */}
             {!isMobile && (
-              <button type="button" className={styles.back} onClick={goBack} aria-label="Back to list">
+              <button
+                type="button"
+                className={styles.back}
+                onClick={goBack}
+                onKeyDown={(e) => e.key === "Escape" && goBack()}
+                aria-label="Back to list"
+              >
                 <ChevronLeft size={14} aria-hidden="true" />
                 Back
               </button>
@@ -751,7 +758,13 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
           <div className={styles.dhead}>
             {/* Hide back button on mobile — MobileSplitView nav bar handles back */}
             {!isMobile && (
-              <button type="button" className={styles.back} onClick={goBack} aria-label="Back to list">
+              <button
+                type="button"
+                className={styles.back}
+                onClick={goBack}
+                onKeyDown={(e) => e.key === "Escape" && goBack()}
+                aria-label="Back to list"
+              >
                 <ChevronLeft size={14} aria-hidden="true" />
                 Back
               </button>
@@ -784,26 +797,68 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
             )}
           </div>
 
-          {/* Body */}
-          {issue.body && (
-            <div className={styles.section}>
-              <div className={styles.readme} style={{ maxHeight: "none" }}>
-                <pre className={styles.issueBody}>{detailLoading ? "Loading…" : issue.body}</pre>
-              </div>
-            </div>
-          )}
+          {/* Tabs */}
+          <div className={styles.section}>
+            <Tabs defaultValue="discussion">
+              <TabsList className={styles.tabsList}>
+                <TabsTrigger value="discussion" className={styles.tabsTrigger}>
+                  Discussion
+                </TabsTrigger>
+                <TabsTrigger value="history" className={styles.tabsTrigger}>
+                  History
+                </TabsTrigger>
+                <TabsTrigger value="metadata" className={styles.tabsTrigger}>
+                  Metadata
+                </TabsTrigger>
+              </TabsList>
 
-          {/* Comments */}
-          {issue.comments.length > 0 && (
-            <div className={styles.section} aria-label="Comments">
-              <p className={styles.sectionCap}>
-                {issue.comments.length} comment{issue.comments.length !== 1 ? "s" : ""}
-              </p>
-              {issue.comments.map((comment, idx) => (
-                <CommentNode key={idx} comment={comment} depth={0} />
-              ))}
-            </div>
-          )}
+              {/* Discussion tab */}
+              <TabsContent value="discussion">
+                {issue.body && (
+                  <div className={styles.readme} style={{ maxHeight: "none", marginBottom: issue.comments.length > 0 ? 14 : 0 }}>
+                    <pre className={styles.issueBody}>{detailLoading ? "Loading…" : issue.body}</pre>
+                  </div>
+                )}
+                {issue.comments.length > 0 && (
+                  <div aria-label="Comments">
+                    <p className={styles.sectionCap}>
+                      {issue.comments.length} comment{issue.comments.length !== 1 ? "s" : ""}
+                    </p>
+                    {issue.comments.map((comment, idx) => (
+                      <CommentNode key={idx} comment={comment} depth={0} />
+                    ))}
+                  </div>
+                )}
+                {!issue.body && issue.comments.length === 0 && (
+                  <p className={styles.tabsEmpty}>No description or comments.</p>
+                )}
+              </TabsContent>
+
+              {/* History tab */}
+              <TabsContent value="history">
+                <p className={styles.tabsEmpty}>Issue history not available in this view.</p>
+              </TabsContent>
+
+              {/* Metadata tab */}
+              <TabsContent value="metadata">
+                <div className={styles.metaList}>
+                  {[
+                    { label: "Number", value: `#${issue.number}` },
+                    { label: "State", value: issue.state },
+                    { label: "Author", value: issue.author },
+                    { label: "Repo", value: issue.repo },
+                    { label: "Type", value: issue.is_pull_request ? "Pull Request" : "Issue" },
+                    { label: "Created", value: issue.created_at },
+                  ].map(({ label, value }) => (
+                    <div key={label} className={styles.metaRow}>
+                      <span className={styles.metaKey}>{label}</span>
+                      <span className={styles.metaVal}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
 
           {/* Action bar */}
           <div className={`${styles.actions} ${styles.actionsTop}`}>
@@ -848,7 +903,13 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
           <div className={styles.dhead}>
             {/* Hide back button on mobile — MobileSplitView nav bar handles back */}
             {!isMobile && (
-              <button type="button" className={styles.back} onClick={goBack} aria-label="Back to list">
+              <button
+                type="button"
+                className={styles.back}
+                onClick={goBack}
+                onKeyDown={(e) => e.key === "Escape" && goBack()}
+                aria-label="Back to list"
+              >
                 <ChevronLeft size={14} aria-hidden="true" />
                 Back
               </button>
