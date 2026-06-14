@@ -161,3 +161,52 @@ async def test_tools_refuse_without_user():
     assert "error" in await execute_create_project({"name": "x"}, _req(user_id=None))
     assert "error" in await execute_add_task({"project_id": "p", "title": "t"}, _req(user_id=None))
     assert "error" in await execute_canvas_add_image({"project_id": "p", "image_ref": "f"}, _req(user_id=None))
+
+
+@pytest.mark.asyncio
+async def test_export_storybook_renders_pdf(tmp_path):
+    from PIL import Image
+    from tinyagentos.tools.project_tools import execute_export_storybook
+    # seed two generated illustrations where generate_image saves them
+    gen = tmp_path / "workspace" / "images" / "generated"
+    gen.mkdir(parents=True, exist_ok=True)
+    for n, c in (("p1.png", (200, 120, 60)), ("p2.png", (60, 140, 200))):
+        Image.new("RGB", (300, 200), c).save(gen / n)
+    req = _req(base=tmp_path)
+    res = await execute_export_storybook(
+        {
+            "project_id": "proj_1",
+            "title": "Brave Little Fox",
+            "author": "taOS",
+            "pages": [
+                {"text": "A small fox lived under an oak.", "image_ref": "p1.png"},
+                {"text": "Each morning it explored the forest.", "image_ref": "p2.png"},
+            ],
+        },
+        req,
+    )
+    assert res["ok"] is True
+    assert res["pages"] == 2
+    assert res["url"] == "/api/projects/luna/files/exports/luna.pdf"
+    pdf = tmp_path / "projects" / "luna" / "files" / "exports" / "luna.pdf"
+    assert pdf.is_file() and pdf.read_bytes()[:5] == b"%PDF-"
+
+
+@pytest.mark.asyncio
+async def test_export_storybook_requires_pages(tmp_path):
+    from tinyagentos.tools.project_tools import execute_export_storybook
+    req = _req(base=tmp_path)
+    res = await execute_export_storybook(
+        {"project_id": "proj_1", "title": "X", "pages": []}, req
+    )
+    assert "error" in res and "pages" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_export_storybook_rejects_other_users_project(tmp_path):
+    from tinyagentos.tools.project_tools import execute_export_storybook
+    req = _req(user_id="user-2", owner="user-1", base=tmp_path)
+    res = await execute_export_storybook(
+        {"project_id": "proj_1", "title": "X", "pages": [{"text": "hi"}]}, req
+    )
+    assert res.get("error") == "not your project"

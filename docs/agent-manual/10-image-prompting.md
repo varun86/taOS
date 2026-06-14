@@ -72,18 +72,13 @@ whole prompt.
 
 ## Picking a model by intent
 
-Different model families respond to prompts differently:
-
-- **FLUX-style models** follow natural-language sentences well and render text
-  reasonably. Write a full descriptive sentence.
-- **SDXL-style models** respond well to comma-separated descriptive phrases and
-  strong style keywords.
-- **Text in the image** (a title, a sign, a label) is unreliable on most models;
-  prefer a model noted for text if one is loaded, keep the text very short, and
-  put it in quotes, e.g. `a poster with the title "Brave Little Fox"`.
+Model families differ: FLUX-style models follow full natural-language sentences;
+SDXL-style models like comma-separated phrases and strong style keywords. Text in
+the image (a title or label) is unreliable on most models, so keep it short and
+quoted, e.g. `a poster titled "Brave Little Fox"`.
 
 ## Iterate deliberately
 
-If the first image is close but not right, change one thing at a time: adjust the
-style word, add a missing detail, or add a negative term for the defect, keeping
-the same seed. Tell the user what you changed so they can steer.
+If the first image is close but not right, change one thing at a time (a style
+word, a missing detail, a negative term for the defect), keep the same seed, and
+tell the user what you changed.
