@@ -20,6 +20,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Literal, Optional
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Request
@@ -120,8 +121,10 @@ def _save_result(request: Request, image_bytes: bytes, *, source_ref: str, op: s
     """Save result PNG into the generated dir, copying the source's prompt
     metadata so the new image is browsable. Returns {url, image_ref, ...}."""
     images_dir = _images_dir(request)
-    timestamp = int(time.time())
-    filename = f"{timestamp}_{op}.png"
+    # Unique stem so two edits of the same op within one second don't collide
+    # (int(time.time()) alone overwrote the earlier output).
+    stem = f"{int(time.time())}_{op}_{uuid4().hex[:8]}"
+    filename = f"{stem}.png"
     (images_dir / filename).write_bytes(image_bytes)
 
     # Carry forward source metadata where available.
@@ -134,7 +137,7 @@ def _save_result(request: Request, image_bytes: bytes, *, source_ref: str, op: s
         except (json.JSONDecodeError, OSError):
             pass
     metadata["model"] = f"edit:{op}"
-    (images_dir / f"{timestamp}_{op}.json").write_text(json.dumps(metadata, indent=2))
+    (images_dir / f"{stem}.json").write_text(json.dumps(metadata, indent=2))
 
     return {
         "status": "edited",
@@ -235,6 +238,18 @@ async def edit_image(request: Request, body: EditRequest):
     if backend is None:
         return JSONResponse(_NO_BACKEND, status_code=503)
     url, backend_type, _name = backend
+    if backend_type != "iopaint":
+        # Only the IOPaint client is implemented today; flux-fill (the quality
+        # inpaint/outpaint tier) is routed by the catalog but its client is a
+        # follow-up. _get_edit_backend already falls back to iopaint when no
+        # flux-fill backend is healthy, so this only triggers if one exists.
+        return JSONResponse(
+            {
+                "error": f"Edit backend '{backend_type}' has no client wired yet "
+                "(FLUX Fill pending); try the fast tier."
+            },
+            status_code=503,
+        )
 
     image_b64 = base64.b64encode(source.read_bytes()).decode()
     client = IOPaintClient(url)
