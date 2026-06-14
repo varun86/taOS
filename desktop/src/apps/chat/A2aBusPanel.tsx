@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Radio, ChevronRight, Bot } from "lucide-react";
+import { Radio, ChevronRight, Bot, Lock } from "lucide-react";
 
 /*
  * Read-only viewer for the external taOSmd A2A coordination bus.
@@ -112,32 +112,34 @@ export function A2aBusSection({
   // Hide the whole group until the first fetch resolves so it never flashes.
   if (!loaded) return null;
 
+  // The bus reads as its own protected rail: a tinted accent-soft container
+  // with an accent hairline, distinct from the plain project channels.
   return (
-    <div className="mt-2">
+    <div className="mx-2.5 mt-2.5 rounded-2xl bg-accent-soft border border-accent-line p-1.5">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         aria-controls="a2a-bus-channels"
-        className="flex items-center gap-1.5 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/30 hover:text-white/50 transition-colors w-full text-left"
+        className="flex items-center gap-1.5 px-2 pt-1 pb-1.5 text-[10.5px] font-bold uppercase tracking-wide text-accent-strong hover:opacity-80 transition-opacity w-full text-left"
       >
         <ChevronRight
           size={11}
           aria-hidden="true"
           className={`transition-transform ${expanded ? "rotate-90" : ""}`}
         />
-        <Radio size={11} aria-hidden="true" />
+        <Radio size={12} aria-hidden="true" />
         Coordination Bus
       </button>
       {expanded && (
         <div id="a2a-bus-channels">
           {!available ? (
-            <div className="px-3 py-2">
-              <p className="text-[11px] text-white/40">Coordination bus offline</p>
-              <p className="text-[10px] text-white/25 mt-0.5">No bus service reachable.</p>
+            <div className="px-2 py-2">
+              <p className="text-[11px] text-shell-text-secondary">Coordination bus offline</p>
+              <p className="text-[10px] text-shell-text-tertiary mt-0.5">No bus service reachable.</p>
             </div>
           ) : channels.length === 0 ? (
-            <div className="px-3 py-1 text-[11px] text-white/20 italic">No channels yet</div>
+            <div className="px-2 py-1 text-[11px] text-shell-text-tertiary italic">No channels yet</div>
           ) : (
             channels.map((ch) => (
               <button
@@ -147,14 +149,23 @@ export function A2aBusSection({
                 aria-pressed={selected === ch.channel}
                 aria-label={`Coordination channel ${ch.channel}`}
                 title="Read-only agent coordination channel"
-                className={`w-full text-left py-1.5 px-3 text-[13px] flex items-center gap-2 transition-colors ${
-                  selected === ch.channel ? "bg-white/10" : "hover:bg-white/5"
+                className={`w-full text-left py-1.5 px-2 rounded-[10px] text-[13px] flex items-center gap-2.5 transition-colors ${
+                  selected === ch.channel ? "bg-shell-surface-active" : "hover:bg-shell-surface-hover"
                 }`}
               >
-                <Radio size={14} aria-hidden className="shrink-0 text-white/50" />
-                <span className="truncate flex-1">{ch.channel}</span>
-                <span className="shrink-0 text-[10px] text-white/30 tabular-nums">
-                  {(ch.members?.length ?? 0)} · {busRelativeTime(ch.last_ts, nowMs)}
+                <span className="shrink-0 grid place-items-center w-[30px] h-[30px] rounded-[9px] bg-accent-soft border border-accent-line text-accent-strong">
+                  <Radio size={15} aria-hidden />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-baseline gap-2">
+                    <span className="truncate flex-1 font-semibold text-shell-text">{ch.channel}</span>
+                    <span className="shrink-0 text-[10.5px] text-shell-text-tertiary tabular-nums">
+                      {(ch.members?.length ?? 0)} · {busRelativeTime(ch.last_ts, nowMs)}
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wide text-accent-strong">
+                  <Lock size={10} aria-hidden /> RO
                 </span>
               </button>
             ))
@@ -226,11 +237,13 @@ export function A2aBusMessageView({ channel }: { channel: string }) {
   return (
     <div className="relative flex-1 flex flex-col min-w-0 h-full">
       {/* header */}
-      <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center gap-3 shrink-0">
-        <Radio size={16} className="text-white/40" aria-hidden="true" />
+      <div className="px-4 py-2.5 border-b border-shell-border flex items-center gap-3 shrink-0">
+        <span className="shrink-0 grid place-items-center w-8 h-8 rounded-[9px] bg-accent-soft border border-accent-line text-accent-strong">
+          <Radio size={15} aria-hidden="true" />
+        </span>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-white/90 truncate">{channel}</div>
-          <div className="text-[11px] text-white/40">Coordination bus · read-only</div>
+          <div className="text-[15px] font-bold tracking-tight text-shell-text truncate">{channel}</div>
+          <div className="text-[11.5px] text-shell-text-secondary">Coordination bus · read-only</div>
         </div>
       </div>
 
@@ -242,34 +255,40 @@ export function A2aBusMessageView({ channel }: { channel: string }) {
           </div>
         ) : !available ? (
           <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6">
-            <Radio size={32} className="text-white/15" aria-hidden="true" />
-            <p className="text-sm font-medium text-white/60">Coordination bus offline</p>
-            <p className="text-[12px] text-white/30">
+            <Radio size={32} className="text-shell-text-tertiary" aria-hidden="true" />
+            <p className="text-sm font-medium text-shell-text-secondary">Coordination bus offline</p>
+            <p className="text-[12px] text-shell-text-tertiary">
               The bus service is not reachable right now.
             </p>
           </div>
         ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6">
-            <Bot size={32} className="text-white/15" aria-hidden="true" />
-            <p className="text-sm font-medium text-white/60">No messages yet</p>
-            <p className="text-[12px] text-white/30">
+            <Bot size={32} className="text-shell-text-tertiary" aria-hidden="true" />
+            <p className="text-sm font-medium text-shell-text-secondary">No messages yet</p>
+            <p className="text-[12px] text-shell-text-tertiary">
               Agent coordination will appear here.
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {messages.map((m) => (
-              <div key={m.id} className="flex flex-col gap-0.5">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[13px] font-semibold text-white/85 truncate">
-                    {m.from}
-                  </span>
-                  <span className="text-[10px] text-white/30 tabular-nums shrink-0">
-                    {busRelativeTime(m.ts, nowMs)}
-                  </span>
-                </div>
-                <div className="text-[13px] text-white/75 whitespace-pre-wrap break-words">
-                  {m.body}
+              <div key={m.id} className="flex gap-3">
+                <span className="shrink-0 grid place-items-center w-9 h-9 rounded-[11px] bg-accent-soft border border-accent-line text-accent-strong">
+                  <Bot size={16} aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 mb-0.5">
+                    <span className="text-[13.5px] font-bold tracking-tight text-shell-text truncate">
+                      {m.from}
+                    </span>
+                    <span className="text-[10.5px] text-accent-strong font-semibold shrink-0">@{m.from}</span>
+                    <span className="text-[10.5px] text-shell-text-tertiary tabular-nums shrink-0">
+                      {busRelativeTime(m.ts, nowMs)}
+                    </span>
+                  </div>
+                  <div className="text-[14px] leading-[1.5] text-shell-text whitespace-pre-wrap break-words">
+                    {m.body}
+                  </div>
                 </div>
               </div>
             ))}
@@ -277,13 +296,19 @@ export function A2aBusMessageView({ channel }: { channel: string }) {
         )}
       </div>
 
-      {/* read-only footer. Bottom inset keeps it clear of the phone home
-          indicator / dock edge; env() is 0 on desktop so layout is unchanged. */}
+      {/* read-only footer — tinted accent banner, no composer. Bottom inset
+          keeps it clear of the phone home indicator / dock edge; env() is 0 on
+          desktop so layout is unchanged. */}
       <div
-        className="px-4 py-2 border-t border-white/[0.06] text-[11px] text-white/35 shrink-0"
-        style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
+        className="flex items-center gap-2.5 px-4 py-2.5 border-t border-shell-border bg-accent-soft text-[12px] text-shell-text-secondary shrink-0"
+        style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom, 0px))" }}
       >
-        Read-only. The coordination bus is managed by the agents.
+        <Lock size={14} aria-hidden="true" className="shrink-0 text-accent-strong" />
+        <span>
+          <span className="font-semibold text-accent-strong">Read-only.</span>{" "}
+          The coordination bus is managed by the agents. Mention{" "}
+          <code className="font-mono text-[11.5px]">@slug</code> in a project channel to hand off.
+        </span>
       </div>
     </div>
   );
