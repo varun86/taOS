@@ -298,25 +298,36 @@ export function forceCompositingRepaint() {
   setTimeout(clear, 250);
 }
 
-// Safari/WebKit drops or staleifies backdrop-filter compositing layers while a
-// tab is hidden and does NOT rebuild them when the tab is shown again, so
-// switching back into taOS leaves frosted-glass surfaces (windows, dock, top
-// bar, the agent chat panel) blank/black until something forces a re-composite.
-// rAF is paused while hidden, so the theme-switch repaint never runs on its own.
-// Re-run the same repaint nudge the moment the page becomes visible again (and
-// on bfcache restore via pageshow). Idempotent: installs the listeners once.
+// Safari/WebKit (not Chromium, not Gecko) is the only engine that drops or
+// staleifies backdrop-filter compositing layers while a tab is hidden, so this
+// guard is scoped to WebKit. Detect Safari's engine: AppleWebKit present, but
+// not Chrome/Chromium/Edge (which also report AppleWebKit in their UA).
+export function isWebKit(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Crios|Edg|Android/.test(ua);
+}
+
+// WebKit leaves backdrop-filter surfaces (windows, dock, top bar, the agent
+// chat panel) blank/black when a tab is hidden then shown again, because rAF is
+// paused while hidden so the theme-switch repaint never runs. Re-run the same
+// repaint nudge when the page becomes visible again. Scoped to WebKit so other
+// engines never pay a needless repaint on focus/visibility. Idempotent.
 let _webkitRepaintGuardsInstalled = false;
 export function installWebkitRepaintGuards() {
   if (_webkitRepaintGuardsInstalled) return;
   if (typeof document === "undefined" || typeof window === "undefined") return;
+  if (!isWebKit()) return; // only Safari/WebKit needs (and pays for) this
   _webkitRepaintGuardsInstalled = true;
   const onVisible = () => {
     if (document.visibilityState === "visible") forceCompositingRepaint();
   };
   document.addEventListener("visibilitychange", onVisible);
-  window.addEventListener("pageshow", forceCompositingRepaint);
-  // Some WebKit builds only fire focus, not visibilitychange, on tab return.
-  window.addEventListener("focus", forceCompositingRepaint);
+  // bfcache restore (persisted) also restores a stale layer; ignore the normal
+  // first-load pageshow (persisted=false), which doesn't need a repaint.
+  window.addEventListener("pageshow", (e) => {
+    if ((e as PageTransitionEvent).persisted) forceCompositingRepaint();
+  });
 }
 
 export function applyThemeConfig(cfg: ThemeConfig) {

@@ -1,41 +1,72 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { installWebkitRepaintGuards, forceCompositingRepaint } from "../theme-store";
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  installWebkitRepaintGuards,
+  forceCompositingRepaint,
+  isWebKit,
+} from "../theme-store";
+
+const ATTR = "data-theme-switching";
+const clear = () => document.documentElement.removeAttribute(ATTR);
+const painted = () => document.documentElement.hasAttribute(ATTR);
+const setUA = (s: string) =>
+  Object.defineProperty(navigator, "userAgent", { value: s, configurable: true });
+const SAFARI_UA =
+  "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
 
 beforeEach(() => {
-  document.documentElement.removeAttribute("data-theme-switching");
+  clear();
+  // Guards are WebKit-scoped; default to a Safari UA so install tests run the
+  // real path. The isWebKit test overrides this within its own body.
+  setUA(SAFARI_UA);
 });
 
 describe("forceCompositingRepaint", () => {
-  it("toggles the data-theme-switching attribute to force a WebKit re-composite", () => {
+  it("synchronously toggles data-theme-switching to force a WebKit re-composite", () => {
     forceCompositingRepaint();
-    // The attribute is set synchronously (filter:none for a frame) then cleared
-    // on a later rAF/timer; we only assert the synchronous nudge happened.
-    expect(document.documentElement.hasAttribute("data-theme-switching")).toBe(true);
+    expect(painted()).toBe(true);
   });
 });
 
-describe("installWebkitRepaintGuards", () => {
+describe("isWebKit", () => {
+  it("true for Safari, false for Chrome/Chromium/Edge", () => {
+    setUA(SAFARI_UA);
+    expect(isWebKit()).toBe(true);
+    setUA("Mozilla/5.0 (X11; Linux) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36");
+    expect(isWebKit()).toBe(false);
+    setUA("Mozilla/5.0 (Windows) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36 Edg/124");
+    expect(isWebKit()).toBe(false);
+  });
+});
+
+describe("installWebkitRepaintGuards (jsdom UA is WebKit-like)", () => {
   it("repaints when the tab becomes visible again (switch back into taOS)", () => {
     installWebkitRepaintGuards();
-    document.documentElement.removeAttribute("data-theme-switching");
+    clear();
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));
-    expect(document.documentElement.hasAttribute("data-theme-switching")).toBe(true);
+    expect(painted()).toBe(true);
   });
 
-  it("repaints on pageshow (bfcache restore)", () => {
+  it("repaints on bfcache restore (pageshow persisted) but not on a normal first load", () => {
     installWebkitRepaintGuards();
-    document.documentElement.removeAttribute("data-theme-switching");
-    window.dispatchEvent(new Event("pageshow"));
-    expect(document.documentElement.hasAttribute("data-theme-switching")).toBe(true);
+    clear();
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: false }));
+    expect(painted()).toBe(false); // normal load: no needless repaint
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+    expect(painted()).toBe(true); // bfcache restore: repaint
   });
 
-  it("is idempotent: a second install does not double-register listeners", () => {
-    const addSpy = vi.spyOn(document, "addEventListener");
+  it("is idempotent: installing again registers no new listeners (order-independent)", () => {
+    installWebkitRepaintGuards(); // ensure installed regardless of test order
+    const calls: string[] = [];
+    const orig = document.addEventListener.bind(document);
+    document.addEventListener = ((t: string, ...a: unknown[]) => {
+      calls.push(t);
+      // @ts-expect-error pass-through to the real signature
+      return orig(t, ...a);
+    }) as typeof document.addEventListener;
     installWebkitRepaintGuards();
-    installWebkitRepaintGuards();
-    const visCalls = addSpy.mock.calls.filter((c) => c[0] === "visibilitychange");
-    expect(visCalls.length).toBe(0); // already installed by earlier tests in this file
-    addSpy.mockRestore();
+    document.addEventListener = orig;
+    expect(calls).not.toContain("visibilitychange");
   });
 });
