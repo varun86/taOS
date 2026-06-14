@@ -238,6 +238,36 @@ async def api_rename(request: Request, body: RenameRequest):
     return {"path": str(dst.relative_to(workspace)), "status": "renamed"}
 
 
+class CopyRequest(BaseModel):
+    src: str
+    dst: str
+
+
+@router.post("/api/workspace/copy")
+async def api_copy(request: Request, body: CopyRequest):
+    """Copy a file or directory tree within the user workspace."""
+    workspace = _get_workspace_root(request)
+
+    if not body.src.strip() or not body.dst.strip():
+        return JSONResponse({"error": "src and dst are required"}, status_code=400)
+
+    src = _resolve_safe(workspace, body.src.strip())
+    dst = _resolve_safe(workspace, body.dst.strip())
+    if src is None or dst is None:
+        return JSONResponse({"error": "Invalid path"}, status_code=400)
+    if not src.exists():
+        return JSONResponse({"error": "Source not found"}, status_code=404)
+    if dst.exists():
+        return JSONResponse({"error": "Target already exists"}, status_code=409)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.is_dir():
+        shutil.copytree(src, dst)
+    else:
+        shutil.copy2(src, dst)
+    return {"path": str(dst.relative_to(workspace)), "status": "copied"}
+
+
 @router.get("/api/workspace/files/{file_path:path}")
 async def api_get_file(request: Request, file_path: str):
     """Stream a single file from the user workspace — used for thumbnails,
