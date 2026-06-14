@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 export interface MenuItem {
   label: string;
@@ -86,10 +87,13 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
   // (so it never overflows right/bottom) AND the near edge (so a tap near the
   // left/top never produces a negative, off-screen position). On phones the
   // bottom dock occupies roughly 96px of the viewport, so reserve that plus
-  // the home-indicator inset as the bottom margin.
+  // the home-indicator inset as the bottom margin. On desktop there is no
+  // mobile dock, so only keep the small edge margin (a right-click near the
+  // bottom should still open at the cursor, not jump up by 96px).
   const MENU_W = 220;
   const MARGIN = 8;
-  const BOTTOM_RESERVE = 96; // dock + breathing room on mobile
+  const isMobile = useIsMobile();
+  const BOTTOM_RESERVE = isMobile ? 96 : MARGIN; // dock + home-indicator on mobile; edge margin on desktop
   const menuH = items.length * 36 + 12;
   const maxX = window.innerWidth - MENU_W - MARGIN;
   const maxY = window.innerHeight - menuH - BOTTOM_RESERVE;
