@@ -7,11 +7,13 @@
 # only; it does NOT run `tailscale up` and does NOT require an auth key. The
 # user authenticates interactively afterwards (`tailscale up` / web login).
 #
-# Linux:  wraps the OFFICIAL installer https://tailscale.com/install.sh
-#         (verified by pinned SHA256 before execution — never unverified
-#         curl|bash). The official script auto-detects the distro/arch and
-#         configures the correct apt/dnf/zypper/pacman/apk/etc. repo, so it
-#         covers every supported arm + x86 distribution from one path.
+# Linux:  wraps the OFFICIAL installer https://tailscale.com/install.sh,
+#         fetched over HTTPS. The bundled SHA256 is ADVISORY by default: a
+#         mismatch warns and proceeds (upstream rotates the script often), so
+#         set TAOS_TAILSCALE_INSTALL_SHA256 to enforce a strict pin. The
+#         official script auto-detects the distro/arch and configures the
+#         correct apt/dnf/zypper/pacman/apk/etc. repo, covering every
+#         supported arm + x86 distribution from one path.
 # macOS:  no headless CLI install path — point the user at the Mac App Store
 #         build (or `brew install --cask tailscale`).
 #
@@ -20,9 +22,10 @@
 # Pinned constants — update when Tailscale revises their installer:
 #   TAILSCALE_INSTALL_SHA256: SHA-256 of https://tailscale.com/install.sh
 #   Verify with: curl -fsSL https://tailscale.com/install.sh | sha256sum
-#   RESIDUAL RISK: Tailscale publishes no detached signature for this script;
-#   SHA256 is the only integrity guard. Update when the installer changes.
-#   Pinned: 2026-06-14
+#   RESIDUAL RISK: Tailscale publishes no detached signature for this script
+#   and rotates it frequently, so HTTPS transport is the default trust anchor.
+#   The pinned SHA256 enforces a strict check only when
+#   TAOS_TAILSCALE_INSTALL_SHA256 is set. Pinned: 2026-06-14
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
