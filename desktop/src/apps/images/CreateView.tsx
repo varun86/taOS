@@ -107,10 +107,13 @@ export function CreateView(props: CreateViewProps) {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Phone-width viewports stack the stage over the controls rail (and
+          scroll) so neither is squeezed off-screen; md+ keeps the desktop
+          side-by-side row. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* stage: canvas + filmstrip */}
         <div className="flex min-w-0 flex-1 flex-col p-[22px]">
-          <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-2xl border border-shell-border bg-shell-bg-deep">
+          <div className="relative flex min-h-[260px] flex-1 items-center justify-center overflow-hidden rounded-2xl border border-shell-border bg-shell-bg-deep">
             {generating ? (
               <div className="flex flex-col items-center gap-3 text-shell-text-tertiary">
                 <div className="h-7 w-7 animate-spin rounded-full border-2 border-accent border-t-transparent" />
@@ -200,7 +203,7 @@ export function CreateView(props: CreateViewProps) {
         </div>
 
         {/* controls rail */}
-        <div className="flex w-[286px] flex-none flex-col gap-[18px] overflow-auto border-l border-shell-border p-[18px]">
+        <div className="flex w-full flex-none flex-col gap-[18px] overflow-auto border-t border-shell-border p-[18px] md:w-[286px] md:border-l md:border-t-0">
           <div>
             <GroupLabel>Model</GroupLabel>
             <ModelPill name={modelName} meta={modelMeta} onClick={onPickModel} />
@@ -272,8 +275,14 @@ export function CreateView(props: CreateViewProps) {
         </div>
       </div>
 
-      {/* prompt bar */}
-      <div className="flex flex-none items-end gap-3 border-t border-shell-border bg-shell-bg-deep px-[22px] py-4">
+      {/* prompt bar. Extra bottom inset so the textarea + Generate button
+          clear the phone home indicator / dock edge instead of sitting flush
+          under it. On desktop env(safe-area-inset-bottom) is 0, so the layout
+          is unchanged there. */}
+      <div
+        className="flex flex-none items-end gap-3 border-t border-shell-border bg-shell-bg-deep px-[22px] py-4"
+        style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      >
         <label htmlFor="create-prompt" className="sr-only">
           Image prompt
         </label>

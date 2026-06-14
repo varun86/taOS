@@ -82,9 +82,19 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
     }
   };
 
-  // Ensure menu stays within viewport
-  const adjustedX = Math.min(x, window.innerWidth - 220);
-  const adjustedY = Math.min(y, window.innerHeight - items.length * 36 - 20);
+  // Ensure menu stays within the viewport on both axes. Clamp the far edge
+  // (so it never overflows right/bottom) AND the near edge (so a tap near the
+  // left/top never produces a negative, off-screen position). On phones the
+  // bottom dock occupies roughly 96px of the viewport, so reserve that plus
+  // the home-indicator inset as the bottom margin.
+  const MENU_W = 220;
+  const MARGIN = 8;
+  const BOTTOM_RESERVE = 96; // dock + breathing room on mobile
+  const menuH = items.length * 36 + 12;
+  const maxX = window.innerWidth - MENU_W - MARGIN;
+  const maxY = window.innerHeight - menuH - BOTTOM_RESERVE;
+  const adjustedX = Math.max(MARGIN, Math.min(x, maxX));
+  const adjustedY = Math.max(MARGIN, Math.min(y, maxY));
 
   // Roving tabindex: track which navigable (non-separator, non-disabled) item is active
   let navigableCounter = -1;

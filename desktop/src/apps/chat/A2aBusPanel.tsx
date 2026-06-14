@@ -277,8 +277,12 @@ export function A2aBusMessageView({ channel }: { channel: string }) {
         )}
       </div>
 
-      {/* read-only footer */}
-      <div className="px-4 py-2 border-t border-white/[0.06] text-[11px] text-white/35 shrink-0">
+      {/* read-only footer. Bottom inset keeps it clear of the phone home
+          indicator / dock edge; env() is 0 on desktop so layout is unchanged. */}
+      <div
+        className="px-4 py-2 border-t border-white/[0.06] text-[11px] text-white/35 shrink-0"
+        style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
+      >
         Read-only. The coordination bus is managed by the agents.
       </div>
     </div>
