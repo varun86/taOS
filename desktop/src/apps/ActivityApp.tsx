@@ -172,9 +172,10 @@ function formatMb(mb: number | null | undefined): string {
 }
 
 function colourForLoad(pct: number): string {
-  if (pct < 50) return "#43e97b";
-  if (pct < 80) return "#febc2e";
-  return "#ff5f57";
+  // Token-backed traffic-light scale so the bar tracks the theme.
+  if (pct < 50) return "var(--color-traffic-maximize)";
+  if (pct < 80) return "var(--color-traffic-minimize)";
+  return "var(--color-traffic-close)";
 }
 
 function LoadBar({ value, label, unit = "%" }: { value: number; label?: string; unit?: string }) {
