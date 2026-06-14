@@ -80,6 +80,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Picker, { Theme } from "emoji-picker-react";
 import { SearchPanel } from "./chat/SearchPanel";
+import {
+  A2aBusSection,
+  A2aBusMessageView,
+  useBusChannels,
+} from "./chat/A2aBusPanel";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -394,6 +399,11 @@ export function MessagesApp({
   const [liveAgents, setLiveAgents] = useState<LiveAgent[]>([]);
   const [archivedAgents, setArchivedAgents] = useState<ArchivedAgentEntry[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  // External taOSmd coordination bus (read-only). Selecting a bus channel is a
+  // separate mode from the internal project channels: when busSelected is set,
+  // the detail pane shows the read-only bus viewer instead of the chat panel.
+  const [busSelected, setBusSelected] = useState<string | null>(null);
+  const bus = useBusChannels();
   const [messages, setMessages] = useState<Message[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const unreadRef = useRef<Record<string, number>>({});
@@ -790,6 +800,20 @@ export function MessagesApp({
     if (!channels.some((c) => c.id === selectedChannel)) return;
     writeLastChannel(scope.projectId, selectedChannel);
   }, [scope?.projectId, selectedChannel, channels]);
+
+  /* ---- bus / project-channel selection are mutually exclusive ----
+   * Modeled as render precedence: while busSelected is set the bus viewer
+   * wins, otherwise the project channel shows. Picking a project channel
+   * clears busSelected (project view takes over); picking a bus channel keeps
+   * selectedChannel intact so returning from the bus restores it.
+   */
+  useEffect(() => {
+    if (selectedChannel) setBusSelected(null);
+  }, [selectedChannel]);
+
+  const selectBusChannel = useCallback((channel: string) => {
+    setBusSelected(channel);
+  }, []);
 
   /* ---- fetch project list for sidebar grouping (standalone mode only) ---- */
   useEffect(() => {
@@ -1726,6 +1750,15 @@ export function MessagesApp({
           </div>
         </div>
       )}
+
+      {/* External taOSmd coordination bus (read-only) */}
+      <A2aBusSection
+        channels={bus.channels}
+        available={bus.available}
+        loaded={bus.loaded}
+        selected={busSelected}
+        onSelect={selectBusChannel}
+      />
     </div>
   ) : (
     /* Desktop: compact sidebar */
@@ -1900,6 +1933,15 @@ export function MessagesApp({
             </div>
           </div>
         )}
+
+        {/* External taOSmd coordination bus (read-only) */}
+        <A2aBusSection
+          channels={bus.channels}
+          available={bus.available}
+          loaded={bus.loaded}
+          selected={busSelected}
+          onSelect={selectBusChannel}
+        />
       </div>
     </div>
   );
@@ -1908,7 +1950,9 @@ export function MessagesApp({
   /*  Message area                                                     */
   /* ---------------------------------------------------------------- */
 
-  const messageAreaUI = (
+  const messageAreaUI = busSelected ? (
+    <A2aBusMessageView channel={busSelected} />
+  ) : (
     <div className="relative flex-1 flex flex-col min-w-0 h-full">
       {selectedChannel && !atBottom && (
         <button
@@ -2640,10 +2684,10 @@ export function MessagesApp({
       {/* Master-detail — MobileSplitView handles mobile single-pane + desktop split */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <MobileSplitView
-          selectedId={selectedChannel}
-          onBack={() => setSelectedChannel(null)}
+          selectedId={selectedChannel ?? busSelected}
+          onBack={() => { setSelectedChannel(null); setBusSelected(null); }}
           listTitle="Messages"
-          detailTitle={currentChannel?.name}
+          detailTitle={busSelected ?? currentChannel?.name}
           listWidth={240}
           list={channelListUI}
           detail={messageAreaUI}
