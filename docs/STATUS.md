@@ -1,5 +1,5 @@
 SINGLE SOURCE OF TRUTH for cross-agent handoff.
-Last updated: 2026-06-14 ~04:05 BST, @taOS (active, autonomous overnight).
+Last updated: 2026-06-14 ~10:00 BST, @taOS (freshness sweep).
 
 ▶▶ MORNING MUST-DO (Jay overnight ask, asleep): features tested+working by morning; agent OS control DONE simple; **offline agent RESULTS by morning**.
    ** WHEN FEDORA FREES (~05:40Z; A2A monitor watches @taOSmd box-free ping on taOS-taOSmd-hermes-integration; it's running E-009 til then): RUN THE OFFLINE EVAL. cd ~/tinyagentos-private/specs/storybook-demo/ ; follow RUNBOOK.md — score the full roster via storybook_toolcall_eval.py vs the Fedora Ollama (host 100.78.225.80:11434/v1): qwen3.5:9b iq4_xs/q5_k_m/q6_k + qwen3:14b + llama3.1:8b + qwen3:4b + gemma4:12b + qwen3.6:35b-a3b-q4 (+pull qwen3.5:4b). ONE Ollama job at a time (12GB 3060). Produce a tool-call leaderboard. taOSmd pings when free; if this session is dead, the resume cron resumes from here. **
@@ -31,7 +31,7 @@ Last updated: 2026-06-14 ~04:05 BST, @taOS (active, autonomous overnight).
 4. PROMO HERO PROGRAM (memory [[promo-hero-initiative]]): only the agent CHAT + a demo PROJECT stay mock; build everything else REAL. Hero = multi-window (chat + project canvas + store), 5:2 X-cut on all promo. Needs store (#871), project canvas/mind-map (#16, net-new), demo seed (#17), agent window-mgmt API (#18). Mock data PRIVATE on local `marketing` branch (never push/merge; MARKETING.md).
 5. Also queued: store popularity LIVE stars backend (#13), per-app install telemetry -> the now-secured stats page (#15), widget redesign (#19, NOT in the shot), mobile audit, wallpaper picker #864, island v2 #854, GitHub #858 ph2, live-wallpaper package brainstorm.
 
-Branch tips: master=6394a3ed. dev=99ab3548 (#873 real desktop + #874 agent OS controls merged). Merged overall this session: #867 #868 #869 #870 (theme/wallpaper), #871 (store redesign), #873 (real desktop: dock right-click + inline New Folder + FS-backed icons + rename API), #874 (window.taosDesktop control API + docs/desktop-control.md); taos-website #5 (stats Basic Auth -> main, set STATS_USER/STATS_PASS in Coolify). Local-only `marketing` branch (private, no upstream; NEVER push/merge).
+Branch tips: master=6394a3ed. dev=67dceb64 (#877-#882 agent OS control + mobile + theme MERGED). Merged overall this session: #867 #868 #869 #870 (theme/wallpaper), #871 (store redesign), #873 (real desktop: dock right-click + inline New Folder + FS-backed icons + rename API), #874 (window.taosDesktop control API + docs/desktop-control.md); taos-website #5 (stats Basic Auth -> main, set STATS_USER/STATS_PASS in Coolify). Local-only `marketing` branch (private, no upstream; NEVER push/merge).
 
 Session state: ACTIVE (autonomous overnight). ALL baking PRs MERGED to dev (tip=4ecc7961): #872 (tsParticles wallpaper + sliders), #873 (real desktop), #874 (agent OS controls). Open-PR queue drained (only draft #476 remains; #846 already CLOSED). #872 SWAPS the animated wallpaper renderer from the hand-rolled canvas NeuralWallpaper (component "neural") to tsParticles ParticlesWallpaper (component "particles"); theme-store registers id "neural-live" w/ component "particles" -- VERIFY the tsParticles look LIVE on Pi (headless can't rasterize it). #25 (tiled double-header) CLOSED: not a bug, was the 32px top-bar chrome. SECURITY: dependabot alert #5 (esbuild RCE < 0.28.1) is STALE -- desktop already pins esbuild 0.28.1 via overrides (lockfile + installed both 0.28.1); leave for dependabot to auto-close, no code change. #19 widget redesign HELD for Jay (taste + depends on the desktop/widget/dash mode-switcher brainstorm [[project_desktop_modes]]). FEDORA MODEL TESTS (Jay 2026-06-14 ~02:00): eval harness + runbook built PRIVATE (~/tinyagentos-private/specs/storybook-demo/storybook_toolcall_eval.py) -- scores local models on the storybook tool-call flow incl ID-threading; A2A sent to @taOSmd (msg 431) to coordinate Fedora box (it's mid E-009 sweep, do NOT interrupt); awaiting its ping + local-model list. tsParticles look + Safari dark<->light + live-wallpaper animation + desktop icons/thumbnails are all best checked LIVE on the Pi (preview has no backend; tsParticles canvas does not rasterize headless).
 
@@ -40,11 +40,11 @@ WEBSITE: taos.my live. All 4 taos-website PRs merged (stats/changelog/nav/access
 CI: test suite parallelized via #839 (xdist -n auto). CodeRabbit may be out of credits -- do not merge on a fake rate-limit pass. Use @coderabbitai full review to retrigger; manual review OK for tiny already-reviewed PRs.
 
 OPEN PRs:
-- #872 feat(wallpaper): tsParticles live "Neural (Live)" wallpaper (selectable, theme-aware) -- verify look live, then sliders (#21)
-- #871 feat(store): App Store redesign -- has 4 Gitar bugs for @taOS to fix before merge (see WAKE QUEUE 3)
-- #846 dependabot esbuild bump -- SUPERSEDED by #849 (already on dev); close it
+- #876 chore(deps): dependabot SPA deps group bump (32 updates) -- review and merge when CI green
+
+
 - #476 DRAFT feat(userspace): App Runtime v1 -- stays DRAFT, not ready to merge
-(merged to dev this session: #867 #868 #869 #870 theme/wallpaper/popovers/inversion. taos-website #5 stats-auth -> main.)
+(#872/#871 MERGED to dev; #846 SUPERSEDED by #849 on dev; taos-website #5 merged to main.)
 
 Notable open issues (bugs first):
 - #844 rkllama store-UI install chain broken (wrong script + non-interactive false-success) -- unresolved
@@ -69,7 +69,7 @@ Next queue:
 Decisions (carried from prior sessions):
 - PR for all code changes (no direct-to-dev commits for features).
 - Never --delete-branch on a dev->master PR (deletes dev, closes all dev-targeting PRs).
-- Jay updates Pi manually -- do not SSH-deploy after merges.
+- Pi deploy loop AUTHORIZED 2026-06-14: @taOS deploys to Pi after merging to dev (Jay authorized overnight).
 - gh pr merge 401s -- use GitHub UI or gh api PUT for merges.
 
 Security queue: #747 #737 #672 #658 #655 #654 #653 #651 #650 #647
