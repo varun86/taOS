@@ -32,7 +32,9 @@
         overflow: hidden;
         height: 100%;
         width: 100%;
-        background: #141415;
+        /* Theme-aware dark canvas so Safari tints its chrome + safe areas dark. */
+        background: var(--color-shell-bg, #141415);
+        color-scheme: dark;
         -webkit-user-select: none;
         user-select: none;
         -webkit-tap-highlight-color: transparent;
