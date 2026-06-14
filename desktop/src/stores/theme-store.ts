@@ -282,7 +282,7 @@ function schemeFromBg(bg: string | undefined): "light" | "dark" {
 // (the screenshot path forces a full raster). Dropping backdrop-filter for a
 // frame via [data-theme-switching] (see tokens.css) forces WebKit to rebuild
 // every backdrop layer against the new tokens. No-op outside the browser.
-function forceCompositingRepaint() {
+export function forceCompositingRepaint() {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.setAttribute("data-theme-switching", "");
@@ -296,6 +296,38 @@ function forceCompositingRepaint() {
   // attribute (and the backdrop-filter:none rule) stuck until the tab is shown.
   // A timer guarantees cleanup regardless; removeAttribute is idempotent.
   setTimeout(clear, 250);
+}
+
+// Safari/WebKit (not Chromium, not Gecko) is the only engine that drops or
+// staleifies backdrop-filter compositing layers while a tab is hidden, so this
+// guard is scoped to WebKit. Detect Safari's engine: AppleWebKit present, but
+// not Chrome/Chromium/Edge (which also report AppleWebKit in their UA).
+export function isWebKit(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Crios|Edg|Android/.test(ua);
+}
+
+// WebKit leaves backdrop-filter surfaces (windows, dock, top bar, the agent
+// chat panel) blank/black when a tab is hidden then shown again, because rAF is
+// paused while hidden so the theme-switch repaint never runs. Re-run the same
+// repaint nudge when the page becomes visible again. Scoped to WebKit so other
+// engines never pay a needless repaint on focus/visibility. Idempotent.
+let _webkitRepaintGuardsInstalled = false;
+export function installWebkitRepaintGuards() {
+  if (_webkitRepaintGuardsInstalled) return;
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+  if (!isWebKit()) return; // only Safari/WebKit needs (and pays for) this
+  _webkitRepaintGuardsInstalled = true;
+  const onVisible = () => {
+    if (document.visibilityState === "visible") forceCompositingRepaint();
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  // bfcache restore (persisted) also restores a stale layer; ignore the normal
+  // first-load pageshow (persisted=false), which doesn't need a repaint.
+  window.addEventListener("pageshow", (e) => {
+    if ((e as PageTransitionEvent).persisted) forceCompositingRepaint();
+  });
 }
 
 export function applyThemeConfig(cfg: ThemeConfig) {
