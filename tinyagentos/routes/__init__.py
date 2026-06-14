@@ -120,6 +120,9 @@ def register_all_routers(app):
     from tinyagentos.routes.project_canvas import router as project_canvas_router
     app.include_router(project_canvas_router)
 
+    from tinyagentos.routes.desktop_control import router as desktop_control_router
+    app.include_router(desktop_control_router)
+
     from tinyagentos.routes.shared_folders import router as shared_folders_router
     app.include_router(shared_folders_router)
 
@@ -183,6 +186,9 @@ def register_all_routers(app):
 
     from tinyagentos.routes.github import router as github_router
     app.include_router(github_router)
+
+    from tinyagentos.routes.github_oauth import router as github_oauth_router
+    app.include_router(github_oauth_router)
 
     from tinyagentos.routes.youtube import router as youtube_router
     app.include_router(youtube_router)

@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  /* Background layers */
-  --color-shell-bg: #1a1b2e;
-  --color-shell-bg-deep: #151625;
+  /* Background layers — macOS-dark graphite (warm charcoal, neutral, no indigo) */
+  --color-shell-bg: #1d1d1f;
+  --color-shell-bg-deep: #171717;
   --color-shell-surface: rgba(255, 255, 255, 0.04);
   --color-shell-surface-hover: rgba(255, 255, 255, 0.06);
   --color-shell-surface-active: rgba(255, 255, 255, 0.08);
@@ -24,10 +24,10 @@
   --color-accent: #8b92a3;
   --color-accent-glow: rgba(139, 146, 163, 0.3);
 
-  /* Dock + top bar — dark gunmetal chrome */
-  --color-dock-bg: rgba(22, 25, 32, 0.92);
+  /* Dock + top bar — neutral graphite frosted chrome */
+  --color-dock-bg: rgba(29, 29, 31, 0.92);
   --color-dock-border: rgba(255, 255, 255, 0.08);
-  --color-topbar-bg: rgba(22, 25, 32, 0.92);
+  --color-topbar-bg: rgba(29, 29, 31, 0.92);
 
   /* Snap zones */
   --color-snap-preview: rgba(139, 146, 163, 0.15);
@@ -46,6 +46,70 @@
   --shadow-dock: 0 4px 24px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 1px rgba(255, 255, 255, 0.05);
   --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* ==================================================================
+   Light-scheme compatibility layer
+   ==================================================================
+   The shell tokens above (window chrome, dock, top bar, text) already
+   flip per theme. But ~800 surfaces across the apps still use hardcoded
+   white-overlay utilities (bg-white/5, border-white/10) and ~140 use
+   hardcoded white text (text-white) — additive white that vanishes on a
+   light background. Rather than migrate every call site, this layer
+   inverts those utilities to dark-on-light, but ONLY when a light theme
+   is active (data-scheme="light", set from the theme's bg luminance in
+   theme-store.ts). The dark theme is never matched, so it is untouched.
+
+   Specificity note: `:root[data-scheme="light"] [class~="x"]` is (0,3,0),
+   which beats Tailwind's single-class utilities (0,1,0) and hover
+   variants (0,2,0) without !important. Hover overlays get their own
+   :hover rules below so the affordance survives the inversion.
+   ================================================================== */
+:root[data-scheme="light"] [class~="bg-white/3"]  { background-color: rgba(0, 0, 0, 0.03); }
+:root[data-scheme="light"] [class~="bg-white/5"]  { background-color: rgba(0, 0, 0, 0.04); }
+:root[data-scheme="light"] [class~="bg-white/10"] { background-color: rgba(0, 0, 0, 0.06); }
+:root[data-scheme="light"] [class~="bg-white/15"] { background-color: rgba(0, 0, 0, 0.08); }
+:root[data-scheme="light"] [class~="bg-white/20"] { background-color: rgba(0, 0, 0, 0.10); }
+
+:root[data-scheme="light"] [class~="border-white/5"]  { border-color: rgba(0, 0, 0, 0.08); }
+:root[data-scheme="light"] [class~="border-white/8"]  { border-color: rgba(0, 0, 0, 0.10); }
+:root[data-scheme="light"] [class~="border-white/10"] { border-color: rgba(0, 0, 0, 0.12); }
+:root[data-scheme="light"] [class~="border-white/15"] { border-color: rgba(0, 0, 0, 0.14); }
+:root[data-scheme="light"] [class~="border-white/20"] { border-color: rgba(0, 0, 0, 0.16); }
+
+:root[data-scheme="light"] [class~="text-white"]    { color: rgba(0, 0, 0, 0.88); }
+:root[data-scheme="light"] [class~="text-white/90"] { color: rgba(0, 0, 0, 0.84); }
+:root[data-scheme="light"] [class~="text-white/80"] { color: rgba(0, 0, 0, 0.78); }
+:root[data-scheme="light"] [class~="text-white/70"] { color: rgba(0, 0, 0, 0.68); }
+:root[data-scheme="light"] [class~="text-white/60"] { color: rgba(0, 0, 0, 0.58); }
+:root[data-scheme="light"] [class~="text-white/50"] { color: rgba(0, 0, 0, 0.50); }
+:root[data-scheme="light"] [class~="text-white/45"] { color: rgba(0, 0, 0, 0.48); }
+:root[data-scheme="light"] [class~="text-white/40"] { color: rgba(0, 0, 0, 0.45); }
+:root[data-scheme="light"] [class~="text-white/35"] { color: rgba(0, 0, 0, 0.44); }
+:root[data-scheme="light"] [class~="text-white/30"] { color: rgba(0, 0, 0, 0.42); }
+:root[data-scheme="light"] [class~="text-white/25"] { color: rgba(0, 0, 0, 0.40); }
+:root[data-scheme="light"] [class~="text-white/20"] { color: rgba(0, 0, 0, 0.40); }
+:root[data-scheme="light"] [class~="text-white/15"] { color: rgba(0, 0, 0, 0.38); }
+
+/* Hover overlays: re-assert the inverted fill on :hover so the affordance
+   does not flatten under the base-state override. */
+:root[data-scheme="light"] [class~="hover:bg-white/5"]:hover  { background-color: rgba(0, 0, 0, 0.05); }
+:root[data-scheme="light"] [class~="hover:bg-white/10"]:hover { background-color: rgba(0, 0, 0, 0.07); }
+:root[data-scheme="light"] [class~="hover:bg-white/[0.06]"]:hover { background-color: rgba(0, 0, 0, 0.05); }
+
+/* Safari backdrop-filter repaint guard
+   ====================================
+   WebKit keeps backdrop-filter elements on cached GPU layers and does not
+   re-rasterize them when the theme custom properties on :root change at
+   runtime, so a dark<->light switch can leave the dock, top bar, modals and
+   widgets rendering black on the live screen (screenshots force a full raster
+   and look fine, which masks the bug). theme-store.ts sets
+   [data-theme-switching] for one frame on every theme apply/revert; dropping
+   the filter for that frame forces WebKit to rebuild each layer against the
+   new tokens. Imperceptible (~1 frame) and a no-op in Chrome/Firefox. */
+:root[data-theme-switching] * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* Wallpaper sizing
@@ -92,10 +156,55 @@
   transition: outline 0.2s ease-out;
 }
 
+/* Agents app — gentle breathing pulse for the running status dot.
+   Scales/fades a halo behind the dot so it reads as "live" without the
+   jarring full-opacity blink of animate-pulse. Disabled under
+   prefers-reduced-motion. */
+@keyframes taos-status-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.9); opacity: 0; }
+}
+.taos-status-pulse {
+  animation: taos-status-pulse 2.4s ease-in-out infinite;
+}
+
+/* Agents app — skeleton shimmer for loading cards. */
+@keyframes taos-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.taos-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: taos-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Agents app — subtle card entrance (mount fade + lift). */
+@keyframes taos-card-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.taos-card-enter {
+  animation: taos-card-enter 0.24s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .taos-status-pulse,
+  .taos-shimmer,
+  .taos-card-enter {
+    animation: none;
+  }
+}
+
 /* Projects board — Apple-grade chrome (Pass B Kanban) */
 :root {
-  --board-accent-violet: #a78bfa;
-  --board-accent-violet-soft: rgba(167, 139, 250, 0.14);
+  --board-accent-cyan: #22d3ee;
+  --board-accent-cyan-soft: rgba(34, 211, 238, 0.14);
   --board-hair: rgba(255, 255, 255, 0.07);
   --board-hair-strong: rgba(255, 255, 255, 0.12);
   --board-card-bg: linear-gradient(180deg, #26262b, #1f1f22);

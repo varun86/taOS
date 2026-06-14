@@ -34,11 +34,11 @@ class SkillStore(BaseStore):
     """
 
     async def _post_init(self):
-        assert self._db is not None
-        cursor = await self._db.execute("SELECT COUNT(*) FROM skills")
-        row = await cursor.fetchone()
-        if row and row[0] == 0:
-            await self._seed_defaults()
+        # Seed is idempotent (INSERT OR IGNORE on the id PK), so run it on every
+        # startup: a fresh install gets the full set, and an EXISTING install
+        # backfills any builtin skills added since it was first seeded (e.g. new
+        # desktop-control tools) without disturbing user-installed skills.
+        await self._seed_defaults()
 
     async def _seed_defaults(self):
         """Seed the default skill set."""
@@ -238,11 +238,140 @@ class SkillStore(BaseStore):
                 "install_method": "builtin",
                 "install_target": "tinyagentos.tools.http_request",
             },
+            {
+                "id": "open_app",
+                "name": "Open App",
+                "category": "desktop",
+                "description": "Open an app on the user's desktop so they can see it",
+                "tool_schema": {
+                    "name": "open_app",
+                    "description": "Open (or focus) an app on the user's desktop (e.g. projects, images, chat).",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "app": {"type": "string", "description": "App id, e.g. 'projects', 'images', 'chat'."},
+                            "props": {"type": "object", "description": "Optional deep-link props."},
+                        },
+                        "required": ["app"],
+                    },
+                },
+                "frameworks": {
+                    "smolagents": "adapter", "openclaw": "adapter", "pocketflow": "adapter",
+                    "langroid": "adapter", "hermes": "adapter", "agent-zero": "adapter",
+                    "openai-agents-sdk": "adapter", "generic": "adapter",
+                },
+                "install_method": "builtin",
+                "install_target": "tinyagentos.tools.desktop_tools",
+            },
+            {
+                "id": "arrange_windows",
+                "name": "Arrange Windows",
+                "category": "desktop",
+                "description": "Arrange the user's desktop windows into a tidy layout",
+                "tool_schema": {
+                    "name": "arrange_windows",
+                    "description": "Arrange open windows. Presets: tile-2, tile-3, center, cascade.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "preset": {
+                                "type": "string",
+                                "enum": ["tile-2", "tile-3", "center", "cascade"],
+                                "description": "Layout preset.",
+                            },
+                        },
+                        "required": ["preset"],
+                    },
+                },
+                "frameworks": {
+                    "smolagents": "adapter", "openclaw": "adapter", "pocketflow": "adapter",
+                    "langroid": "adapter", "hermes": "adapter", "agent-zero": "adapter",
+                    "openai-agents-sdk": "adapter", "generic": "adapter",
+                },
+                "install_method": "builtin",
+                "install_target": "tinyagentos.tools.desktop_tools",
+            },
+            {
+                "id": "create_project",
+                "name": "Create Project",
+                "category": "projects",
+                "description": "Create a project for the user",
+                "tool_schema": {
+                    "name": "create_project",
+                    "description": "Create a project and return its id.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Project title."},
+                            "description": {"type": "string", "description": "Short summary."},
+                        },
+                        "required": ["name"],
+                    },
+                },
+                "frameworks": {
+                    "smolagents": "adapter", "openclaw": "adapter", "pocketflow": "adapter",
+                    "langroid": "adapter", "hermes": "adapter", "agent-zero": "adapter",
+                    "openai-agents-sdk": "adapter", "generic": "adapter",
+                },
+                "install_method": "builtin",
+                "install_target": "tinyagentos.tools.project_tools",
+            },
+            {
+                "id": "add_task",
+                "name": "Add Task",
+                "category": "projects",
+                "description": "Add a task to a project's board",
+                "tool_schema": {
+                    "name": "add_task",
+                    "description": "Add a to-do task to a project board (appears live).",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "project_id": {"type": "string", "description": "Id from create_project."},
+                            "title": {"type": "string", "description": "Task title."},
+                        },
+                        "required": ["project_id", "title"],
+                    },
+                },
+                "frameworks": {
+                    "smolagents": "adapter", "openclaw": "adapter", "pocketflow": "adapter",
+                    "langroid": "adapter", "hermes": "adapter", "agent-zero": "adapter",
+                    "openai-agents-sdk": "adapter", "generic": "adapter",
+                },
+                "install_method": "builtin",
+                "install_target": "tinyagentos.tools.project_tools",
+            },
+            {
+                "id": "canvas_add_image",
+                "name": "Add Image to Canvas",
+                "category": "projects",
+                "description": "Place a generated image on a project's canvas",
+                "tool_schema": {
+                    "name": "canvas_add_image",
+                    "description": "Place a generated image (by file_id from generate_image) on a project's ideas board.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "project_id": {"type": "string", "description": "Id from create_project."},
+                            "file_id": {"type": "string", "description": "Image file id from generate_image."},
+                            "alt": {"type": "string", "description": "Alt text."},
+                        },
+                        "required": ["project_id", "file_id"],
+                    },
+                },
+                "frameworks": {
+                    "smolagents": "adapter", "openclaw": "adapter", "pocketflow": "adapter",
+                    "langroid": "adapter", "hermes": "adapter", "agent-zero": "adapter",
+                    "openai-agents-sdk": "adapter", "generic": "adapter",
+                },
+                "install_method": "builtin",
+                "install_target": "tinyagentos.tools.project_tools",
+            },
         ]
 
         for skill in defaults:
             await self._db.execute(
-                """INSERT INTO skills (id, name, category, description, tool_schema, frameworks,
+                """INSERT OR IGNORE INTO skills (id, name, category, description, tool_schema, frameworks,
                    requires_services, install_method, install_target, installed, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
                 (

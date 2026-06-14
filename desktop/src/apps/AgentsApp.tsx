@@ -27,13 +27,32 @@ const TAOS_AGENT_STUB: Agent = {
   name: "taos-agent",
   display_name: "taOS agent",
   host: "localhost",
-  color: "#6366f1",
+  color: "#06b6d4",
   emoji: "🤖",
   status: "running",
   vectors: 0,
   framework: "opencode",
   paused: false,
 };
+
+/** Placeholder card shown while the agent list is loading. Matches the
+ *  AgentRow shape (identity tile + two-line stack + trailing metric) with a
+ *  shimmer that respects prefers-reduced-motion (see tokens.css). */
+function AgentRowSkeleton() {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3.5 rounded-xl border border-shell-border bg-shell-surface shadow-[var(--shadow-card)]"
+      aria-hidden="true"
+    >
+      <div className="taos-shimmer h-9 w-9 rounded-lg bg-shell-surface-active shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="taos-shimmer h-3.5 w-40 max-w-[60%] rounded bg-shell-surface-active" />
+        <div className="taos-shimmer h-2.5 w-24 max-w-[40%] rounded bg-shell-surface-active" />
+      </div>
+      <div className="taos-shimmer h-3 w-16 rounded bg-shell-surface-active shrink-0" />
+    </div>
+  );
+}
 
 export function AgentsApp({ windowId: _windowId }: { windowId: string }) {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -45,9 +64,9 @@ export function AgentsApp({ windowId: _windowId }: { windowId: string }) {
   const [diskStates, setDiskStates] = useState<Record<string, DiskState>>({});
   const [quotaErrors, setQuotaErrors] = useState<Record<string, string>>({});
   const [latestByFramework, setLatestByFramework] = useState<Record<string, LatestVersion>>({});
-  // Hydrate the taOS agent stub with live model info (display only — the detail
-  // panel fetches its own config on open). We only use this to show the current
-  // model in the row's framework pill area; failures are silently ignored.
+  // Hydrate the taOS agent stub with live model info (display only; the detail
+  // panel fetches its own config on open). Shown as the model indicator line on
+  // the system agent's card; failures are silently ignored.
   const [taosModel, setTaosModel] = useState<string | undefined>(undefined);
   const isMobile = useIsMobile();
   const openWindow = useProcessStore((s) => s.openWindow);
@@ -70,6 +89,7 @@ export function AgentsApp({ windowId: _windowId }: { windowId: string }) {
                 status: String(a.status ?? "stopped") as Agent["status"],
                 vectors: Number(a.vectors ?? 0),
                 framework: a.framework ? String(a.framework) : undefined,
+                model: a.model ? String(a.model) : undefined,
                 paused: Boolean(a.paused),
                 on_worker_failure: (a.on_worker_failure as Agent["on_worker_failure"]) ?? "pause",
                 fallback_models: Array.isArray(a.fallback_models) ? (a.fallback_models as string[]) : [],
@@ -469,15 +489,16 @@ export function AgentsApp({ windowId: _windowId }: { windowId: string }) {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-full text-shell-text-tertiary text-sm">
-            Loading agents...
+          <div className="p-4 space-y-2" aria-busy="true" aria-label="Loading agents">
+            {[0, 1, 2].map((i) => (
+              <AgentRowSkeleton key={i} />
+            ))}
           </div>
         ) : agents.length === 0 && archived.length === 0 ? (
           <div className="flex flex-col h-full min-h-0">
             <div className="p-4">
-              <p className="text-xs font-medium text-shell-text-tertiary uppercase tracking-wider mb-2">System agent</p>
               <AgentRow
-                agent={{ ...TAOS_AGENT_STUB, display_name: taosModel ? `taOS agent — ${taosModel}` : "taOS agent" }}
+                agent={{ ...TAOS_AGENT_STUB, model: taosModel }}
                 diskState={null}
                 latestByFramework={latestByFramework}
                 onViewLogs={() => setTaosDetailOpen(true)}
@@ -488,31 +509,29 @@ export function AgentsApp({ windowId: _windowId }: { windowId: string }) {
                 protected
               />
             </div>
-            <div className="flex flex-col items-center justify-center flex-1 gap-4 text-shell-text-tertiary px-4 pb-8">
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg, rgba(139,146,163,0.15), rgba(91,97,112,0.08))" }}
-              >
-                <Bot size={36} className="text-accent/50" />
+            <div className="flex flex-col items-center justify-center flex-1 gap-4 px-4 pb-8">
+              <div className="w-16 h-16 rounded-lg flex items-center justify-center bg-shell-surface border border-shell-border">
+                <Bot size={30} className="text-shell-text-tertiary" />
               </div>
               <div className="text-center">
-                <p className="text-base font-medium text-shell-text-secondary mb-1">No agents deployed yet</p>
-                <p className="text-xs text-shell-text-tertiary max-w-xs">Deploy your first AI agent to start automating tasks on your device.</p>
+                <p className="text-base font-medium text-shell-text mb-1">No agents deployed yet</p>
+                <p className="text-sm text-shell-text-secondary max-w-xs">Deploy your first AI agent to start automating tasks on your device.</p>
               </div>
               <Button
                 onClick={() => setWizardOpen(true)}
                 className="text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 hover:brightness-110 border-0 mt-1"
                 style={{ background: "linear-gradient(135deg, #8b92a3, #5b6170)" }}
+                aria-label="Deploy agent"
               >
                 <Plus size={15} />
-                Deploy your first agent
+                Deploy Agent
               </Button>
             </div>
           </div>
         ) : agents.length === 0 ? (
           <div className="p-4">
-            <p className="text-xs font-medium text-shell-text-tertiary uppercase tracking-wider mb-2">System agent</p>
             <AgentRow
-              agent={{ ...TAOS_AGENT_STUB, display_name: taosModel ? `taOS agent — ${taosModel}` : "taOS agent" }}
+              agent={{ ...TAOS_AGENT_STUB, model: taosModel }}
               diskState={null}
               latestByFramework={latestByFramework}
               onViewLogs={() => setTaosDetailOpen(true)}
@@ -531,19 +550,19 @@ export function AgentsApp({ windowId: _windowId }: { windowId: string }) {
           </div>
         ) : (
           <div className="p-4">
-            {/* System agent — always shown above the deployed agents list */}
-            <p className="text-xs font-medium text-shell-text-tertiary uppercase tracking-wider mb-2">System agent</p>
-            <AgentRow
-              agent={{ ...TAOS_AGENT_STUB, display_name: taosModel ? `taOS agent — ${taosModel}` : "taOS agent" }}
-              diskState={null}
-              latestByFramework={latestByFramework}
-              onViewLogs={() => setTaosDetailOpen(true)}
-              onViewSkills={() => setTaosDetailOpen(true)}
-              onViewMessages={() => setTaosDetailOpen(true)}
-              onDelete={() => {}}
-              onResume={() => {}}
-              protected
-            />
+            <div className="mb-3">
+              <AgentRow
+                agent={{ ...TAOS_AGENT_STUB, model: taosModel }}
+                diskState={null}
+                latestByFramework={latestByFramework}
+                onViewLogs={() => setTaosDetailOpen(true)}
+                onViewSkills={() => setTaosDetailOpen(true)}
+                onViewMessages={() => setTaosDetailOpen(true)}
+                onDelete={() => {}}
+                onResume={() => {}}
+                protected
+              />
+            </div>
 
             {/* Disk quota notification cards */}
             {agents
@@ -594,7 +613,7 @@ export function AgentsApp({ windowId: _windowId }: { windowId: string }) {
                   </div>
                 );
               })}
-            <div className="space-y-2" role="list" aria-label="Agent list">
+            <div className="space-y-3" role="list" aria-label="Agent list">
               {agents.map((agent) => (
                 <AgentRow
                   key={agent.name}

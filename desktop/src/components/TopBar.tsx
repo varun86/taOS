@@ -5,6 +5,7 @@ import { useWidgetStore } from "@/stores/widget-store";
 import { useNotificationStore } from "@/stores/notification-store";
 import { useProcessStore } from "@/stores/process-store";
 import { StatusIndicators } from "./StatusIndicators";
+import { AgentKillSwitch } from "./AgentKillSwitch";
 import { withCsrf } from "@/lib/csrf";
 
 interface Props {
@@ -51,7 +52,7 @@ function PowerMenu() {
           align="end"
           sideOffset={6}
           className="z-50 min-w-[180px] rounded-xl border border-white/10 bg-shell-surface p-1.5 shadow-2xl backdrop-blur-xl"
-          style={{ backgroundColor: "rgba(28,26,44,0.96)" }}
+          style={{ backgroundColor: "var(--color-dock-bg)" }}
         >
           <DropdownMenu.Item
             className={menuItem}
@@ -137,6 +138,7 @@ export function TopBar({ onSearchOpen, onAssistantOpen }: Props) {
       <div className="flex items-center gap-3 ml-auto">
         <StatusIndicators />
         <span className="text-xs text-shell-text-tertiary">{clock}</span>
+        <AgentKillSwitch />
         <PowerMenu />
         <button
           onClick={toggleWidgets}

@@ -9,6 +9,7 @@ import {
   Input,
   Label,
 } from "@/components/ui";
+import { GitHubConnect } from "./secrets/GitHubConnect";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -31,7 +32,7 @@ type CategoryFilter = "all" | "api-key" | "credential" | "token" | "config";
 
 const CATEGORY_STYLES: Record<string, string> = {
   "api-key": "bg-sky-500/20 text-sky-400",
-  credential: "bg-violet-500/20 text-violet-400",
+  credential: "bg-cyan-500/20 text-cyan-400",
   token: "bg-amber-500/20 text-amber-400",
   config: "bg-emerald-500/20 text-emerald-400",
 };
@@ -345,6 +346,9 @@ export function SecretsApp({ windowId: _windowId }: { windowId: string }) {
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
+        <div className="p-4">
+          <GitHubConnect />
+        </div>
         {loading ? (
           <div className="flex items-center justify-center h-full text-shell-text-tertiary text-sm">
             Loading secrets...

@@ -175,6 +175,56 @@ async def _skill_list_image_models(args: dict, request: Request) -> dict:
         return {"error": str(exc)}
 
 
+async def _skill_open_app(args: dict, request: Request) -> dict:
+    """Open an app on the user's desktop (agent OS control)."""
+    try:
+        from tinyagentos.tools.desktop_tools import execute_open_app
+
+        return await execute_open_app(args, request)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def _skill_arrange_windows(args: dict, request: Request) -> dict:
+    """Arrange the user's desktop windows (agent OS control)."""
+    try:
+        from tinyagentos.tools.desktop_tools import execute_arrange_windows
+
+        return await execute_arrange_windows(args, request)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def _skill_create_project(args: dict, request: Request) -> dict:
+    """Create a project the user can see."""
+    try:
+        from tinyagentos.tools.project_tools import execute_create_project
+
+        return await execute_create_project(args, request)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def _skill_add_task(args: dict, request: Request) -> dict:
+    """Add a task to a project's board (streams live)."""
+    try:
+        from tinyagentos.tools.project_tools import execute_add_task
+
+        return await execute_add_task(args, request)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def _skill_canvas_add_image(args: dict, request: Request) -> dict:
+    """Place a generated image on a project's canvas (streams live)."""
+    try:
+        from tinyagentos.tools.project_tools import execute_canvas_add_image
+
+        return await execute_canvas_add_image(args, request)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 SKILL_IMPLEMENTATIONS = {
     "memory_search": _skill_memory_search,
     "file_read": _skill_file_read,
@@ -184,6 +234,11 @@ SKILL_IMPLEMENTATIONS = {
     "http_request": _skill_http_request,
     "image_generation": _skill_image_generation,
     "list_image_models": _skill_list_image_models,
+    "open_app": _skill_open_app,
+    "arrange_windows": _skill_arrange_windows,
+    "create_project": _skill_create_project,
+    "add_task": _skill_add_task,
+    "canvas_add_image": _skill_canvas_add_image,
 }
 
 

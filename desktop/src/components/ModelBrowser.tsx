@@ -308,7 +308,7 @@ export function ModelBrowser({
     >
       <div
         className="w-full max-w-4xl h-full max-h-full flex flex-col rounded-2xl border border-white/10 overflow-hidden"
-        style={{ backgroundColor: "rgba(26, 27, 46, 0.98)" }}
+        style={{ backgroundColor: "var(--color-dock-bg)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -572,11 +572,11 @@ export function ModelBrowser({
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Cloud size={13} className="text-violet-400 shrink-0" />
+                              <Cloud size={13} className="text-cyan-400 shrink-0" />
                               <h3 className="text-sm font-semibold text-shell-text truncate">
                                 {cm.name ?? cm.id}
                               </h3>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-medium shrink-0">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-medium shrink-0">
                                 {cm.providerName}
                               </span>
                             </div>
