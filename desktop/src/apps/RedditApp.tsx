@@ -616,7 +616,10 @@ export function RedditApp({ windowId: _windowId }: { windowId: string }) {
                     ? "rd-item active"
                     : "rd-item"
                 }
-                onClick={() => setActiveSection("monitored")}
+                onClick={() => {
+                  setActiveSection("monitored");
+                  setActiveSub(item.id);
+                }}
                 aria-label={`Monitored: ${item.title}`}
               >
                 <Eye size={13} style={{ flexShrink: 0 }} />
@@ -677,18 +680,15 @@ export function RedditApp({ windowId: _windowId }: { windowId: string }) {
         )}
 
         <form onSubmit={handleSearch} className="rd-search" role="search">
-          <Search size={15} />
+          <button type="submit" className="rd-search-submit" aria-label="Run search">
+            <Search size={15} />
+          </button>
           <input
             ref={searchRef}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder={activeSub ? `Search r/${activeSub}…` : "Search Reddit…"}
             aria-label="Search Reddit"
-          />
-          <button
-            type="submit"
-            aria-label="Run search"
-            style={{ display: "none" }}
           />
         </form>
 

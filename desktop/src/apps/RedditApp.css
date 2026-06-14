@@ -198,6 +198,31 @@
 .reddit-app .rd-search:focus-within {
   border-color: var(--rd-accent-ring);
 }
+.reddit-app .rd-search-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0 -2px 0 -4px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-shell-text-tertiary);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.reddit-app .rd-search-submit:hover {
+  color: var(--color-shell-text);
+  background: var(--color-shell-surface-active);
+}
+.reddit-app .rd-search-submit:focus-visible {
+  outline: none;
+  color: var(--color-shell-text);
+  box-shadow: 0 0 0 2px var(--rd-accent-ring);
+}
 .reddit-app .rd-search input {
   flex: 1;
   min-width: 0;
