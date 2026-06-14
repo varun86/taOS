@@ -231,13 +231,24 @@
    the viewport so the dock sits above the tab bar instead of behind it.
    The PWA layout is UNCHANGED — this only activates with .taos-browser.
    ================================================================== */
+/* Every mobile/tablet shell uses the dynamic viewport height so the bottom of
+   the column (the dock, and the app content/action bar that ends just above
+   it) is never pushed below the visible viewport. Tailwind's h-screen resolves
+   to 100vh, which on iOS includes the area behind the collapsing URL bar /
+   home indicator; 100dvh tracks the actual visible viewport. The 100vh line is
+   the fallback for browsers without dvh. Per-component safe-area insets still
+   handle the home-indicator clearance. */
+.taos-mobile-root {
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+
 .taos-browser {
   /* Note: safe-area insets are applied inline on individual components
      (ChatStandalone, BottomSheet, OnboardingScreen, ModelPickerModal, …),
      not on this element, and env(safe-area-inset-*) is already 0 in browser
-     (non-standalone) mode — so a padding reset here would be a no-op. We only
-     fix the viewport height: use dvh so Safari's collapsing URL bar doesn't
-     leave a gap, with 100vh as the fallback for browsers without dvh. */
+     (non-standalone) mode, so a padding reset here would be a no-op. The
+     viewport-height fix lives on .taos-mobile-root (shared with PWA mode). */
   height: 100vh !important;
   height: 100dvh !important;
 }

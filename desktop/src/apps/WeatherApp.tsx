@@ -319,8 +319,13 @@ export function WeatherApp() {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 overflow-y-auto p-5">
+      {/* Main content. Extra bottom inset so the last forecast row clears the
+          phone home indicator / dock edge. env(safe-area-inset-bottom) is 0 on
+          desktop, so the layout is unchanged there. */}
+      <div
+        className="flex-1 overflow-y-auto p-5"
+        style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))" }}
+      >
         {!viewing && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-shell-text-secondary">
             <MapPin size={48} className="opacity-30" />
