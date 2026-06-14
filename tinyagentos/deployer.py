@@ -16,9 +16,14 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tinyagentos.secrets import SecretsStore
 
 from tinyagentos.agent_image import BASE_IMAGE_ALIAS, is_image_present
 from tinyagentos.containers import (
@@ -69,6 +74,21 @@ def _explain_container_failure(raw_error: object) -> str:
             f"Underlying error: {text}"
         )
     return f"Container creation failed: {text}"
+
+def _secret_env_name(name: str) -> str:
+    """Sanitize a secret name into a valid POSIX env identifier.
+
+    Uppercase, replace any char outside [A-Z0-9_] with ``_``, and prefix an
+    underscore when the result starts with a digit (env names can't start
+    with one). A secret literally named ``OPENROUTER_API_KEY`` therefore maps
+    to env ``OPENROUTER_API_KEY`` exactly, which is what external frameworks
+    (e.g. Hermes) expect.
+    """
+    sanitized = re.sub(r"[^A-Z0-9_]", "_", name.upper())
+    if sanitized and sanitized[0].isdigit():
+        sanitized = "_" + sanitized
+    return sanitized
+
 
 _TAOSMD_BEGIN = "<!-- taosmd:rules-begin -->"
 _TAOSMD_END = "<!-- taosmd:rules-end -->"
@@ -129,6 +149,11 @@ class DeployRequest:
     # Per §10.10: default 40 GiB rootfs quota. Overridable per-agent at
     # deploy time. None disables quota (unlimited, e.g. for dev/test).
     root_size_gib: int = 40
+    # Optional resolver for agent-granted secrets. When set, deploy_agent
+    # calls ``get_agent_secrets(name)`` and injects each granted secret into
+    # the container environment. Optional (None) so existing callers/tests
+    # are unaffected. Typed loosely to avoid a runtime import cycle.
+    secrets_store: "SecretsStore | None" = None
 
 
 async def deploy_agent(req: DeployRequest) -> dict:
@@ -259,6 +284,32 @@ async def deploy_agent(req: DeployRequest) -> dict:
         env["OPENAI_API_KEY"] = ""
     if "LITELLM_API_KEY" not in env:
         env["LITELLM_API_KEY"] = ""
+
+    # Agent-granted secrets — injected as env vars so frameworks pick them up
+    # at startup (e.g. OPENROUTER_API_KEY for Hermes). Each secret name is
+    # sanitized to a POSIX env identifier and injected with NO extra prefix.
+    # Collision safety: never overwrite a platform var the deployer already
+    # set (TAOS_*/LITELLM_*/OPENAI_*/bridge) — a user secret must not be able
+    # to clobber those. Secret VALUES are never logged.
+    if req.secrets_store is not None:
+        agent_secrets = await req.secrets_store.get_agent_secrets(req.name)
+        injected: list[str] = []
+        for secret in agent_secrets:
+            env_name = _secret_env_name(secret["name"])
+            if env_name in env:
+                logger.warning(
+                    "Deploy %s: secret %r maps to env %s which is already a "
+                    "platform variable — skipping to avoid clobbering it",
+                    req.name, secret["name"], env_name,
+                )
+                continue
+            env[env_name] = secret["value"]
+            injected.append(env_name)
+        if injected:
+            logger.info(
+                "Deploy %s: injected %d agent secret(s): %s",
+                req.name, len(injected), ", ".join(injected),
+            )
 
     # Pre-built base image fast-path — see tinyagentos/agent_image.py.
     # When the cached image is imported locally we launch from it and
