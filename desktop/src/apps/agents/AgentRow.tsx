@@ -48,15 +48,24 @@ function StatusIndicator({ status, paused }: { status: AgentStatus; paused?: boo
   );
 }
 
-/** The agent-identity tile: a colour-tinted rounded square holding the emoji. */
+/** The agent-identity tile: a glossy, colour-tinted rounded square holding the
+ *  emoji. The gradient + tinted border + inner highlight + soft glow give it the
+ *  Store's depth (the colour is the agent's own identity colour, not a theme
+ *  literal, so it carries per-agent meaning and reads in both themes). */
 function IdentityTile({ color, emoji, size = 36 }: { color: string; emoji: string; size?: number }) {
   return (
     <span
-      className="inline-flex items-center justify-center rounded-lg border border-shell-border shrink-0"
-      style={{ width: size, height: size, backgroundColor: `${color}22` }}
+      className="relative inline-flex items-center justify-center rounded-xl border shrink-0 overflow-hidden"
+      style={{
+        width: size,
+        height: size,
+        background: `linear-gradient(145deg, ${color}38, ${color}12)`,
+        borderColor: `${color}40`,
+        boxShadow: `inset 0 1px 0 0 ${color}33, 0 3px 10px -3px ${color}2b`,
+      }}
       aria-hidden="true"
     >
-      <span className="text-lg leading-none">{emoji}</span>
+      <span className="relative text-lg leading-none">{emoji}</span>
     </span>
   );
 }
