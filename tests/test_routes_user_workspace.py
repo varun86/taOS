@@ -154,6 +154,25 @@ class TestUserWorkspaceRoutes:
         assert "dup.txt" in names and "orig.txt" in names
 
     @pytest.mark.asyncio
+    async def test_copy_in_place_with_copy_suffix(self, client):
+        """Duplicating a file in the same directory under a "copy" name works.
+
+        The Files app picks a non-colliding "<base> copy<ext>" destination when
+        pasting into the source directory; the backend must accept that dst.
+        """
+        await client.post(
+            "/api/workspace/files/upload",
+            files={"file": ("note.txt", io.BytesIO(b"dup in place"), "text/plain")},
+        )
+        resp = await client.post(
+            "/api/workspace/copy", json={"src": "note.txt", "dst": "note copy.txt"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "copied"
+        names = [e["name"] for e in (await client.get("/api/workspace/files")).json()]
+        assert "note.txt" in names and "note copy.txt" in names
+
+    @pytest.mark.asyncio
     async def test_copy_directory_tree(self, client):
         """Copying a directory copies its contents recursively."""
         await client.post("/api/workspace/mkdir", json={"path": "srcdir"})

@@ -232,24 +232,16 @@ function workspaceDeleteUrl(location: "workspace" | string, path: string): strin
 }
 
 function workspaceCopyUrl(location: "workspace" | string): string | null {
+  // Only the user workspace exposes a copy endpoint on the backend. Agent /
+  // project / shared-folder locations do not, so copy/cut/paste stays disabled
+  // there to avoid runtime 404s.
   if (location === "workspace") return `/api/workspace/copy`;
-  if (isAgentLocation(location)) {
-    return `/api/agents/${encodeURIComponent(agentSlug(location))}/workspace/copy`;
-  }
-  if (isProjectLocation(location)) {
-    return `/api/projects/${encodeURIComponent(projectSlug(location))}/copy`;
-  }
   return null;
 }
 
 function workspaceRenameUrl(location: "workspace" | string): string | null {
+  // Only the user workspace exposes a rename endpoint on the backend.
   if (location === "workspace") return `/api/workspace/rename`;
-  if (isAgentLocation(location)) {
-    return `/api/agents/${encodeURIComponent(agentSlug(location))}/workspace/rename`;
-  }
-  if (isProjectLocation(location)) {
-    return `/api/projects/${encodeURIComponent(projectSlug(location))}/rename`;
-  }
   return null;
 }
 
@@ -262,6 +254,28 @@ function workspaceStatsUrl(location: "workspace" | string): string | null {
     return `/api/projects/${encodeURIComponent(projectSlug(location))}/stats`;
   }
   return null;
+}
+
+// Split a file name into its base and extension. Directories (and dotfiles
+// with no extension) keep the whole name as the base so the " copy" suffix
+// lands before any real extension.
+function splitNameExt(name: string): { base: string; ext: string } {
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return { base: name, ext: "" };
+  return { base: name.slice(0, dot), ext: name.slice(dot) };
+}
+
+// Pick a name that does not collide with anything already in the listing.
+// Produces "foo copy.txt", then "foo copy 2.txt", "foo copy 3.txt", ...
+function nextCopyName(name: string, taken: Set<string>): string {
+  const { base, ext } = splitNameExt(name);
+  let candidate = `${base} copy${ext}`;
+  let n = 2;
+  while (taken.has(candidate)) {
+    candidate = `${base} copy ${n}${ext}`;
+    n += 1;
+  }
+  return candidate;
 }
 
 function getFileIcon(name: string, isDir: boolean) {
@@ -722,9 +736,25 @@ export function FilesApp({
     if (!clipboard) return;
     // Cross-location paste is not supported in v1.
     if (clipboard.location !== location) return;
-    const dst = currentPath ? `${currentPath}/${clipboard.name}` : clipboard.name;
     const url = clipboard.mode === "copy" ? workspaceCopyUrl(location) : workspaceRenameUrl(location);
     if (!url) return;
+
+    let name = clipboard.name;
+    let dst = currentPath ? `${currentPath}/${name}` : name;
+
+    if (dst === clipboard.path) {
+      // Pasting into the same directory the item came from.
+      if (clipboard.mode === "cut") {
+        // Moving onto itself is a no-op.
+        setClipboard(null);
+        return;
+      }
+      // Copy: duplicate in place under a non-colliding name.
+      const taken = new Set(files.map((f) => f.name));
+      name = nextCopyName(clipboard.name, taken);
+      dst = currentPath ? `${currentPath}/${name}` : name;
+    }
+
     try {
       await apiFetch(url, {
         method: "POST",
@@ -736,7 +766,7 @@ export function FilesApp({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Paste failed");
     }
-  }, [clipboard, currentPath, fetchFiles, location]);
+  }, [clipboard, currentPath, fetchFiles, files, location]);
 
   /* ---- Drag and drop ---- */
   const onDragEnter = useCallback((e: React.DragEvent) => {

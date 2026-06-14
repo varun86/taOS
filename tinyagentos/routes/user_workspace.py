@@ -261,10 +261,11 @@ async def api_copy(request: Request, body: CopyRequest):
         return JSONResponse({"error": "Target already exists"}, status_code=409)
 
     dst.parent.mkdir(parents=True, exist_ok=True)
+    # Run the blocking copy off the event loop so large trees do not stall it.
     if src.is_dir():
-        shutil.copytree(src, dst)
+        await asyncio.to_thread(shutil.copytree, src, dst)
     else:
-        shutil.copy2(src, dst)
+        await asyncio.to_thread(shutil.copy2, src, dst)
     return {"path": str(dst.relative_to(workspace)), "status": "copied"}
 
 
