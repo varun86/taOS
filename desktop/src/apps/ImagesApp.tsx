@@ -173,7 +173,11 @@ export function ImagesApp({ windowId: _windowId }: { windowId: string }) {
   /* ----------------------------- generate ------------------------ */
 
   const runGenerate = useCallback(
-    async (overrideSeed?: number, overridePrompt?: string) => {
+    async (
+      overrideSeed?: number,
+      overridePrompt?: string,
+      overrides?: { size?: number; steps?: number; guidance?: number },
+    ) => {
       const usePrompt = (overridePrompt ?? prompt).trim();
       if (!usePrompt) return;
       if (!selectedVariant || !selectedVariant.downloaded) {
@@ -193,10 +197,10 @@ export function ImagesApp({ windowId: _windowId }: { windowId: string }) {
         prompt: styledPrompt,
         model: selectedModelId,
         variant: selectedVariantId,
-        size: `${size}x${size}`,
-        steps,
+        size: `${overrides?.size ?? size}x${overrides?.size ?? size}`,
+        steps: overrides?.steps ?? steps,
         seed: effectiveSeed,
-        guidance_scale: guidance || 7.5,
+        guidance_scale: (overrides?.guidance ?? guidance) || 7.5,
       };
 
       try {
@@ -277,7 +281,13 @@ export function ImagesApp({ windowId: _windowId }: { windowId: string }) {
       if (img.guidance) setGuidance(img.guidance);
       setPrompt(img.prompt);
       setView("create");
-      void runGenerate(randomSeed(), img.prompt);
+      // Pass params explicitly: the setState calls above update the controls
+      // for next time, but won't be visible to runGenerate this tick.
+      void runGenerate(randomSeed(), img.prompt, {
+        size: typeof img.size === "number" ? img.size : undefined,
+        steps: img.steps || undefined,
+        guidance: img.guidance || undefined,
+      });
     },
     [runGenerate],
   );
