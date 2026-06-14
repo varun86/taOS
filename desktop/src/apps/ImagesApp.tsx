@@ -415,7 +415,19 @@ export function ImagesApp({ windowId: _windowId }: { windowId: string }) {
           )}
 
           {view === "edit" && (
-            <EditView image={editImage} onApplyAdjust={applyAdjust} />
+            <EditView
+              image={editImage}
+              onApplyAdjust={applyAdjust}
+              onEdited={async ({ url, image_ref }) => {
+                // Refresh the library and re-select the new result for
+                // further editing.
+                await fetchImages();
+                setEditImage((cur) =>
+                  cur ? { ...cur, id: image_ref, url } : cur,
+                );
+                setLibrarySelectedId(image_ref);
+              }}
+            />
           )}
         </div>
       </div>
