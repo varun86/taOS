@@ -133,3 +133,68 @@ async def execute_canvas_add_image(args: dict, request: Request) -> dict:
         author_id=user_id,
     )
     return {"ok": True, "element_id": el["id"], "file_id": file_id}
+
+
+async def execute_export_storybook(args: dict, request: Request) -> dict:
+    """Render a project's pages + generated illustrations into a storybook PDF
+    saved under the project's files/exports, downloadable from the Files app.
+
+    args: project_id, title, pages=[{text, image_ref}], optional cover_image_ref,
+    author. image_ref is a filename returned by generate_image (workspace file).
+    """
+    project_id = (args or {}).get("project_id")
+    title = (args or {}).get("title")
+    pages_in = (args or {}).get("pages")
+    if not isinstance(project_id, str) or not project_id:
+        return {"error": "export_storybook requires a 'project_id' string"}
+    if not isinstance(title, str) or not title:
+        return {"error": "export_storybook requires a 'title' string"}
+    if not isinstance(pages_in, list) or not pages_in:
+        return {"error": "export_storybook requires a non-empty 'pages' list of {text, image_ref}"}
+    user_id = _user_id(request)
+    if not user_id:
+        return {"error": "no authenticated user"}
+    project, err = await _owned_project(request, project_id, user_id)
+    if err:
+        return err
+    slug = project.get("slug") or project_id
+    if slug != _slugify(slug):
+        return {"error": f"unsafe project slug: {slug!r}"}
+
+    gen_dir = _data_dir(request) / "workspace" / "images" / "generated"
+
+    def _resolve(ref) -> Path | None:
+        if not isinstance(ref, str) or not ref:
+            return None
+        p = gen_dir / Path(ref).name  # .name strips any path part
+        return p if p.is_file() else None
+
+    pages = [
+        {"text": str(pg.get("text", "")), "image": _resolve(pg.get("image_ref"))}
+        for pg in pages_in
+        if isinstance(pg, dict)
+    ]
+    if not pages:
+        return {"error": "no valid pages (each needs at least a 'text' string)"}
+
+    projects_root = Path(request.app.state.projects_root).resolve()
+    out_dir = (projects_root / slug / "files" / "exports").resolve()
+    if not out_dir.is_relative_to(projects_root):
+        return {"error": "resolved export path escapes projects_root"}
+    out = out_dir / f"{slug}.pdf"
+
+    from tinyagentos.projects.storybook import render_storybook_pdf
+
+    render_storybook_pdf(
+        title=title,
+        pages=pages,
+        out_path=out,
+        cover_image=_resolve((args or {}).get("cover_image_ref")),
+        author=(args or {}).get("author") or None,
+    )
+    return {
+        "ok": True,
+        "file": f"exports/{out.name}",
+        "url": f"/api/projects/{slug}/files/exports/{out.name}",
+        "pages": len(pages),
+    }

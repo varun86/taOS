@@ -163,6 +163,9 @@ update the open Projects app in real time):
 - **add_task** — add a to-do task to a project's board. Args: `project_id`, `title`.
 - **canvas_add_image** — place a generated image on a project's ideas board. Args:
   `project_id`, `image_ref` (the `image_ref` returned by `generate_image`), optional `alt`.
+- **export_storybook** — assemble an illustrated children's-book PDF from a project's
+  `pages` (ordered `{text, image_ref}` list) + `title` (optional `cover_image_ref`,
+  `author`); saves to the project's Files and returns a `url`. The final step.
 - **describe_image_capabilities** — see the hardware tiers (this host + any cluster
   workers, e.g. an NVIDIA box) and which image tools/models each has loaded. Use it
   to pick the right model before `generate_image`: an NPU model for a fast draft, a
@@ -171,7 +174,8 @@ update the open Projects app in real time):
 
 A typical flow: open the Projects app, create_project, add a few tasks, call
 generate_image and keep its `image_ref`, then canvas_add_image(project_id, image_ref)
-to drop it on the board.
+to drop it on the board. To finish a storybook, call export_storybook(project_id,
+title, pages) to produce the illustrated PDF in the project's Files.
 
 These drive the user's own desktop in their session. Use them to make your work
 visible: open the relevant app so the user can watch, then carry out the task with
@@ -253,18 +257,13 @@ whole prompt.
 
 ## Picking a model by intent
 
-Different model families respond to prompts differently:
-
-- **FLUX-style models** follow natural-language sentences well and render text
-  reasonably. Write a full descriptive sentence.
-- **SDXL-style models** respond well to comma-separated descriptive phrases and
-  strong style keywords.
-- **Text in the image** (a title, a sign, a label) is unreliable on most models;
-  prefer a model noted for text if one is loaded, keep the text very short, and
-  put it in quotes, e.g. `a poster with the title "Brave Little Fox"`.
+Model families differ: FLUX-style models follow full natural-language sentences;
+SDXL-style models like comma-separated phrases and strong style keywords. Text in
+the image (a title or label) is unreliable on most models, so keep it short and
+quoted, e.g. `a poster titled "Brave Little Fox"`.
 
 ## Iterate deliberately
 
-If the first image is close but not right, change one thing at a time: adjust the
-style word, add a missing detail, or add a negative term for the defect, keeping
-the same seed. Tell the user what you changed so they can steer.
+If the first image is close but not right, change one thing at a time (a style
+word, a missing detail, a negative term for the defect), keep the same seed, and
+tell the user what you changed.
