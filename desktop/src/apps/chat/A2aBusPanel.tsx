@@ -278,10 +278,9 @@ export function A2aBusMessageView({ channel }: { channel: string }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 mb-0.5">
-                    <span className="text-[13.5px] font-bold tracking-tight text-shell-text truncate">
+                    <span className="text-[13.5px] font-bold tracking-tight text-accent-strong truncate">
                       {m.from}
                     </span>
-                    <span className="text-[10.5px] text-accent-strong font-semibold shrink-0">@{m.from}</span>
                     <span className="text-[10.5px] text-shell-text-tertiary tabular-nums shrink-0">
                       {busRelativeTime(m.ts, nowMs)}
                     </span>
