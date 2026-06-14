@@ -85,6 +85,35 @@ class TestDeploySecretsInjection:
         assert env["LITELLM_API_KEY"] != "evil-override"
 
     @pytest.mark.asyncio
+    async def test_secret_to_secret_collision_keeps_first_and_warns(self, tmp_path, caplog):
+        # "my-token" and "my_token" both sanitize to MY_TOKEN (a non-platform
+        # env name). The deterministic winner is the name that sorts first
+        # ("my-token"); the other is skipped rather than silently overwriting
+        # the injected value.
+        assert _secret_env_name("my-token") == _secret_env_name("my_token") == "MY_TOKEN"
+        store = FakeSecretsStore([
+            {"name": "my_token", "value": "second"},
+            {"name": "my-token", "value": "first"},
+        ])
+        req = _req(data_dir=tmp_path, secrets_store=store)
+        with caplog.at_level("WARNING"):
+            env = await _run_deploy(req, tmp_path)
+
+        # Deterministic first winner kept; colliding value never applied.
+        assert env["MY_TOKEN"] == "first"
+        assert env["MY_TOKEN"] != "second"
+
+        # Warning names both secrets and the env var; never logs a value.
+        collision_warnings = [
+            r.getMessage() for r in caplog.records
+            if r.levelname == "WARNING" and "MY_TOKEN" in r.getMessage()
+        ]
+        assert collision_warnings, "expected a collision warning"
+        msg = collision_warnings[-1]
+        assert "my-token" in msg and "my_token" in msg
+        assert "first" not in msg and "second" not in msg
+
+    @pytest.mark.asyncio
     async def test_no_secrets_store_behaves_as_before(self, tmp_path):
         req = _req(data_dir=tmp_path)  # secrets_store defaults to None
         env = await _run_deploy(req, tmp_path)

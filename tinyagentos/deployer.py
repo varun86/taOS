@@ -294,16 +294,35 @@ async def deploy_agent(req: DeployRequest) -> dict:
     if req.secrets_store is not None:
         agent_secrets = await req.secrets_store.get_agent_secrets(req.name)
         injected: list[str] = []
-        for secret in agent_secrets:
+        # Snapshot the platform var names set above so injecting a secret does
+        # not make a later secret look like it collides with a platform var.
+        platform_vars = set(env)
+        # Track which env name each granted secret claimed so two distinct
+        # secret names that sanitize to the same identifier (e.g. "api-key"
+        # and "api_key" both map to API_KEY) do not silently overwrite each
+        # other. Sort by secret name for a deterministic winner: the first
+        # name keeps the env var, the colliding one is skipped with a warning.
+        claimed_by: dict[str, str] = {}
+        for secret in sorted(agent_secrets, key=lambda s: s["name"]):
             env_name = _secret_env_name(secret["name"])
-            if env_name in env:
+            if env_name in platform_vars:
                 logger.warning(
                     "Deploy %s: secret %r maps to env %s which is already a "
                     "platform variable — skipping to avoid clobbering it",
                     req.name, secret["name"], env_name,
                 )
                 continue
+            if env_name in claimed_by:
+                logger.warning(
+                    "Deploy %s: secrets %r and %r both map to env %s; "
+                    "keeping %r and skipping %r (rename one to resolve the "
+                    "collision)",
+                    req.name, claimed_by[env_name], secret["name"], env_name,
+                    claimed_by[env_name], secret["name"],
+                )
+                continue
             env[env_name] = secret["value"]
+            claimed_by[env_name] = secret["name"]
             injected.append(env_name)
         if injected:
             logger.info(
