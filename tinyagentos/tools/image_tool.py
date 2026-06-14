@@ -10,7 +10,15 @@ IMAGE_GENERATION_TOOL = {
         "properties": {
             "prompt": {
                 "type": "string",
-                "description": "Text description of the image to generate",
+                "description": (
+                    "Text description of the image. Lead with the subject, then "
+                    "layer descriptors, setting, composition, and an explicit style "
+                    "(e.g. 'children's book watercolour', 'flat vector', "
+                    "'photorealistic'). Be specific, not long; front-load what "
+                    "matters; keep to one clear scene. Example: 'a friendly cartoon "
+                    "fox reading under a tree, autumn leaves, warm soft light, "
+                    "watercolour children's book illustration, centred'."
+                ),
             },
             "size": {
                 "type": "string",
