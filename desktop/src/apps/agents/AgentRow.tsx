@@ -405,7 +405,7 @@ export function AgentRow({
       {/* Actions: fixed-width + right-aligned so a protected agent's 3 icons
           reserve the same column as a deployed agent's 4 (no column drift).
           Calm at rest, revealed on card hover / keyboard focus. */}
-      <div className="flex items-center justify-end gap-1 border-l border-shell-border pl-2 shrink-0 w-[152px] opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+      <div className="flex items-center justify-end gap-1 border-l border-shell-border pl-2 shrink-0 w-[152px] opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         {leftActions}
         {actionButtons}
       </div>
