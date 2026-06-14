@@ -65,16 +65,35 @@ export type EditTool =
   | "upscale"
   | "vary";
 
-/** The generative tools have no backend yet and are gated with a
- *  "Coming soon" affordance. "adjust" is real (CSS-filter based). */
+/** Tools with no dedicated backend, gated with a "Coming soon" affordance.
+ *  erase/inpaint/removebg/extend/upscale are now wired to the editing
+ *  backend (IOPaint); "adjust" is client-side (CSS filters). Only "vary"
+ *  remains staged — it has no dedicated backend. */
 export const STAGED_TOOLS: ReadonlySet<EditTool> = new Set<EditTool>([
-  "erase",
-  "inpaint",
-  "removebg",
-  "extend",
-  "upscale",
   "vary",
 ]);
+
+/** Which editing capability each tool needs a healthy backend for.
+ *  Tools absent from this map (adjust, vary) need no backend. */
+export const TOOL_CAPABILITY: Partial<Record<EditTool, EditCapability>> = {
+  erase: "image_editing",
+  inpaint: "image_editing",
+  extend: "image_editing",
+  removebg: "background_removal",
+  upscale: "upscale",
+};
+
+/** Capability gate returned by GET /api/images/edit/capabilities. */
+export type EditCapability =
+  | "image_editing"
+  | "background_removal"
+  | "upscale";
+
+export interface EditCapabilities {
+  image_editing: boolean;
+  background_removal: boolean;
+  upscale: boolean;
+}
 
 export const SIZE_OPTIONS = [256, 512, 768, 1024] as const;
 

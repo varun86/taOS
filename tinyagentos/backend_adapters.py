@@ -71,6 +71,41 @@ class StableDiffusionCppAdapter(BackendAdapter):
         return {"status": "ok", "response_ms": elapsed_ms, "models": models}
 
 
+class IOPaintAdapter(BackendAdapter):
+    """Adapter for IOPaint (https://github.com/Sanster/IOPaint), the
+    lama-cleaner successor used as the self-hosted image-editing backend.
+
+    IOPaint has no /health route; GET /api/v1/server-config responds once the
+    server is up and reports the enabled plugins. There is no "model list" in
+    the catalog sense (the LaMa erase model + plugins are server-fixed), so we
+    surface the loaded model name as a single entry for visibility.
+    """
+
+    async def health(self, client: httpx.AsyncClient, url: str) -> dict:
+        start = time.monotonic()
+        base = url.rstrip("/")
+        try:
+            resp = await client.get(f"{base}/api/v1/server-config", timeout=10)
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            resp.raise_for_status()
+        except Exception:
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            return {"status": "error", "response_ms": elapsed_ms, "models": []}
+
+        models = []
+        try:
+            mr = await client.get(f"{base}/api/v1/model", timeout=10)
+            if mr.status_code == 200:
+                data = mr.json()
+                name = data.get("name") if isinstance(data, dict) else None
+                if name:
+                    models = [{"name": name, "size_mb": 0}]
+        except Exception:
+            pass
+
+        return {"status": "ok", "response_ms": elapsed_ms, "models": models}
+
+
 class OpenAICompatAdapter(BackendAdapter):
     """Adapter for OpenAI-compatible APIs (llama.cpp, vLLM).
 
@@ -156,6 +191,10 @@ _ADAPTERS: dict[str, BackendAdapter] = {
     "kilocode": CloudAPIAdapter(),
     "openai-compatible": CloudAPIAdapter(),
     "sd-cpp": StableDiffusionCppAdapter(),
+    "iopaint": IOPaintAdapter(),
+    # flux-fill is served behind an A1111-compatible image server in practice;
+    # reuse the sd-cpp probe shape (it answers /sdapi/v1/options).
+    "flux-fill": StableDiffusionCppAdapter(),
 }
 
 

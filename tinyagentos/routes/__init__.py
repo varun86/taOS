@@ -60,6 +60,9 @@ def register_all_routers(app):
     from tinyagentos.routes.images import router as images_router
     app.include_router(images_router)
 
+    from tinyagentos.routes.images_edit import router as images_edit_router
+    app.include_router(images_edit_router)
+
     from tinyagentos.routes.scheduler import router as scheduler_router
     app.include_router(scheduler_router)
 
