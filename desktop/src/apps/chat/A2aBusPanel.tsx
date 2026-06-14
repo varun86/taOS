@@ -35,6 +35,14 @@ export interface BusMessage {
   reply_to: number | null;
 }
 
+/*
+ * Kept local: the existing relative-time helpers in chat/ (AllThreadsList,
+ * SearchPanel) and lib/cluster.ts are unexported copies with incompatible
+ * shapes -- they call Date.now() internally and return the verbose "Xm ago"
+ * form. This view needs a passed-in nowMs (a 60s-ticking state value powers the
+ * re-render) and the compact "Xm" form for the tabular timestamp column, so
+ * there is no reusable helper to fold into here.
+ */
 function busRelativeTime(ts: number | undefined, nowMs: number): string {
   if (!ts) return "";
   const ms = ts < 1e12 ? ts * 1000 : ts;
@@ -196,11 +204,24 @@ export function A2aBusMessageView({ channel }: { channel: string }) {
     return () => clearInterval(id);
   }, []);
 
-  // Keep the newest message in view (chat log: newest at bottom).
+  // Stick to the bottom (newest message) only when the user is already there,
+  // so an 8s poll never yanks them away from history they scrolled up to read.
+  const nearBottomRef = useRef(true);
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
+
+  // Reset stickiness on channel change so a fresh load pins to the bottom.
+  useEffect(() => {
+    nearBottomRef.current = true;
+  }, [channel]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
 
   return (
     <div className="relative flex-1 flex flex-col min-w-0 h-full">
@@ -214,7 +235,7 @@ export function A2aBusMessageView({ channel }: { channel: string }) {
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3">
         {!loaded ? (
           <div className="h-full flex items-center justify-center text-white/20 text-sm">
             Loading…

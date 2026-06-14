@@ -801,13 +801,17 @@ export function MessagesApp({
     writeLastChannel(scope.projectId, selectedChannel);
   }, [scope?.projectId, selectedChannel, channels]);
 
-  /* ---- bus / project-channel selection are mutually exclusive ---- */
+  /* ---- bus / project-channel selection are mutually exclusive ----
+   * Modeled as render precedence: while busSelected is set the bus viewer
+   * wins, otherwise the project channel shows. Picking a project channel
+   * clears busSelected (project view takes over); picking a bus channel keeps
+   * selectedChannel intact so returning from the bus restores it.
+   */
   useEffect(() => {
     if (selectedChannel) setBusSelected(null);
   }, [selectedChannel]);
 
   const selectBusChannel = useCallback((channel: string) => {
-    setSelectedChannel(null);
     setBusSelected(channel);
   }, []);
 
