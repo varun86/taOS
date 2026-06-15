@@ -1,6 +1,7 @@
 """Tests for the tier-aware image-editing routes (routes/images_edit.py)."""
 import base64
 import io
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -13,6 +14,7 @@ from tinyagentos.routes.images_edit import (
     EditRequest,
     FluxFillClient,
     _get_edit_backend,
+    _require_image,
     edit_image,
 )
 
@@ -222,3 +224,155 @@ async def test_edit_image_quality_falls_back_to_iopaint(tmp_path):
 
     assert route.called
     assert (images_dir / result["filename"]).read_bytes() == result_png
+
+
+# --------------------------------------------------------------------------- #
+#  IOPaint hardening: non-image 200, data-URI mask strip, backend surfacing    #
+# --------------------------------------------------------------------------- #
+def _edit_request_with_workspace(tmp_path, backends):
+    """Build a request whose workspace holds a single src.png + return its dir."""
+    images_dir = tmp_path / "workspace" / "images" / "generated"
+    images_dir.mkdir(parents=True)
+    (images_dir / "src.png").write_bytes(base64.b64decode(_png_b64()))
+    catalog = _FakeCatalog({"image-editing": list(backends)})
+    state = SimpleNamespace(backend_catalog=catalog, config_path=str(tmp_path / "config.json"))
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+    return request, images_dir
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_iopaint_non_image_200_is_an_error_not_a_saved_png(tmp_path):
+    """IOPaint answering 200 with a JSON error body must NOT be saved as a png;
+    it routes to an error response so the user doesn't get a fake success."""
+    respx.post("http://io/api/v1/inpaint").mock(
+        return_value=httpx.Response(
+            200,
+            json={"errors": "model not loaded"},
+            headers={"content-type": "application/json"},
+        )
+    )
+    request, images_dir = _edit_request_with_workspace(tmp_path, [_backend("io", "iopaint")])
+    body = EditRequest(image_ref="src.png", op="inpaint", mask=_png_b64(), tier="fast")
+    result = await edit_image(request, body)
+
+    # An error JSONResponse, not a saved-png success dict.
+    from fastapi.responses import JSONResponse as _JR
+
+    assert isinstance(result, _JR)
+    # No new png was written (only the source remains).
+    pngs = sorted(p.name for p in images_dir.glob("*.png"))
+    assert pngs == ["src.png"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_iopaint_strips_data_uri_mask(tmp_path):
+    """A data-URI mask is stripped to bare base64 before hitting IOPaint
+    (previously only FluxFill stripped it, so a data-URI corrupted IOPaint)."""
+    result_png = base64.b64decode(_png_b64(color=(4, 5, 6)))
+    route = respx.post("http://io/api/v1/inpaint").mock(
+        return_value=httpx.Response(200, content=result_png, headers={"content-type": "image/png"})
+    )
+    request, _ = _edit_request_with_workspace(tmp_path, [_backend("io", "iopaint")])
+
+    bare = _png_b64(color=(0, 0, 0))
+    data_uri_mask = f"data:image/png;base64,{bare}"
+    body = EditRequest(image_ref="src.png", op="inpaint", mask=data_uri_mask, tier="fast")
+    await edit_image(request, body)
+
+    import json as _json
+
+    payload = _json.loads(route.calls.last.request.content)
+    assert payload["mask"] == bare  # prefix dropped
+    assert not payload["mask"].startswith("data:")
+    assert not payload["image"].startswith("data:")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_edit_response_surfaces_backend_and_degraded(tmp_path):
+    """The edit response carries the backend type that actually ran, and flags
+    a silent tier downgrade (quality requested, iopaint fell back -> degraded)."""
+    result_png = base64.b64decode(_png_b64(color=(1, 1, 1)))
+    respx.post("http://io/api/v1/inpaint").mock(
+        return_value=httpx.Response(200, content=result_png, headers={"content-type": "image/png"})
+    )
+    request, _ = _edit_request_with_workspace(tmp_path, [_backend("io", "iopaint")])
+
+    body = EditRequest(image_ref="src.png", op="inpaint", mask=_png_b64(), tier="quality")
+    result = await edit_image(request, body)
+
+    assert result["backend"] == "iopaint"
+    assert result["degraded"] is True  # quality asked for flux-fill, got iopaint
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_edit_response_not_degraded_when_tier_satisfied(tmp_path):
+    """When the chosen backend matches the tier's primary, degraded is False."""
+    result_png = base64.b64decode(_png_b64(color=(2, 2, 2)))
+    respx.post("http://io/api/v1/inpaint").mock(
+        return_value=httpx.Response(200, content=result_png, headers={"content-type": "image/png"})
+    )
+    request, _ = _edit_request_with_workspace(tmp_path, [_backend("io", "iopaint")])
+
+    body = EditRequest(image_ref="src.png", op="inpaint", mask=_png_b64(), tier="fast")
+    result = await edit_image(request, body)
+
+    assert result["backend"] == "iopaint"
+    assert result["degraded"] is False  # fast tier prefers iopaint
+
+
+def test_require_image_accepts_image_magic_without_image_content_type():
+    """A valid image whose content-type is not image/* (e.g. octet-stream) is
+    accepted by its magic signature rather than rejected as an error."""
+    png_bytes = base64.b64decode(_png_b64())
+    resp = httpx.Response(
+        200, content=png_bytes, headers={"content-type": "application/octet-stream"}
+    )
+    assert _require_image(resp) == png_bytes
+
+
+def test_require_image_rejects_json_text_200():
+    """A JSON/text 200 with no image magic is still rejected (IOPaint error)."""
+    resp = httpx.Response(
+        200, json={"errors": "model not loaded"}, headers={"content-type": "application/json"}
+    )
+    with pytest.raises(RuntimeError, match="non-image response"):
+        _require_image(resp)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_save_oserror_maps_to_clean_error(tmp_path):
+    """A disk write failure in _save_result surfaces as a 'Could not save result'
+    error, distinct from a backend-unreachable response (not a bare 500)."""
+    result_png = base64.b64decode(_png_b64(color=(3, 3, 3)))
+    respx.post("http://io/api/v1/inpaint").mock(
+        return_value=httpx.Response(200, content=result_png, headers={"content-type": "image/png"})
+    )
+    request, images_dir = _edit_request_with_workspace(tmp_path, [_backend("io", "iopaint")])
+
+    import json as _json
+
+    # Force the result write to fail with OSError.
+    real_write_bytes = Path.write_bytes
+
+    def _boom(self, data):
+        if self.parent == images_dir and self.suffix == ".png" and self.name != "src.png":
+            raise OSError(28, "No space left on device")
+        return real_write_bytes(self, data)
+
+    import unittest.mock as mock
+
+    body = EditRequest(image_ref="src.png", op="inpaint", mask=_png_b64(), tier="fast")
+    with mock.patch.object(Path, "write_bytes", _boom):
+        result = await edit_image(request, body)
+
+    from fastapi.responses import JSONResponse as _JR
+
+    assert isinstance(result, _JR)
+    assert result.status_code == 500
+    payload = _json.loads(bytes(result.body))
+    assert "Could not save result" in payload["error"]

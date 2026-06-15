@@ -208,6 +208,28 @@ class TestUserWorkspaceRoutes:
         resp = await client.post("/api/workspace/copy", json={"src": "../../etc", "dst": "stolen.txt"})
         assert resp.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_copy_directory_into_itself_returns_400(self, client):
+        """Copying a directory into a path nested inside itself returns a clean
+        400, not a 500 from shutil.copytree."""
+        await client.post("/api/workspace/mkdir", json={"path": "selfdir"})
+        resp = await client.post(
+            "/api/workspace/copy", json={"src": "selfdir", "dst": "selfdir/nested"}
+        )
+        assert resp.status_code == 400
+        assert "itself" in resp.json()["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_move_directory_into_itself_returns_400(self, client):
+        """Renaming/moving a directory into a path nested inside itself returns a
+        clean 400, not a 500."""
+        await client.post("/api/workspace/mkdir", json={"path": "movedir"})
+        resp = await client.post(
+            "/api/workspace/rename", json={"src": "movedir", "dst": "movedir/inner"}
+        )
+        assert resp.status_code == 400
+        assert "itself" in resp.json()["error"].lower()
+
     def test_dir_signature_changes_on_modification(self):
         """Signature helper drives the SSE watch change-detection loop.
         Unit-tested directly — the full SSE stream endpoint is tested
