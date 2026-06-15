@@ -445,10 +445,13 @@ function FileRow({
 export function FilesApp({
   windowId: _windowId,
   rootPath,
-}: { windowId: string; rootPath?: string }) {
+  path: initialPath,
+}: { windowId: string; rootPath?: string; path?: string }) {
   const isMobile = useIsMobile();
 
-  const [currentPath, setCurrentPath] = useState("");
+  // `path` opens straight into a sub-directory (e.g. double-clicking a Desktop
+  // folder); the load effect fetches currentPath on mount.
+  const [currentPath, setCurrentPath] = useState(initialPath ?? "");
   const [location, setLocation] = useState<"workspace" | string>(() => rootPath ?? "workspace");
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [sharedFolders, setSharedFolders] = useState<SharedFolder[]>([]);
@@ -462,8 +465,11 @@ export function FilesApp({
   const [uploading, setUploading] = useState(false);
   const [sharedExpanded, setSharedExpanded] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  // null = showing sidebar (list pane); non-null = showing file browser (detail pane)
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(rootPath ?? null);
+  // null = showing sidebar (list pane); non-null = showing file browser (detail pane).
+  // An initial path (or rootPath) opens straight into the browser pane.
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(
+    rootPath ?? (initialPath != null ? "workspace" : null),
+  );
 
   // Clipboard for cut/copy/paste. Cross-location paste is out of scope for v1.
   const [clipboard, setClipboard] = useState<

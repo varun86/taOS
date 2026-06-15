@@ -105,7 +105,7 @@ export function DesktopIcons() {
 
   const open = useCallback(
     (f: FileEntry) => {
-      if (f.is_dir) openWindow("files", { w: 780, h: 540 }, { location: "workspace", path: f.path });
+      if (f.is_dir) openWindow("files", { w: 780, h: 540 }, { path: f.path });
       else window.open(fileUrl(f.path), "_blank");
     },
     [openWindow],
