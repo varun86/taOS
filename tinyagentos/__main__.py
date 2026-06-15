@@ -11,6 +11,11 @@ from pathlib import Path
 
 from tinyagentos.app import PROJECT_DIR, create_app, load_config
 
+# Bound uvicorn's graceful-shutdown wait for open connections on SIGTERM.
+# Long-lived SSE streams + cluster heartbeats would otherwise keep uvicorn
+# waiting indefinitely, hanging the full 45s systemd stop timeout each restart.
+GRACEFUL_SHUTDOWN_SECS = 5
+
 
 def main() -> None:
     env_host = os.environ.get("TAOS_HOST")
@@ -61,7 +66,13 @@ def main() -> None:
 
         # backlog=128 — see issue #323. Keeps the kernel accept queue from
         # silently growing into the thousands if the event loop ever wedges.
-        uvicorn.run(app, host=host, port=port, backlog=128)
+        # timeout_graceful_shutdown — without it uvicorn waits indefinitely for
+        # long-lived connections (SSE streams, cluster heartbeats) to close on
+        # SIGTERM, so a restart hung the full 45s systemd stop timeout. Bound it
+        # so the lifespan shutdown actually runs and the process exits fast.
+        uvicorn.run(
+            app, host=host, port=port, backlog=128, timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECS
+        )
         return
 
     # Advertise the proxy port to the frontend (see proxy_config route) so it
@@ -99,8 +110,14 @@ def _serve_dual_port(app, *, host: str, port: int, proxy_port: int) -> None:
 
     proxy_app = create_browser_proxy_app(app.state)
 
-    main_config = uvicorn.Config(app, host=host, port=port, backlog=128)
-    proxy_config = uvicorn.Config(proxy_app, host=host, port=proxy_port, backlog=128)
+    # timeout_graceful_shutdown: bound the wait for open connections on SIGTERM
+    # (see the single-port path above) so neither server hangs the 45s stop.
+    main_config = uvicorn.Config(
+        app, host=host, port=port, backlog=128, timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECS
+    )
+    proxy_config = uvicorn.Config(
+        proxy_app, host=host, port=proxy_port, backlog=128, timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECS
+    )
     main_server = uvicorn.Server(main_config)
     proxy_server = uvicorn.Server(proxy_config)
 
