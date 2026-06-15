@@ -6,6 +6,7 @@ import {
   Settings,
   Paperclip,
   Camera,
+  MonitorUp,
   ExternalLink,
   Copy,
   Check,
@@ -18,6 +19,12 @@ import {
   uploadChatAttachment,
   type AttachmentRecord,
 } from "@/lib/taos-agent-api";
+import {
+  grantScreenCapture,
+  hasScreenCapture,
+  revokeScreenCapture,
+  SCREEN_CAPTURE_CHANGED_EVENT,
+} from "@/lib/screen-capture";
 import { useProcessStore } from "@/stores/process-store";
 
 export interface PendingAttachment {
@@ -339,6 +346,8 @@ export function TaosAssistantPanelInner({ embedded = false }: { embedded?: boole
         <div className="flex items-end gap-1 rounded-2xl border border-shell-border bg-shell-bg-deep px-2 py-1.5 transition-colors focus-within:border-accent/50">
           <AttachButton onClick={handleFileUpload} disabled={noModel || streaming} />
           <ScreenshotButton onClick={handleScreenshot} disabled={noModel || streaming} />
+          <ScreenCaptureGrantButton />
+
           <textarea
             ref={textareaRef}
             value={input}
@@ -461,6 +470,49 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
       className="grid place-items-center h-8 w-8 rounded-lg text-shell-text-tertiary hover:bg-shell-surface-hover hover:text-shell-text-secondary transition-colors shrink-0 disabled:opacity-40"
     >
       <Paperclip size={16} />
+    </button>
+  );
+}
+
+/**
+ * One-time screen-capture grant. getDisplayMedia needs a user gesture, so the
+ * user clicks this once; the stream then persists and agent screenshots
+ * (/api/desktop/screenshot) grab full-fidelity frames (incl. cross-origin
+ * iframes) with no further prompt. Click again to stop sharing.
+ */
+function ScreenCaptureGrantButton() {
+  const [granted, setGranted] = useState(hasScreenCapture());
+  // Stay in sync when the share ends from anywhere (native browser bar, another
+  // control), not just our own click.
+  useEffect(() => {
+    const sync = () => setGranted(hasScreenCapture());
+    window.addEventListener(SCREEN_CAPTURE_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(SCREEN_CAPTURE_CHANGED_EVENT, sync);
+  }, []);
+  const toggle = useCallback(async () => {
+    if (hasScreenCapture()) {
+      revokeScreenCapture();
+    } else {
+      await grantScreenCapture();
+    }
+  }, []);
+  return (
+    <button
+      onClick={toggle}
+      aria-label={granted ? "Stop agent screen capture" : "Allow agent screen capture"}
+      title={
+        granted
+          ? "Agent screen capture ON -- click to stop sharing"
+          : "Allow agents to capture full-fidelity screenshots of this screen"
+      }
+      className={[
+        "grid place-items-center h-8 w-8 rounded-lg transition-colors shrink-0",
+        granted
+          ? "text-accent hover:bg-shell-surface-hover"
+          : "text-shell-text-tertiary hover:bg-shell-surface-hover hover:text-shell-text-secondary",
+      ].join(" ")}
+    >
+      <MonitorUp size={16} />
     </button>
   );
 }
