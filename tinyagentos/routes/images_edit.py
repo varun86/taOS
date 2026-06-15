@@ -283,9 +283,19 @@ class FluxFillClient:
         else:
             mask_b64 = _strip_data_uri(mask_b64)
 
+        # A1111-compatible servers (sd.cpp sd-server) fall back to a default
+        # 512x512 size when width/height are omitted, which wrongly resizes any
+        # non-512 image. Pin them to the dimensions of the image actually sent in
+        # ``init_images`` (the padded canvas in the outpaint case).
+        src_w, src_h = Image.open(
+            io.BytesIO(base64.b64decode(_strip_data_uri(image_b64)))
+        ).size
+
         payload: dict = {
             "init_images": [image_b64],
             "mask": mask_b64,
+            "width": src_w,
+            "height": src_h,
             "prompt": prompt,
             "steps": steps,
             "cfg_scale": guidance,

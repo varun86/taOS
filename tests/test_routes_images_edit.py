@@ -107,7 +107,7 @@ async def test_flux_fill_inpaint_posts_a1111_img2img():
     )
 
     client = FluxFillClient("http://flux:7864")
-    out = await client.inpaint(_png_b64(), _png_b64(width=8, height=8, color=(0, 0, 0)), prompt="a cat")
+    out = await client.inpaint(_png_b64(width=37, height=53), _png_b64(width=37, height=53, color=(0, 0, 0)), prompt="a cat")
 
     assert route.called
     sent = route.calls.last.request
@@ -119,6 +119,9 @@ async def test_flux_fill_inpaint_posts_a1111_img2img():
     # init_images[0] and mask are valid base64 PNGs.
     assert Image.open(io.BytesIO(base64.b64decode(payload["init_images"][0]))).format == "PNG"
     assert Image.open(io.BytesIO(base64.b64decode(payload["mask"]))).format == "PNG"
+    # width/height are pinned to the source image so the server does not fall
+    # back to a default 512x512 size and wrongly resize the result.
+    assert (payload["width"], payload["height"]) == (37, 53)
     assert payload["prompt"] == "a cat"
     assert payload["cfg_scale"] == pytest.approx(30.0)
     # Returned bytes are the decoded result PNG.
@@ -145,6 +148,8 @@ async def test_flux_fill_outpaint_pads_canvas():
     mask = Image.open(io.BytesIO(base64.b64decode(payload["mask"])))
     assert padded.size[0] > 16 and padded.size[1] > 16
     assert mask.size == padded.size
+    # width/height match the padded canvas actually sent, not the 16x16 source.
+    assert (payload["width"], payload["height"]) == padded.size
     # The outpaint mask border is white (paint) and the centre is black (keep).
     assert mask.convert("L").getpixel((0, 0)) == 255
     assert mask.convert("L").getpixel((mask.size[0] // 2, mask.size[1] // 2)) == 0
