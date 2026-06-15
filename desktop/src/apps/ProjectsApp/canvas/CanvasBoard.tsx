@@ -36,9 +36,16 @@ export function CanvasBoard({ projectId, projectSlug }: CanvasBoardProps) {
   const cacheRef = useRef(createCanvasStore());
   const editorRef = useRef<Editor | null>(null);
 
-  // In tldraw v4, shapeUtils are passed to <Tldraw>, not createTLStore
+  // The store validates records against its schema, so the custom shape utils
+  // must be passed to createTLStore (not just to <Tldraw>, which only governs
+  // rendering). Without this, store.put rejects taos-* shape types with a
+  // ValidationError ("got taos-generic").
   const store = useMemo(
-    () => createTLStore({ defaultName: `canvas-${projectId}` }),
+    () =>
+      createTLStore({
+        shapeUtils: [...defaultShapeUtils, ...CUSTOM_SHAPE_UTILS],
+        defaultName: `canvas-${projectId}`,
+      }),
     [projectId],
   );
 

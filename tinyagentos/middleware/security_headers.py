@@ -13,7 +13,9 @@ _CSP = (
     "script-src 'self'; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: https:; "
-    "connect-src 'self' ws: wss:"
+    # data: lets the canvas (tldraw) load its bundled translation URIs
+    # (data:application/json), which are inline data, not a network fetch.
+    "connect-src 'self' ws: wss: data:"
 )
 
 
