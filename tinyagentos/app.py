@@ -1146,6 +1146,21 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await auth_requests_store.close()
         await cluster_pairing_store.close()
         await agent_registry_store.close()
+        await github_identities_store.close()
+        # Backstop: close any aiosqlite-backed store still open on app.state.
+        # An unclosed BaseStore leaves a NON-daemon connection worker thread
+        # alive, which blocks Python's threading._shutdown() until systemd
+        # SIGKILLs at the 45s stop timeout (this was the real restart-hang;
+        # github_identities was the omission). close() is idempotent, so this
+        # never double-closes and catches any future store we forget to list.
+        from tinyagentos.base_store import BaseStore as _BaseStore
+
+        for _name, _obj in list(vars(app.state).items()):
+            if isinstance(_obj, _BaseStore):
+                try:
+                    await _obj.close()
+                except Exception:
+                    logger.debug("shutdown: close failed for app.state.%s", _name, exc_info=True)
 
     app = FastAPI(title="TinyAgentOS", version="0.1.0", lifespan=lifespan)
 
