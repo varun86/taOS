@@ -3578,7 +3578,7 @@ wheels = [
 [[package]]
 name = "tinyagentos"
 version = "1.0.0b0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "argon2-cffi" },
