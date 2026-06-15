@@ -379,20 +379,40 @@ export function setWallpaperForActiveTheme(value: string) {
 }
 
 // Apply the right wallpaper to the live desktop when switching to a theme.
-// Symmetric so switching back from a theme that set its own wallpaper (e.g.
-// Indigo -> neural-live) doesn't leave the previous theme's wallpaper stuck:
-//   1. a wallpaper the user explicitly picked for the target theme wins, else
-//   2. the target theme's declared defaultWallpaperId, else
-//   3. the global default wallpaper (never the previous theme's).
-function applyThemeDefaultWallpaper(themeId: string, cfg: ThemeConfig) {
+//
+// This runs in two contexts with different correctness needs:
+//
+//   * Live switch (keepTheme): the user is actively changing themes, so it is
+//     safe and desirable to be symmetric -- switching away from a theme that
+//     set its own wallpaper (e.g. Indigo -> neural-live) back to Dark/Light
+//     must not leave neural-live stuck. Resolution order:
+//       1. a wallpaper the user explicitly picked for the target theme, else
+//       2. the target theme's declared defaultWallpaperId, else
+//       3. the global default wallpaper (never the previous theme's).
+//
+//   * Restore (restoreActiveTheme, on boot): the user's chosen wallpaper is
+//     persisted separately (PUT /api/desktop/settings) and restored by
+//     useSessionPersistence. The per-theme memory (wallpaperIdByTheme) is
+//     in-memory only and empty at boot, so a global-default fallback would race
+//     that restore and reset a custom wallpaper back to graphite. On restore we
+//     therefore only act on a positive reason -- the target theme's declared
+//     defaultWallpaperId -- and never force the global default, leaving the
+//     persisted wallpaper untouched.
+function applyThemeDefaultWallpaper(themeId: string, cfg: ThemeConfig, opts?: { restore?: boolean }) {
   const state = useThemeStore.getState();
   // Explicit user choice for this theme always wins.
   const remembered = state.wallpaperIdByTheme[themeId];
-  const target = remembered ?? cfg.defaultWallpaperId ?? DEFAULT_WP.id;
+  // On restore there is no in-memory memory to trust and the global default
+  // must never override the separately-persisted wallpaper, so the theme's own
+  // declared default is the only positive reason to change anything.
+  const target = opts?.restore
+    ? cfg.defaultWallpaperId
+    : (remembered ?? cfg.defaultWallpaperId ?? DEFAULT_WP.id);
+  if (!target) return; // no positive reason to change the wallpaper
   if (target === state.wallpaperId) return; // already showing it
   const wp = WALLPAPERS.find((w) => w.id === target);
   if (!wp) return;
-  if (remembered) {
+  if (target === remembered) {
     // Restoring the user's own pick: setWallpaper keeps the memory consistent.
     state.setWallpaper(target);
   } else {
@@ -448,7 +468,7 @@ export async function restoreActiveTheme(): Promise<void> {
         ...(cfg.wallpaper ? { [themeId]: cfg.wallpaper } : {}),
       },
     });
-    applyThemeDefaultWallpaper(themeId, cfg);
+    applyThemeDefaultWallpaper(themeId, cfg, { restore: true });
   } catch {
     // best-effort: ignore
   }

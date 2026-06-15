@@ -74,3 +74,46 @@ describe("wallpaper restore on theme switch", () => {
     expect(useThemeStore.getState().wallpaperId).toBe("ocean");
   });
 });
+
+describe("restoreActiveTheme does not clobber the persisted wallpaper", () => {
+  // On boot, wallpaperIdByTheme is empty (in-memory) and useSessionPersistence
+  // restores the user's persisted wallpaper. restoreActiveTheme must not race
+  // that restore back to the global default for a theme with no defaultWallpaperId.
+  it("leaves a user's custom wallpaper untouched when the restored theme declares no default", async () => {
+    // The Light builtin theme has a `wallpaper` but no `defaultWallpaperId`.
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/preferences/themes")) {
+        return Promise.resolve(new Response(JSON.stringify({ active_theme_id: "light" })));
+      }
+      return Promise.resolve(new Response(JSON.stringify([])));
+    });
+    // Stand in for useSessionPersistence having restored the persisted choice.
+    useThemeStore.getState().setWallpaper("ocean");
+    expect(useThemeStore.getState().wallpaperId).toBe("ocean");
+
+    await restoreActiveTheme();
+
+    expect(useThemeStore.getState().activeThemeId).toBe("light");
+    // NOT reset to the global graphite default.
+    expect(useThemeStore.getState().wallpaperId).toBe("ocean");
+  });
+
+  it("still applies the theme's declared defaultWallpaperId on restore", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/preferences/themes")) {
+        return Promise.resolve(new Response(JSON.stringify({ active_theme_id: "indigo" })));
+      }
+      // Provide an Indigo-like theme that declares neural-live.
+      return Promise.resolve(
+        new Response(JSON.stringify([{ theme_id: "indigo", config: { tokens: {}, defaultWallpaperId: "neural-live" } }])),
+      );
+    });
+
+    await restoreActiveTheme();
+
+    expect(useThemeStore.getState().activeThemeId).toBe("indigo");
+    expect(useThemeStore.getState().wallpaperId).toBe("neural-live");
+  });
+});
