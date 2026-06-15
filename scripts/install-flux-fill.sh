@@ -38,14 +38,16 @@ set -euo pipefail
 FLUX_FILL_PORT="${TAOS_FLUX_FILL_PORT:-38298}"
 
 # Host interface that Docker publishes the backend on.
-# SECURITY: sd-server has NO authentication. By default we publish on 0.0.0.0
-# because the taOS controller dials this backend over the tailnet from another
-# host, so 127.0.0.1 would break that cross-host call. This is only safe while
-# the host sits on a private tailnet or a firewalled LAN. Operators running on
-# an exposed host MUST set TAOS_FLUX_FILL_BIND to a specific private interface
-# IP (e.g. the tailnet address) so the unauthenticated server is not reachable
-# from public interfaces. (Mirrors the bind note in install-sd-cpp.sh.)
-FLUX_FILL_BIND="${TAOS_FLUX_FILL_BIND:-0.0.0.0}"
+# SECURITY: sd-server has NO authentication. This backend is for taOS's OWN use
+# only, so by default we publish on 127.0.0.1 (loopback). Docker then exposes the
+# port on loopback alone, so the unauthenticated server is never reachable over
+# the network. This is the safe default and resolves the prior 0.0.0.0 exposure.
+# Operators running taOS in a SPLIT/cluster layout (controller on one host, GPU
+# on another) who need cross-host access must EITHER set TAOS_FLUX_FILL_BIND to a
+# specific private interface IP (e.g. a tailnet address) OR, preferably, keep the
+# loopback default and reach the server via an SSH tunnel. Do not default to
+# 0.0.0.0. (Mirrors the bind note in install-sd-cpp.sh.)
+FLUX_FILL_BIND="${TAOS_FLUX_FILL_BIND:-127.0.0.1}"
 FLUX_FILL_CONTAINER="${TAOS_FLUX_FILL_CONTAINER:-taos-sdcpp-fill}"
 FLUX_FILL_IMAGE="${TAOS_FLUX_FILL_IMAGE:-taos-sdcpp:cuda}"
 MODELS_DIR="${TAOS_FLUX_FILL_MODELS_DIR:-$HOME/.cache/taos-sdcpp/models}"
