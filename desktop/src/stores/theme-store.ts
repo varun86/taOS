@@ -361,6 +361,16 @@ export function setWallpaperForActiveTheme(value: string) {
   useThemeStore.setState({ wallpaperByTheme: { ...wallpaperByTheme, [activeThemeId]: value } });
 }
 
+// Apply a theme's default wallpaper id to the live desktop, but only when the
+// user hasn't already picked a wallpaper for that theme (so an explicit choice
+// is never clobbered). Used when keeping/restoring a theme that declares one.
+function applyThemeDefaultWallpaper(themeId: string, cfg: ThemeConfig) {
+  if (!cfg.defaultWallpaperId) return;
+  const { wallpaperByTheme } = useThemeStore.getState();
+  if (wallpaperByTheme[themeId]) return; // user override wins
+  useThemeStore.getState().setWallpaper(cfg.defaultWallpaperId);
+}
+
 export function resolveWallpaper(): string {
   const { activeThemeId, wallpaperByTheme, themeDefaultWallpaper } = useThemeStore.getState();
   return wallpaperByTheme[activeThemeId] ?? themeDefaultWallpaper[activeThemeId] ?? "";
@@ -407,6 +417,7 @@ export async function restoreActiveTheme(): Promise<void> {
         ...(cfg.wallpaper ? { [themeId]: cfg.wallpaper } : {}),
       },
     });
+    applyThemeDefaultWallpaper(themeId, cfg);
   } catch {
     // best-effort: ignore
   }
@@ -421,6 +432,7 @@ export function keepTheme(themeId: string, cfg: ThemeConfig) {
       ...(cfg.wallpaper ? { [themeId]: cfg.wallpaper } : {}),
     },
   });
+  applyThemeDefaultWallpaper(themeId, cfg);
   // persist active theme id
   void fetch("/api/preferences/themes", {
     method: "PUT",
