@@ -61,7 +61,7 @@ _TIER_PREFERENCE: dict[str, dict[str, list[str]]] = {
 class EditRequest(BaseModel):
     image_ref: str
     op: Literal["erase", "inpaint", "outpaint"]
-    mask: str  # base64 png (raw or data-URI; IOPaint strips the prefix)
+    mask: str  # base64 png (raw or data-URI; both backends strip the prefix)
     prompt: str = ""
     tier: Literal["fast", "quality"] = "fast"
 
@@ -119,27 +119,48 @@ def _resolve_source(request: Request, image_ref: str) -> Optional[Path]:
     return path if path.exists() else None
 
 
-def _save_result(request: Request, image_bytes: bytes, *, source_ref: str, op: str) -> dict:
+def _save_result(
+    request: Request,
+    image_bytes: bytes,
+    *,
+    source_ref: str,
+    op: str,
+    backend_type: Optional[str] = None,
+    degraded: bool = False,
+) -> dict:
     """Save result PNG into the generated dir, copying the source's prompt
-    metadata so the new image is browsable. Returns {url, image_ref, ...}."""
+    metadata so the new image is browsable. Returns {url, image_ref, ...}.
+
+    ``backend_type`` and ``degraded`` surface the backend that actually ran so
+    callers can tell when a requested tier was silently downgraded (e.g. the
+    quality/diffusion tier fell back to the iopaint LaMa eraser, which ignores
+    the prompt).
+    """
     images_dir = _images_dir(request)
     # Unique stem so two edits of the same op within one second don't collide
     # (int(time.time()) alone overwrote the earlier output).
     stem = f"{int(time.time())}_{op}_{uuid4().hex[:8]}"
     filename = f"{stem}.png"
-    (images_dir / filename).write_bytes(image_bytes)
 
-    # Carry forward source metadata where available.
-    metadata = {"prompt": "", "model": op, "size": "", "steps": 0, "seed": 0, "guidance_scale": 0}
-    src_meta = (images_dir / source_ref).with_suffix(".json")
-    if src_meta.exists():
-        try:
-            prev = json.loads(src_meta.read_text())
-            metadata["prompt"] = prev.get("prompt", "")
-        except (json.JSONDecodeError, OSError):
-            pass
-    metadata["model"] = f"edit:{op}"
-    (images_dir / f"{stem}.json").write_text(json.dumps(metadata, indent=2))
+    # The host disk can fail (full / permission) independently of the backend.
+    # Keep that distinct from "backend unreachable" so the frontend can label it.
+    try:
+        (images_dir / filename).write_bytes(image_bytes)
+
+        # Carry forward source metadata where available.
+        metadata = {"prompt": "", "model": op, "size": "", "steps": 0, "seed": 0, "guidance_scale": 0}
+        src_meta = (images_dir / source_ref).with_suffix(".json")
+        if src_meta.exists():
+            try:
+                prev = json.loads(src_meta.read_text())
+                metadata["prompt"] = prev.get("prompt", "")
+            except (json.JSONDecodeError, OSError):
+                pass
+        metadata["model"] = f"edit:{op}"
+        (images_dir / f"{stem}.json").write_text(json.dumps(metadata, indent=2))
+    except OSError as exc:
+        logger.exception("failed to save edit result")
+        raise RuntimeError(f"Could not save result: {exc}") from exc
 
     return {
         "status": "edited",
@@ -147,6 +168,8 @@ def _save_result(request: Request, image_bytes: bytes, *, source_ref: str, op: s
         "image_ref": filename,
         "url": _image_url_path(filename),
         "path": _image_url_path(filename),
+        "backend": backend_type,
+        "degraded": degraded,
     }
 
 
@@ -175,8 +198,10 @@ class IOPaintClient:
         outpaint: bool = False,
     ) -> bytes:
         payload: dict = {
-            "image": image_b64,
-            "mask": mask_b64,
+            # Strip any data-URI prefix so a data-URI mask/image works here too,
+            # matching FluxFillClient (EditRequest.mask is raw or data-URI).
+            "image": _strip_data_uri(image_b64),
+            "mask": _strip_data_uri(mask_b64),
             "prompt": prompt,
             "sd_seed": -1,
         }
@@ -186,16 +211,21 @@ class IOPaintClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(f"{self.base}/api/v1/inpaint", json=payload)
             resp.raise_for_status()
-            return resp.content
+            return _require_image(resp)
 
     async def run_plugin(self, name: str, image_b64: str, *, scale: float = 2.0) -> bytes:
-        payload = {"name": name, "image": image_b64, "scale": float(scale), "clicks": []}
+        payload = {
+            "name": name,
+            "image": _strip_data_uri(image_b64),
+            "scale": float(scale),
+            "clicks": [],
+        }
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(
                 f"{self.base}/api/v1/run_plugin_gen_image", json=payload
             )
             resp.raise_for_status()
-            return resp.content
+            return _require_image(resp)
 
 
 # --------------------------------------------------------------------------- #
@@ -206,6 +236,19 @@ def _strip_data_uri(b64: str) -> str:
     if b64.startswith("data:") and "," in b64:
         return b64.split(",", 1)[1]
     return b64
+
+
+def _require_image(resp: httpx.Response) -> bytes:
+    """Return the response body only if it is actually an image.
+
+    IOPaint can answer HTTP 200 with a JSON/text error body (missing plugin,
+    bad args, model-load failure). Those bytes would otherwise be saved as a
+    ``.png`` and reported as success, handing the user a broken image. Reject
+    any non-image content-type so it routes into ``_backend_error_response``.
+    """
+    if not resp.headers.get("content-type", "").startswith("image/"):
+        raise RuntimeError(f"IOPaint returned non-image response: {resp.text[:300]}")
+    return resp.content
 
 
 # Fraction of the image's own size to grow each side by when outpainting.
@@ -344,6 +387,11 @@ def _backend_error_response(exc: Exception) -> JSONResponse:
             {"error": f"Editing backend returned error: {exc.response.status_code}"},
             status_code=502,
         )
+    # A failed disk write (full / permission) is a host problem, not the backend
+    # being unreachable; surface it distinctly so the frontend doesn't mislabel
+    # it as "could not reach the editing backend".
+    if isinstance(exc, RuntimeError) and str(exc).startswith("Could not save result"):
+        return JSONResponse({"error": str(exc)}, status_code=500)
     logger.exception("image edit failed")
     return JSONResponse({"error": f"Unexpected error: {exc}"}, status_code=500)
 
@@ -377,6 +425,13 @@ async def edit_image(request: Request, body: EditRequest):
             status_code=503,
         )
 
+    # The tier's first preference is the backend the user effectively asked for;
+    # anything else means _get_edit_backend fell back (e.g. quality → iopaint),
+    # which the response flags as degraded so the prompt-ignoring downgrade isn't
+    # silent.
+    primary = (_TIER_PREFERENCE.get("image-editing", {}).get(body.tier) or [None])[0]
+    degraded = backend_type != primary
+
     try:
         result_bytes = await client.inpaint(
             image_b64,
@@ -384,10 +439,16 @@ async def edit_image(request: Request, body: EditRequest):
             prompt=body.prompt,
             outpaint=body.op == "outpaint",
         )
+        return _save_result(
+            request,
+            result_bytes,
+            source_ref=body.image_ref,
+            op=body.op,
+            backend_type=backend_type,
+            degraded=degraded,
+        )
     except Exception as exc:  # noqa: BLE001 — mapped to a clean HTTP response
         return _backend_error_response(exc)
-
-    return _save_result(request, result_bytes, source_ref=body.image_ref, op=body.op)
 
 
 @router.post("/api/images/remove-bg")
@@ -406,10 +467,12 @@ async def remove_background(request: Request, body: RemoveBgRequest):
     client = IOPaintClient(url)
     try:
         result_bytes = await client.run_plugin("RemoveBG", image_b64)
+        return _save_result(
+            request, result_bytes, source_ref=body.image_ref, op="removebg",
+            backend_type=_backend_type,
+        )
     except Exception as exc:  # noqa: BLE001
         return _backend_error_response(exc)
-
-    return _save_result(request, result_bytes, source_ref=body.image_ref, op="removebg")
 
 
 @router.post("/api/images/upscale")
@@ -428,10 +491,12 @@ async def upscale_image(request: Request, body: UpscaleRequest):
     client = IOPaintClient(url)
     try:
         result_bytes = await client.run_plugin("RealESRGAN", image_b64, scale=float(body.scale))
+        return _save_result(
+            request, result_bytes, source_ref=body.image_ref, op="upscale",
+            backend_type=_backend_type,
+        )
     except Exception as exc:  # noqa: BLE001
         return _backend_error_response(exc)
-
-    return _save_result(request, result_bytes, source_ref=body.image_ref, op="upscale")
 
 
 @router.get("/api/images/edit/capabilities")

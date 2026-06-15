@@ -63,6 +63,16 @@ def _resolve_safe(workspace: Path, subpath: str) -> Path | None:
         return None
 
 
+def _is_within(dst: Path, src: Path) -> bool:
+    """True if *dst* is *src* itself or nested inside it.
+
+    Copying or moving a directory into a path under itself makes
+    ``shutil.copytree`` / ``Path.rename`` raise, which would otherwise escape
+    as a bare 500. Both paths are already resolved by ``_resolve_safe``.
+    """
+    return dst == src or dst.is_relative_to(src)
+
+
 class MkdirRequest(BaseModel):
     path: str
 
@@ -232,6 +242,10 @@ async def api_rename(request: Request, body: RenameRequest):
         return JSONResponse({"error": "Source not found"}, status_code=404)
     if dst.exists():
         return JSONResponse({"error": "Target already exists"}, status_code=409)
+    if _is_within(dst, src):
+        return JSONResponse(
+            {"error": "Cannot move a directory into itself"}, status_code=400
+        )
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     src.rename(dst)
@@ -259,6 +273,10 @@ async def api_copy(request: Request, body: CopyRequest):
         return JSONResponse({"error": "Source not found"}, status_code=404)
     if dst.exists():
         return JSONResponse({"error": "Target already exists"}, status_code=409)
+    if _is_within(dst, src):
+        return JSONResponse(
+            {"error": "Cannot copy a directory into itself"}, status_code=400
+        )
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     # Run the blocking copy off the event loop so large trees do not stall it.
