@@ -647,7 +647,14 @@ async def rewind_read_cursor_endpoint(channel_id: str, request: Request):
 
 @router.post("/api/chat/channels/{channel_id}/mark-read")
 async def mark_read(request: Request, channel_id: str):
-    body = await request.json()
+    # The client may POST with no body (mark the whole channel read); an empty
+    # body made request.json() raise JSONDecodeError -> 500. Tolerate it.
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
     ch_store = request.app.state.chat_channels
     await ch_store.update_read_position("user", channel_id, body.get("message_id", ""))
     return {"status": "marked"}
