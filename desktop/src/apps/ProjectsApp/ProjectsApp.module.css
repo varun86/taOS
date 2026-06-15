@@ -14,6 +14,85 @@
   height: 100%;
   min-height: 0;
 }
+/* Collapsed rail: keeps project switching (mark avatars) while handing the
+   width back to the workspace/chat area. */
+.sidebarCollapsed {
+  width: 56px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--color-shell-bg-deep);
+  border-right: 1px solid var(--color-shell-border);
+  height: 100%;
+  min-height: 0;
+}
+.railTop {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--color-shell-border);
+  width: 100%;
+}
+.railList {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  width: 100%;
+  list-style: none;
+  margin: 0;
+}
+.railMark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-shell-text-secondary);
+  background: var(--color-shell-surface);
+  border: 1px solid var(--color-shell-border);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.railMark:hover {
+  background: var(--color-shell-surface-hover);
+  color: var(--color-shell-text);
+}
+.railMarkOn {
+  color: var(--color-shell-text);
+  border-color: var(--color-accent, var(--color-shell-border-strong));
+  box-shadow: 0 0 0 1px var(--color-accent, var(--color-shell-border-strong));
+}
+.collapseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--color-shell-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.collapseBtn:hover {
+  background: var(--color-shell-surface-hover);
+  color: var(--color-shell-text);
+}
+.collapseBtn svg {
+  width: 16px;
+  height: 16px;
+}
 .sbHead {
   height: 52px;
   flex: none;

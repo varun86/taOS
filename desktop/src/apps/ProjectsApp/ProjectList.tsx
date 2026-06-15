@@ -8,6 +8,8 @@ type Props = {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreated: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 };
 
 function mark(name: string): string {
@@ -17,23 +19,93 @@ function mark(name: string): string {
   return (words[0]![0]! + words[1]![0]!).toUpperCase();
 }
 
-export function ProjectList({ projects, selectedId, onSelect, onCreated }: Props) {
+export function ProjectList({ projects, selectedId, onSelect, onCreated, collapsed, onToggleCollapse }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  return (
-    <aside className={styles.sidebar}>
-      <header className={styles.sbHead}>
-        <h2>Projects</h2>
+
+  if (collapsed) {
+    return (
+      <aside className={styles.sidebarCollapsed} aria-label="Projects">
+        <div className={styles.railTop}>
+          <button
+            type="button"
+            aria-label="Expand projects sidebar"
+            className={styles.collapseBtn}
+            onClick={onToggleCollapse}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
+        <ul className={styles.railList} aria-label="Projects">
+          {projects.map((p) => (
+            <li key={p.id}>
+              <button
+                type="button"
+                title={p.name}
+                aria-label={p.name}
+                aria-pressed={p.id === selectedId}
+                onClick={() => onSelect(p.id)}
+                className={`${styles.railMark} ${p.id === selectedId ? styles.railMarkOn : ""}`}
+              >
+                {mark(p.name)}
+              </button>
+            </li>
+          ))}
+        </ul>
         <button
           type="button"
           aria-label="Create project"
-          className={styles.newBtn}
+          className={styles.collapseBtn}
+          style={{ marginBottom: 8 }}
           onClick={() => setDialogOpen(true)}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <path d="M12 5v14M5 12h14" />
           </svg>
-          New
         </button>
+        {dialogOpen && (
+          <CreateProjectDialog
+            onClose={() => setDialogOpen(false)}
+            onCreated={() => {
+              setDialogOpen(false);
+              onCreated();
+            }}
+          />
+        )}
+      </aside>
+    );
+  }
+
+  return (
+    <aside className={styles.sidebar}>
+      <header className={styles.sbHead}>
+        <h2>Projects</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            aria-label="Create project"
+            className={styles.newBtn}
+            onClick={() => setDialogOpen(true)}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New
+          </button>
+          {onToggleCollapse && (
+            <button
+              type="button"
+              aria-label="Collapse projects sidebar"
+              className={styles.collapseBtn}
+              onClick={onToggleCollapse}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 6l-6 6 6 6" />
+              </svg>
+            </button>
+          )}
+        </div>
       </header>
       <ul className={styles.sbList} aria-label="Projects">
         {projects.length === 0 ? (
