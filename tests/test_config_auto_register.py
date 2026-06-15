@@ -296,3 +296,30 @@ default_url: http://localhost:8080
     config = AppConfig()
     added = auto_register_from_manifest(manifest, config)  # no hardware_profile kwarg
     assert added is True
+
+
+_CATALOG = Path(__file__).resolve().parents[1] / "app-catalog" / "services"
+
+
+@pytest.mark.parametrize(
+    "service, backend_type, url",
+    [
+        ("iopaint", "iopaint", "http://127.0.0.1:30493"),
+        ("flux-fill", "flux-fill", "http://127.0.0.1:38298"),
+    ],
+)
+def test_shipped_image_edit_manifests_register(service, backend_type, url):
+    """The real iopaint/flux-fill catalog manifests must register a backend
+    entry on install, otherwise the Images Studio edit tier has no backend
+    with the image-editing capability and every edit request returns 503.
+
+    Both carry the backend type via lifecycle.backend_type on the catalog
+    (type: service) path; regressing the lifecycle block silently breaks the
+    edit tier."""
+    manifest = _CATALOG / service / "manifest.yaml"
+    config = AppConfig()
+    added = auto_register_from_manifest(manifest, config)
+    assert added is True
+    entry = config.backends[-1]
+    assert entry["type"] == backend_type
+    assert entry["url"] == url
