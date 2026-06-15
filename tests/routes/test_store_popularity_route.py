@@ -1,7 +1,8 @@
 """Tests for popularity wiring on the Store catalog + /api/store/popularity."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+import time
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -40,29 +41,30 @@ def _patch_registry(app, apps):
     app.state.installation_state = None
 
 
-def _patch_github(monkeypatch, stars: int | None):
-    """Make every GitHub repo lookup return ``stars`` (or 404 when None)."""
-    resp = MagicMock()
-    resp.status_code = 200 if stars is not None else 404
-    resp.json = MagicMock(
-        return_value={"stargazers_count": stars} if stars is not None else {}
-    )
-    fake = MagicMock()
-    fake.get = AsyncMock(return_value=resp)
-    fake.aclose = AsyncMock()
-    fake.__aenter__ = AsyncMock(return_value=fake)
-    fake.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr(
-        "tinyagentos.routes.store.httpx.AsyncClient", lambda *a, **k: fake
-    )
+def _seed_stars(repo: str, stars: int) -> None:
+    """Pre-warm the cache the way the background warmer would."""
+    sp._star_cache[repo] = (time.time() + 3600, stars)
+
+
+def _explode_on_live_fetch(monkeypatch):
+    """Make any live GitHub call blow up, so a request-path fetch would fail.
+
+    The request path must read from cache only; if the catalog route ever
+    awaited GitHub, this would raise and the test would fail.
+    """
+    async def _boom(*a, **k):
+        raise AssertionError("request path must not call GitHub")
+
+    monkeypatch.setattr(sp, "fetch_stars", _boom)
 
 
 class TestStorePopularityRoute:
     @pytest.mark.asyncio
-    async def test_catalog_surfaces_stars_and_popularity(self, client, monkeypatch):
+    async def test_catalog_surfaces_cached_stars(self, client, monkeypatch):
         app = client._transport.app
         _patch_registry(app, [_fake_app("jellyfin", "https://github.com/jellyfin/jellyfin")])
-        _patch_github(monkeypatch, 35000)
+        _seed_stars("jellyfin/jellyfin", 35000)
+        _explode_on_live_fetch(monkeypatch)
 
         res = await client.get("/api/store/catalog")
         assert res.status_code == 200
@@ -76,10 +78,26 @@ class TestStorePopularityRoute:
         }
 
     @pytest.mark.asyncio
+    async def test_catalog_returns_immediately_without_github(self, client, monkeypatch):
+        # Cold cache: stars are null and NO GitHub call happens in the request
+        # path (a live call would raise via _explode_on_live_fetch).
+        app = client._transport.app
+        _patch_registry(app, [_fake_app("jellyfin", "https://github.com/jellyfin/jellyfin")])
+        _explode_on_live_fetch(monkeypatch)
+
+        res = await client.get("/api/store/catalog")
+        assert res.status_code == 200
+        entry = res.json()[0]
+        assert entry["repo"] == "jellyfin/jellyfin"
+        assert entry["stars"] is None
+        assert entry["popularity"]["github_stars"] is None
+        assert entry["popularity"]["score"] == 0.0
+
+    @pytest.mark.asyncio
     async def test_non_github_entry_gets_null_popularity(self, client, monkeypatch):
         app = client._transport.app
         _patch_registry(app, [_fake_app("excalidraw", "https://excalidraw.com")])
-        _patch_github(monkeypatch, 35000)  # never called for a non-github entry
+        _explode_on_live_fetch(monkeypatch)
 
         res = await client.get("/api/store/catalog")
         entry = res.json()[0]
@@ -92,7 +110,8 @@ class TestStorePopularityRoute:
     async def test_dedicated_popularity_endpoint(self, client, monkeypatch):
         app = client._transport.app
         _patch_registry(app, [_fake_app("jellyfin", "https://github.com/jellyfin/jellyfin")])
-        _patch_github(monkeypatch, 12345)
+        _seed_stars("jellyfin/jellyfin", 12345)
+        _explode_on_live_fetch(monkeypatch)
 
         res = await client.get("/api/store/popularity")
         assert res.status_code == 200

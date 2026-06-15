@@ -1,10 +1,8 @@
 # tinyagentos/routes/store.py
 from __future__ import annotations
 
-import asyncio
 from dataclasses import asdict
 
-import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -19,33 +17,23 @@ from tinyagentos.installers.base import get_installer
 from tinyagentos.routes.store_install import get_device_capability
 from tinyagentos.store_popularity import (
     parse_repo,
-    popularity_for_homepage,
-    popularity_shape,
+    popularity_for_homepage_cached,
 )
 
 
-async def _popularity_by_app_id(apps) -> dict[str, dict]:
+def _popularity_by_app_id(apps) -> dict[str, dict]:
     """Resolve the telemetry-ready popularity shape for each manifest.
 
-    Cached repos return instantly; uncached ones are fetched from GitHub
-    concurrently over one shared client so the Store list stays fast and a
-    slow/unreachable GitHub never blocks the response for long. Any failure
-    degrades that entry to github_stars=None (never raises). Entries without a
-    GitHub repo homepage get a popularity shape with github_stars=None too;
-    they need a github.com/owner/repo homepage in their manifest to get stars.
+    Reads ONLY the in-memory star cache; it never calls GitHub, so the Store
+    list endpoint returns immediately and is never stalled by a slow or
+    rate-limited GitHub. Not-yet-warmed (or non-GitHub) entries get a
+    popularity shape with github_stars=None. A background warmer populates the
+    cache over time, respecting GitHub's unauthenticated rate limit.
     """
-    result: dict[str, dict] = {}
-    async with httpx.AsyncClient(timeout=8) as client:
-        async def _one(app):
-            try:
-                result[app.id] = await popularity_for_homepage(
-                    getattr(app, "homepage", "") or "", client=client
-                )
-            except Exception:
-                result[app.id] = popularity_shape(None)
-
-        await asyncio.gather(*(_one(a) for a in apps))
-    return result
+    return {
+        app.id: popularity_for_homepage_cached(getattr(app, "homepage", "") or "")
+        for app in apps
+    }
 
 
 class InstallRequest(BaseModel):
@@ -156,7 +144,7 @@ async def list_catalog(request: Request, type: str | None = None):
             return registry.is_installed(app_id)
         return installation.state(app_id) in ("running", "installed")
 
-    popularity = await _popularity_by_app_id(apps)
+    popularity = _popularity_by_app_id(apps)
 
     return [
         {
@@ -190,7 +178,7 @@ async def list_popularity(request: Request, type: str | None = None):
     """
     registry = request.app.state.registry
     apps = registry.list_available(type_filter=type)
-    return await _popularity_by_app_id(apps)
+    return _popularity_by_app_id(apps)
 
 
 @router.get("/api/store/installed")

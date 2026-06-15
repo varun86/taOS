@@ -722,6 +722,30 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.health_monitor = monitor
         await monitor.start()
 
+        # Store popularity: warm the GitHub-star cache in the background so the
+        # /api/store catalog list reads stars from cache and never blocks on
+        # GitHub. The catalog has more github.com homepages than the
+        # unauthenticated rate limit allows in one pass, so the warmer walks
+        # them over several passes, backing off when GitHub signals the limit.
+        from tinyagentos import store_popularity
+        store_popularity.configure_persistence(data_dir)
+
+        async def _popularity_warm_loop(app: FastAPI) -> None:
+            import asyncio as _asyncio
+            while True:
+                try:
+                    repos = sorted({
+                        r for a in app.state.registry.list_available()
+                        if (r := store_popularity.parse_repo(getattr(a, "homepage", "") or ""))
+                    })
+                    if repos:
+                        await store_popularity.warm_popularity_cache(repos)
+                except Exception as _e:
+                    logger.warning("store popularity warm failed: %s", _e)
+                await _asyncio.sleep(600)
+
+        _create_supervised_task(_popularity_warm_loop(app), app.state._background_tasks)
+
         # Hourly auto-update checker. Polls the git remote, notifies the
         # user on new commits, optionally applies automatically (user
         # toggle via /api/preferences/auto-update).
