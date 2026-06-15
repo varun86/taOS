@@ -1,8 +1,10 @@
 # tinyagentos/routes/store.py
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -15,6 +17,35 @@ from tinyagentos.catalog.resolver import (
 )
 from tinyagentos.installers.base import get_installer
 from tinyagentos.routes.store_install import get_device_capability
+from tinyagentos.store_popularity import (
+    parse_repo,
+    popularity_for_homepage,
+    popularity_shape,
+)
+
+
+async def _popularity_by_app_id(apps) -> dict[str, dict]:
+    """Resolve the telemetry-ready popularity shape for each manifest.
+
+    Cached repos return instantly; uncached ones are fetched from GitHub
+    concurrently over one shared client so the Store list stays fast and a
+    slow/unreachable GitHub never blocks the response for long. Any failure
+    degrades that entry to github_stars=None (never raises). Entries without a
+    GitHub repo homepage get a popularity shape with github_stars=None too;
+    they need a github.com/owner/repo homepage in their manifest to get stars.
+    """
+    result: dict[str, dict] = {}
+    async with httpx.AsyncClient(timeout=8) as client:
+        async def _one(app):
+            try:
+                result[app.id] = await popularity_for_homepage(
+                    getattr(app, "homepage", "") or "", client=client
+                )
+            except Exception:
+                result[app.id] = popularity_shape(None)
+
+        await asyncio.gather(*(_one(a) for a in apps))
+    return result
 
 
 class InstallRequest(BaseModel):
@@ -125,6 +156,8 @@ async def list_catalog(request: Request, type: str | None = None):
             return registry.is_installed(app_id)
         return installation.state(app_id) in ("running", "installed")
 
+    popularity = await _popularity_by_app_id(apps)
+
     return [
         {
             "id": a.id, "name": a.name, "type": a.type, "category": a.category,
@@ -135,9 +168,29 @@ async def list_catalog(request: Request, type: str | None = None):
             "installed": _installed_flag(a.id),
             "state": (installation.state(a.id) if installation else ("installed" if registry.is_installed(a.id) else "not_installed")),
             "variants": _slim_variants(a),
+            # Popularity (telemetry-ready). repo + stars are flattened for the
+            # existing Store frontend; popularity carries the full shape so #15
+            # can fill installs without a breaking change.
+            "repo": parse_repo(getattr(a, "homepage", "") or ""),
+            "stars": popularity[a.id]["github_stars"],
+            "popularity": popularity[a.id],
         }
         for a in apps
     ]
+
+
+@router.get("/api/store/popularity")
+async def list_popularity(request: Request, type: str | None = None):
+    """Return the telemetry-ready popularity shape per app id.
+
+    {app_id: {"github_stars": int|null, "installs": int|null, "score": float}}
+
+    github_stars come from GitHub today; installs is null until #15 wires real
+    install telemetry. GitHub failures degrade to github_stars=null.
+    """
+    registry = request.app.state.registry
+    apps = registry.list_available(type_filter=type)
+    return await _popularity_by_app_id(apps)
 
 
 @router.get("/api/store/installed")
