@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Project } from "@/lib/projects";
 import { MessagesApp } from "@/apps/MessagesApp";
 import { CanvasView } from "./canvas/CanvasView";
 import styles from "./ProjectsApp.module.css";
 
 type PreviewMode = "preview" | "code" | "canvas";
+
+const MIN_RIGHT = 320;
+const MIN_LEFT = 360;
 
 /**
  * The Workspace tab (task #59 hero): a split pane.
@@ -21,9 +24,32 @@ type PreviewMode = "preview" | "code" | "canvas";
  */
 export function ProjectWorkspacePane({ project }: { project: Project }) {
   const [mode, setMode] = useState<PreviewMode>("preview");
+  const [rightWidth, setRightWidth] = useState(472);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+
+  const onDividerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onDividerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const next = rect.right - e.clientX;
+    setRightWidth(Math.max(MIN_RIGHT, Math.min(rect.width - MIN_LEFT, next)));
+  };
+  const onDividerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    draggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // pointer may already be released
+    }
+  };
 
   return (
-    <div className={styles.ws}>
+    <div className={styles.ws} ref={containerRef}>
       {/* LEFT: real project channel thread + composer */}
       <div className={styles.wsLeft}>
         <div className={styles.wsThread}>
@@ -35,11 +61,19 @@ export function ProjectWorkspacePane({ project }: { project: Project }) {
         </div>
       </div>
 
-      {/* resize affordance (fixed sensible ratio in phase 1) */}
-      <div className={styles.wsDivider} aria-hidden />
+      {/* draggable resize divider */}
+      <div
+        className={styles.wsDivider}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panes"
+        onPointerDown={onDividerDown}
+        onPointerMove={onDividerMove}
+        onPointerUp={onDividerUp}
+      />
 
       {/* RIGHT: preview / code / canvas */}
-      <div className={styles.wsRight} style={{ width: 472 }}>
+      <div className={styles.wsRight} style={{ width: rightWidth }}>
         <div className={styles.pvBar}>
           <div className={styles.seg} role="tablist" aria-label="Preview mode">
             {(["preview", "code", "canvas"] as PreviewMode[]).map((m) => (
