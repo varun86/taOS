@@ -268,6 +268,24 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
     setDetailReleases([]);
   }, []);
 
+  /* Escape returns to the list from anywhere in an open detail view.
+     Skips list view (no detail open) and editable targets (inputs,
+     textareas, contentEditable) so it never hijacks closing a field. */
+  useEffect(() => {
+    if (!detail) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+      }
+      goBack();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [detail, goBack]);
+
   /* ---------- selectedId for MobileSplitView ---------- */
   const selectedId = useMemo((): string | null => {
     if (!detail) return null;
@@ -651,7 +669,6 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
                 type="button"
                 className={styles.back}
                 onClick={goBack}
-                onKeyDown={(e) => e.key === "Escape" && goBack()}
                 aria-label="Back to list"
               >
                 <ChevronLeft size={14} aria-hidden="true" />
@@ -762,7 +779,6 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
                 type="button"
                 className={styles.back}
                 onClick={goBack}
-                onKeyDown={(e) => e.key === "Escape" && goBack()}
                 aria-label="Back to list"
               >
                 <ChevronLeft size={14} aria-hidden="true" />
@@ -848,7 +864,7 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
                     { label: "Author", value: issue.author },
                     { label: "Repo", value: issue.repo },
                     { label: "Type", value: issue.is_pull_request ? "Pull Request" : "Issue" },
-                    { label: "Created", value: issue.created_at },
+                    { label: "Created", value: formatDate(issue.created_at) },
                   ].map(({ label, value }) => (
                     <div key={label} className={styles.metaRow}>
                       <span className={styles.metaKey}>{label}</span>
@@ -907,7 +923,6 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
                 type="button"
                 className={styles.back}
                 onClick={goBack}
-                onKeyDown={(e) => e.key === "Escape" && goBack()}
                 aria-label="Back to list"
               >
                 <ChevronLeft size={14} aria-hidden="true" />
