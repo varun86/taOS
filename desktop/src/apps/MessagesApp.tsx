@@ -1511,7 +1511,7 @@ export function MessagesApp({
           <button
             type="button"
             onClick={openAgentsApp}
-            style={{ marginTop: 4, fontSize: 13, padding: "8px 16px", borderRadius: 10, background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.3)", color: "rgba(147,197,253,0.9)", cursor: "pointer" }}
+            style={{ marginTop: 4, fontSize: 13, padding: "8px 16px", borderRadius: 10, background: "var(--color-accent-soft)", border: "1px solid var(--color-accent-line)", color: "var(--color-accent-strong)", cursor: "pointer" }}
           >
             Open Agents
           </button>
@@ -1570,9 +1570,13 @@ export function MessagesApp({
                 >
                   {agentMember ? (
                     <MessageAvatar size={38} authorId={agentMember} displayName={agentMember} kind="agent" />
+                  ) : isA2A ? (
+                    <div style={{ width: 38, height: 38, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-accent-soft)", border: "1px solid var(--color-accent-line)", color: "var(--color-accent-strong)", flexShrink: 0 }}>
+                      <Bot size={18} aria-hidden />
+                    </div>
                   ) : (
                     <div style={{ width: 38, height: 38, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-shell-surface-active)", color: "var(--color-shell-text-secondary)", flexShrink: 0 }}>
-                      {isA2A ? <Bot size={18} aria-hidden /> : ch.type === "group" ? <Users size={18} aria-hidden /> : <Hash size={18} aria-hidden />}
+                      {ch.type === "group" ? <Users size={18} aria-hidden /> : <Hash size={18} aria-hidden />}
                     </div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1593,7 +1597,7 @@ export function MessagesApp({
                     )}
                   </div>
                   {count > 0 && (
-                    <span style={{ background: "#3b82f6", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 9999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
+                    <span style={{ background: "var(--color-unread)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 9999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
                       {count}
                     </span>
                   )}
@@ -1648,9 +1652,9 @@ export function MessagesApp({
                             gap: 10,
                             width: "100%",
                             padding: "14px 16px",
-                            background: selectedChannel === ch.id ? "rgba(59,130,246,0.15)" : "none",
+                            background: selectedChannel === ch.id ? "var(--color-shell-surface-active)" : "none",
                             border: "none",
-                            borderBottom: idx === arr.length - 1 ? "none" : "1px solid rgba(255,255,255,0.06)",
+                            borderBottom: idx === arr.length - 1 ? "none" : "1px solid var(--color-shell-border)",
                             cursor: "pointer",
                             color: "inherit",
                             textAlign: "left",
@@ -1667,11 +1671,11 @@ export function MessagesApp({
                             {ch.name}
                           </span>
                           {(unread[ch.id] ?? 0) > 0 && (
-                            <span style={{ background: "#3b82f6", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 9999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+                            <span style={{ background: "var(--color-unread)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 9999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
                               {unread[ch.id]}
                             </span>
                           )}
-                          <ChevronRight size={16} style={{ color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+                          <ChevronRight size={16} style={{ color: "var(--color-shell-text-tertiary)", flexShrink: 0 }} />
                         </button>
                       ))}
                     </div>
@@ -1717,7 +1721,7 @@ export function MessagesApp({
                       type="button"
                       onClick={() => setSelectedChannel(ch.id)}
                       aria-label={`Archived channel ${ch.name}`}
-                      style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "12px 8px 12px 16px", background: selectedChannel === ch.id ? "rgba(59,130,246,0.12)" : "none", border: "none", cursor: "pointer", color: "inherit", textAlign: "left" as const, minWidth: 0 }}
+                      style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "12px 8px 12px 16px", background: selectedChannel === ch.id ? "var(--color-shell-surface-active)" : "none", border: "none", cursor: "pointer", color: "inherit", textAlign: "left" as const, minWidth: 0 }}
                     >
                       <Archive size={11} aria-hidden="true" style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0 }} />
                       <span style={{ flex: 1, fontSize: 14, color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.name}</span>
@@ -1808,30 +1812,46 @@ export function MessagesApp({
             {!collapsedSections[section.label] && section.items.length === 0 && (
               <div className="px-3 py-1 text-[11px] text-white/20 italic">None yet</div>
             )}
-            {visibleInSection(section.items, section.label).map((ch) => (
-              <Button
-                key={ch.id}
-                variant={selectedChannel === ch.id ? "secondary" : "ghost"}
-                onClick={() => setSelectedChannel(ch.id)}
-                className="w-full justify-start h-auto py-1.5 px-3 text-[13px] rounded-none font-normal"
-                aria-label={`Channel ${ch.name}`}
-                title={ch.settings?.kind === "a2a" ? "Agent coordination — mention @<slug> to hand off." : undefined}
-              >
-                {ch.settings?.kind === "a2a" && (
-                  <Bot
-                    size={14}
-                    aria-hidden
-                    style={{ color: "rgba(255,255,255,0.6)", flexShrink: 0 }}
-                  />
-                )}
-                <span className="truncate flex-1 text-left">{ch.name}</span>
-                {(unread[ch.id] ?? 0) > 0 && (
-                  <span className="shrink-0 bg-blue-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                    {unread[ch.id]}
-                  </span>
-                )}
-              </Button>
-            ))}
+            <div className="px-2 flex flex-col gap-px">
+              {visibleInSection(section.items, section.label).map((ch) => {
+                const isA2A = ch.settings?.kind === "a2a";
+                const agentMember = ch.type === "dm" ? (ch.members ?? []).find((m) => m !== "user") : undefined;
+                const count = unread[ch.id] ?? 0;
+                return (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    onClick={() => setSelectedChannel(ch.id)}
+                    aria-pressed={selectedChannel === ch.id}
+                    className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-left transition-colors ${
+                      selectedChannel === ch.id ? "bg-shell-surface-active" : "hover:bg-shell-surface-hover"
+                    }`}
+                    aria-label={`Channel ${ch.name}`}
+                    title={isA2A ? "Agent coordination — mention @<slug> to hand off." : undefined}
+                  >
+                    {agentMember ? (
+                      <MessageAvatar size={30} authorId={agentMember} displayName={agentMember} kind="agent" />
+                    ) : isA2A ? (
+                      <span className="shrink-0 grid place-items-center w-[30px] h-[30px] rounded-[9px] bg-accent-soft border border-accent-line text-accent-strong">
+                        <Bot size={15} aria-hidden />
+                      </span>
+                    ) : (
+                      <span className="shrink-0 grid place-items-center w-[30px] h-[30px] rounded-[9px] bg-shell-surface-active text-shell-text-secondary">
+                        {ch.type === "group" ? <Users size={15} aria-hidden /> : <Hash size={15} aria-hidden />}
+                      </span>
+                    )}
+                    <span className={`truncate flex-1 text-[14px] tracking-tight ${count > 0 ? "font-bold text-shell-text" : "font-semibold text-shell-text"}`}>
+                      {ch.name}
+                    </span>
+                    {count > 0 && (
+                      <span className="shrink-0 bg-unread text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 tabular-nums">
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ))}
 
@@ -1959,7 +1979,7 @@ export function MessagesApp({
           type="button"
           onClick={scrollToLatest}
           aria-label="Jump to latest"
-          className="absolute right-4 bottom-24 z-20 flex items-center gap-1.5 px-3 h-9 rounded-full bg-zinc-800 border border-white/15 text-white/80 hover:text-white shadow-lg hover:bg-zinc-700 transition-colors"
+          className="absolute right-4 bottom-24 z-20 flex items-center gap-1.5 px-3 h-9 rounded-full bg-shell-surface-active border border-shell-border-strong text-shell-text/80 hover:text-shell-text shadow-lg hover:bg-shell-surface-hover backdrop-blur-xl transition-colors"
         >
           <ChevronDown size={16} aria-hidden="true" />
           {newCount > 0 && <span className="text-[11px] font-semibold">{newCount} new</span>}
@@ -2237,12 +2257,10 @@ export function MessagesApp({
                       }}
                     >
                       <span
-                        className={`${isMobile ? "text-[14px]" : "text-[15px]"} font-semibold ${
+                        className={`${isMobile ? "text-[14px]" : "text-[15px]"} font-bold tracking-tight ${
                           isDeadAgent
                             ? "line-through text-shell-text-tertiary"
-                            : isAgent
-                              ? "text-sky-500"
-                              : "text-shell-text"
+                            : "text-shell-text"
                         }`}
                         style={isDeadAgent ? { opacity: 0.55 } : undefined}
                         title={authorTooltip}
@@ -2250,7 +2268,7 @@ export function MessagesApp({
                         {displayAuthor(msg, { currentUserId, currentUserDisplayName })}
                       </span>
                       {isAgent && !isDeadAgent && (
-                        <span className="text-[10px] uppercase tracking-wide bg-sky-500/15 text-sky-600 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
+                        <span className="text-[10px] uppercase tracking-wide bg-accent-soft text-accent-strong border border-accent-line px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
                           <Bot size={10} aria-hidden="true" /> Agent
                         </span>
                       )}
@@ -2283,9 +2301,9 @@ export function MessagesApp({
                       )}
                       {msg.state === "streaming" && (
                         <span className="ml-1 inline-flex gap-0.5">
-                          <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce [animation-delay:0ms]" />
-                          <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce [animation-delay:150ms]" />
-                          <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                          <span className="w-1 h-1 bg-accent rounded-full animate-bounce [animation-delay:0ms]" />
+                          <span className="w-1 h-1 bg-accent rounded-full animate-bounce [animation-delay:150ms]" />
+                          <span className="w-1 h-1 bg-accent rounded-full animate-bounce [animation-delay:300ms]" />
                         </span>
                       )}
                       {msg.state === "error" && (
@@ -2331,12 +2349,12 @@ export function MessagesApp({
                             aria-pressed={mine}
                             className={`text-[12px] rounded-full px-2 py-0.5 flex items-center gap-1 border transition-colors ${
                               mine
-                                ? "bg-sky-500/15 border-sky-500/40 text-sky-600"
+                                ? "bg-accent-soft border-accent-line text-accent-strong"
                                 : "bg-shell-surface border-shell-border hover:bg-shell-surface-hover text-shell-text-secondary"
                             }`}
                           >
                             <span>{emoji}</span>
-                            <span className={mine ? "text-sky-600 font-medium" : "text-shell-text-tertiary"}>{users.length}</span>
+                            <span className={mine ? "text-accent-strong font-medium" : "text-shell-text-tertiary"}>{users.length}</span>
                           </button>
                         );
                       })}
@@ -2420,7 +2438,7 @@ export function MessagesApp({
                       data-emoji-popover="1"
                       role="dialog"
                       aria-label="Emoji reactions"
-                      className="fixed z-50 bg-zinc-800 border border-white/10 rounded-lg shadow-xl p-2 w-[300px] h-[360px] flex flex-col gap-2"
+                      className="fixed z-50 bg-shell-bg border border-shell-border-strong rounded-lg shadow-xl p-2 w-[300px] h-[360px] flex flex-col gap-2 backdrop-blur-xl"
                       style={{ top, left }}
                     >
                       <div className="flex gap-1 shrink-0">
@@ -2471,7 +2489,7 @@ export function MessagesApp({
           {/* prefill banner */}
           {prefillBanner && (
             <div
-              className="mx-4 mb-1 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[12px] text-blue-300/90 flex items-center gap-2 shrink-0"
+              className="mx-4 mb-1 px-3 py-2 rounded-lg bg-accent-soft border border-accent-line text-[12px] text-accent-strong flex items-center gap-2 shrink-0"
               role="status"
               aria-label={`Composer prefilled from prompt: ${prefillBanner.promptName}`}
             >
@@ -2523,9 +2541,9 @@ export function MessagesApp({
               style={{
                 padding: "10px 14px",
                 fontSize: 12,
-                color: "rgba(255,255,255,0.55)",
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                color: "var(--color-shell-text-secondary)",
+                background: "var(--color-accent-soft)",
+                border: "1px solid var(--color-accent-line)",
                 borderRadius: 12,
                 margin: "8px 12px",
               }}
@@ -2576,7 +2594,7 @@ export function MessagesApp({
                   ))}
                 </div>
               )}
-              <div className={`flex items-end gap-2 rounded-xl border px-2 py-1.5 ${isCurrentArchived ? "bg-white/[0.02] border-white/[0.04] opacity-50" : "bg-white/[0.06] border-white/[0.08]"}`}>
+              <div className={`flex items-end gap-2 rounded-2xl border px-2 py-1.5 ${isCurrentArchived ? "bg-white/[0.02] border-white/[0.04] opacity-50" : "bg-shell-surface border-shell-border-strong"}`}>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -2916,7 +2934,7 @@ export function MessagesApp({
           aria-label="Canvas viewer"
         >
           <div
-            className="w-[90vw] h-[85vh] max-w-5xl rounded-xl border border-white/10 overflow-hidden bg-zinc-900 flex flex-col"
+            className="w-[90vw] h-[85vh] max-w-5xl rounded-xl border border-white/10 overflow-hidden bg-shell-bg flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 shrink-0">
@@ -2954,7 +2972,7 @@ export function MessagesApp({
             aria-label="New channel"
           >
             <div
-              className="absolute bottom-0 left-0 right-0 bg-zinc-900 border-t border-white/[0.08] rounded-t-2xl p-4 space-y-3"
+              className="absolute bottom-0 left-0 right-0 bg-shell-bg border-t border-white/[0.08] rounded-t-2xl p-4 space-y-3"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-1">
@@ -2979,7 +2997,7 @@ export function MessagesApp({
                   id="new-channel-type-mobile"
                   value={newChannel.type}
                   onChange={(e) => setNewChannel((s) => ({ ...s, type: e.target.value as "topic" | "group" }))}
-                  className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50"
+                  className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-accent-line"
                   aria-label="Channel type"
                 >
                   <option value="topic">Topic</option>
@@ -3003,7 +3021,7 @@ export function MessagesApp({
           </div>
         ) : (
           <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-[380px] max-h-full flex flex-col shadow-2xl bg-zinc-900">
+            <Card className="w-full max-w-[380px] max-h-full flex flex-col shadow-2xl bg-shell-bg">
               <CardHeader className="flex flex-row items-center justify-between gap-2 p-0 px-4 py-3 border-b border-white/[0.06]">
                 <CardTitle className="text-sm font-medium">New Channel</CardTitle>
                 <Button
@@ -3033,7 +3051,7 @@ export function MessagesApp({
                     id="new-channel-type"
                     value={newChannel.type}
                     onChange={(e) => setNewChannel((s) => ({ ...s, type: e.target.value as "topic" | "group" }))}
-                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50"
+                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-accent-line"
                     aria-label="Channel type"
                   >
                     <option value="topic">Topic</option>

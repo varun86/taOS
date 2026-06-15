@@ -26,6 +26,14 @@
   /* Accent — cool neutral grey, no purple/indigo */
   --color-accent: #8b92a3;
   --color-accent-glow: rgba(139, 146, 163, 0.3);
+  /* Slate accent fills — tinted surfaces + hairlines for accented UI
+     (Messages thread bubbles, the read-only Coordination Bus rail).
+     Restrained slate, never purple. The unread badge is a slate-blue. */
+  --color-accent-soft: rgba(139, 146, 163, 0.16);
+  --color-accent-line: rgba(139, 146, 163, 0.38);
+  --color-accent-strong: #c3c8d4;
+  --color-unread: #5b8def;
+  --color-bubble-self: rgba(139, 146, 163, 0.14);
 
   /* Dock + top bar — neutral graphite frosted chrome */
   --color-dock-bg: rgba(29, 29, 31, 0.92);
@@ -93,6 +101,18 @@
 :root[data-scheme="light"] [class~="text-white/25"] { color: rgba(0, 0, 0, 0.40); }
 :root[data-scheme="light"] [class~="text-white/20"] { color: rgba(0, 0, 0, 0.40); }
 :root[data-scheme="light"] [class~="text-white/15"] { color: rgba(0, 0, 0, 0.38); }
+
+/* Slate accent fills — light-scheme values (mirror the approved Messages
+   mockup): a touch cooler/darker so tinted surfaces and the unread badge
+   read correctly on the light graphite background. */
+:root[data-scheme="light"] {
+  --color-accent: #6b7280;
+  --color-accent-soft: rgba(107, 114, 128, 0.13);
+  --color-accent-line: rgba(107, 114, 128, 0.34);
+  --color-accent-strong: #4b5160;
+  --color-unread: #3b6fd4;
+  --color-bubble-self: rgba(107, 114, 128, 0.12);
+}
 
 /* Hover overlays: re-assert the inverted fill on :hover so the affordance
    does not flatten under the base-state override. */
