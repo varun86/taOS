@@ -120,6 +120,24 @@ const WALLPAPERS: Wallpaper[] = [
 // Default wallpaper for taOS Dark: the animated graphite field.
 const DEFAULT_WP = WALLPAPERS.find((w) => w.id === "graphite") ?? WALLPAPERS[0]!;
 
+// Live store fields that describe a wallpaper, derived from its definition.
+// Shared by the user-facing setWallpaper (which also records the choice) and
+// the theme-switch default applier (which must not record a user choice).
+function wallpaperFields(wp: Wallpaper, id: string) {
+  return {
+    wallpaperId: id,
+    wallpaperImage: wp.image,
+    wallpaperMobileImage: wp.mobileImage ?? wp.image,
+    wallpaperFallback: wp.fallback,
+    wallpaperLightImage: wp.lightImage ?? "",
+    wallpaperLightMobileImage: wp.lightMobileImage ?? wp.lightImage ?? "",
+    wallpaperLightFallback: wp.lightFallback ?? wp.fallback,
+    wallpaperKind: wp.kind ?? "image",
+    wallpaperComponent: wp.component ?? null,
+    wallpaperOverlayText: wp.overlayText ?? null,
+  } as const;
+}
+
 // The slogan-overlay toggle persists locally so a clean desktop survives a
 // reload. Best-effort: any storage failure falls back to "on".
 const SLOGAN_KEY = "taos-wallpaper-slogan";
@@ -173,6 +191,10 @@ interface ThemeStore {
   activeThemeId: string;
   wallpaperByTheme: Record<string, string>;
   themeDefaultWallpaper: Record<string, string>;
+  // Per-theme memory of the wallpaper id the user last picked while that theme
+  // was active. Lets a theme switch restore the wallpaper that was in use for
+  // the target theme rather than inheriting the previous theme's wallpaper.
+  wallpaperIdByTheme: Record<string, string>;
 
   setWallpaper: (id: string) => void;
   toggleOverlayText: () => void;
@@ -202,22 +224,17 @@ export const useThemeStore = create<ThemeStore>((set) => ({
   activeThemeId: "default",
   wallpaperByTheme: {},
   themeDefaultWallpaper: {},
+  wallpaperIdByTheme: {},
 
   setWallpaper(id) {
     const wp = WALLPAPERS.find((w) => w.id === id);
     if (wp) {
-      set({
-        wallpaperId: id,
-        wallpaperImage: wp.image,
-        wallpaperMobileImage: wp.mobileImage ?? wp.image,
-        wallpaperFallback: wp.fallback,
-        wallpaperLightImage: wp.lightImage ?? "",
-        wallpaperLightMobileImage: wp.lightMobileImage ?? wp.lightImage ?? "",
-        wallpaperLightFallback: wp.lightFallback ?? wp.fallback,
-        wallpaperKind: wp.kind ?? "image",
-        wallpaperComponent: wp.component ?? null,
-        wallpaperOverlayText: wp.overlayText ?? null,
-      });
+      set((s) => ({
+        ...wallpaperFields(wp, id),
+        // An explicit pick is remembered for the active theme so switching away
+        // and back restores it instead of the target theme's default.
+        wallpaperIdByTheme: { ...s.wallpaperIdByTheme, [s.activeThemeId]: id },
+      }));
     }
   },
 
@@ -361,14 +378,28 @@ export function setWallpaperForActiveTheme(value: string) {
   useThemeStore.setState({ wallpaperByTheme: { ...wallpaperByTheme, [activeThemeId]: value } });
 }
 
-// Apply a theme's default wallpaper id to the live desktop, but only when the
-// user hasn't already picked a wallpaper for that theme (so an explicit choice
-// is never clobbered). Used when keeping/restoring a theme that declares one.
+// Apply the right wallpaper to the live desktop when switching to a theme.
+// Symmetric so switching back from a theme that set its own wallpaper (e.g.
+// Indigo -> neural-live) doesn't leave the previous theme's wallpaper stuck:
+//   1. a wallpaper the user explicitly picked for the target theme wins, else
+//   2. the target theme's declared defaultWallpaperId, else
+//   3. the global default wallpaper (never the previous theme's).
 function applyThemeDefaultWallpaper(themeId: string, cfg: ThemeConfig) {
-  if (!cfg.defaultWallpaperId) return;
-  const { wallpaperByTheme } = useThemeStore.getState();
-  if (wallpaperByTheme[themeId]) return; // user override wins
-  useThemeStore.getState().setWallpaper(cfg.defaultWallpaperId);
+  const state = useThemeStore.getState();
+  // Explicit user choice for this theme always wins.
+  const remembered = state.wallpaperIdByTheme[themeId];
+  const target = remembered ?? cfg.defaultWallpaperId ?? DEFAULT_WP.id;
+  if (target === state.wallpaperId) return; // already showing it
+  const wp = WALLPAPERS.find((w) => w.id === target);
+  if (!wp) return;
+  if (remembered) {
+    // Restoring the user's own pick: setWallpaper keeps the memory consistent.
+    state.setWallpaper(target);
+  } else {
+    // Applying a default must not be recorded as an explicit user choice, so a
+    // later genuine pick (or a changed theme default) still takes effect.
+    useThemeStore.setState(wallpaperFields(wp, target));
+  }
 }
 
 export function resolveWallpaper(): string {

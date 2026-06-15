@@ -112,7 +112,16 @@ fetch() {
                 log "$name already complete (${actual} bytes) - skipping download"
                 return 0
             fi
-            log "$name incomplete (${actual:-0}/${expected} bytes) - resuming"
+            # `wget -c` only resumes when the on-disk file is SHORTER than the
+            # remote. A file that is the same length-or-longer can't be a valid
+            # partial (it's corrupt/oversized), and -c would leave it untouched
+            # forever. Delete it first so the next wget re-downloads cleanly.
+            if [[ "${actual:-0}" -ge "$expected" ]]; then
+                log "$name oversized/corrupt (${actual:-0} >= ${expected} bytes) - removing and re-downloading"
+                rm -f "$dest"
+            else
+                log "$name incomplete (${actual:-0}/${expected} bytes) - resuming"
+            fi
         fi
     fi
     log "downloading $name"
