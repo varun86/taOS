@@ -595,6 +595,12 @@
    Mobile: stack the split pane
    ========================================================= */
 @media (max-width: 767px) {
+  /* The project-list sidebar is a fixed 248px on desktop; on mobile it is the
+     full-width list screen of the MobileSplitView, so let it fill the width
+     (otherwise the empty remainder showed the window background). */
+  .sidebar {
+    width: 100%;
+  }
   .ws {
     flex-direction: column;
   }
