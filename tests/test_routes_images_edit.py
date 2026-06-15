@@ -14,6 +14,7 @@ from tinyagentos.routes.images_edit import (
     EditRequest,
     FluxFillClient,
     _get_edit_backend,
+    _require_image,
     edit_image,
 )
 
@@ -321,6 +322,25 @@ async def test_edit_response_not_degraded_when_tier_satisfied(tmp_path):
 
     assert result["backend"] == "iopaint"
     assert result["degraded"] is False  # fast tier prefers iopaint
+
+
+def test_require_image_accepts_image_magic_without_image_content_type():
+    """A valid image whose content-type is not image/* (e.g. octet-stream) is
+    accepted by its magic signature rather than rejected as an error."""
+    png_bytes = base64.b64decode(_png_b64())
+    resp = httpx.Response(
+        200, content=png_bytes, headers={"content-type": "application/octet-stream"}
+    )
+    assert _require_image(resp) == png_bytes
+
+
+def test_require_image_rejects_json_text_200():
+    """A JSON/text 200 with no image magic is still rejected (IOPaint error)."""
+    resp = httpx.Response(
+        200, json={"errors": "model not loaded"}, headers={"content-type": "application/json"}
+    )
+    with pytest.raises(RuntimeError, match="non-image response"):
+        _require_image(resp)
 
 
 @pytest.mark.asyncio

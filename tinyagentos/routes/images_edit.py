@@ -238,17 +238,34 @@ def _strip_data_uri(b64: str) -> str:
     return b64
 
 
+def _looks_like_image(data: bytes) -> bool:
+    """True if *data* starts with a known image magic signature."""
+    return (
+        data.startswith(b"\x89PNG\r\n\x1a\n")  # PNG
+        or data.startswith(b"\xff\xd8\xff")  # JPEG
+        or (data[:4] == b"RIFF" and data[8:12] == b"WEBP")  # WEBP
+        or data.startswith(b"GIF8")  # GIF
+    )
+
+
 def _require_image(resp: httpx.Response) -> bytes:
     """Return the response body only if it is actually an image.
 
     IOPaint can answer HTTP 200 with a JSON/text error body (missing plugin,
     bad args, model-load failure). Those bytes would otherwise be saved as a
     ``.png`` and reported as success, handing the user a broken image. Reject
-    any non-image content-type so it routes into ``_backend_error_response``.
+    such a response so it routes into ``_backend_error_response``.
+
+    Some valid backends return image bytes without an ``image/*`` content-type
+    (or with ``application/octet-stream``), so accept the body when either the
+    content-type is an image or the bytes carry an image magic signature. Only
+    raise when it is clearly not an image (e.g. a JSON/text error body).
     """
-    if not resp.headers.get("content-type", "").startswith("image/"):
-        raise RuntimeError(f"IOPaint returned non-image response: {resp.text[:300]}")
-    return resp.content
+    content = resp.content
+    is_image_type = resp.headers.get("content-type", "").startswith("image/")
+    if is_image_type or _looks_like_image(content):
+        return content
+    raise RuntimeError(f"IOPaint returned non-image response: {resp.text[:300]}")
 
 
 # Fraction of the image's own size to grow each side by when outpainting.
@@ -425,12 +442,15 @@ async def edit_image(request: Request, body: EditRequest):
             status_code=503,
         )
 
-    # The tier's first preference is the backend the user effectively asked for;
-    # anything else means _get_edit_backend fell back (e.g. quality → iopaint),
-    # which the response flags as degraded so the prompt-ignoring downgrade isn't
-    # silent.
-    primary = (_TIER_PREFERENCE.get("image-editing", {}).get(body.tier) or [None])[0]
-    degraded = backend_type != primary
+    # Only a meaningful downgrade is flagged: a quality request that did NOT get
+    # the quality primary (flux-fill) fell back to the fast iopaint eraser, which
+    # ignores the prompt. Falling between fast-tier preferences is not a
+    # meaningful degrade, so fast requests (and quality served by flux-fill) are
+    # never flagged. The chosen backend type is surfaced in the response either way.
+    quality_primary = (
+        _TIER_PREFERENCE.get("image-editing", {}).get("quality") or [None]
+    )[0]
+    degraded = body.tier == "quality" and backend_type != quality_primary
 
     try:
         result_bytes = await client.inpaint(
