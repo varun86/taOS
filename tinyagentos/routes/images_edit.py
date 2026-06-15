@@ -15,6 +15,7 @@ Backends:
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import time
@@ -23,6 +24,7 @@ from typing import Literal, Optional
 from uuid import uuid4
 
 import httpx
+from PIL import Image
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -197,6 +199,128 @@ class IOPaintClient:
 
 
 # --------------------------------------------------------------------------- #
+#  FLUX Fill adapter (A1111-style sd.cpp server, async httpx client)           #
+# --------------------------------------------------------------------------- #
+def _strip_data_uri(b64: str) -> str:
+    """Drop a leading ``data:image/...;base64,`` prefix if present."""
+    if b64.startswith("data:") and "," in b64:
+        return b64.split(",", 1)[1]
+    return b64
+
+
+# Fraction of the image's own size to grow each side by when outpainting.
+_OUTPAINT_MARGIN = 0.25
+
+
+class FluxFillClient:
+    """Thin async client for a FLUX.1-Fill server behind an A1111-style sd.cpp
+    HTTP API (same family as the ``sd-cpp`` image-generation backend).
+
+    Inpaint/outpaint go through ``POST /sdapi/v1/img2img`` with an A1111 inpaint
+    payload: the source goes in ``init_images``, the mask in ``mask``, and the
+    response carries a base64 PNG in ``images[0]``.
+
+    The mirror of :class:`IOPaintClient.inpaint` so ``edit_image`` can call
+    either with identical arguments.
+    """
+
+    def __init__(self, base_url: str, *, timeout: float = 300.0):
+        self.base = base_url.rstrip("/")
+        self.timeout = timeout
+
+    @staticmethod
+    def _pad_for_outpaint(image_b64: str, mask_b64: str) -> tuple[str, str]:
+        """Grow the canvas for outpaint: pad the source with edge-replicated
+        borders and build a mask whose new border is white (to be painted) and
+        whose original region is black (to be kept). Returns (image_b64, mask_b64).
+
+        sd.cpp img2img does not natively extend the canvas, so (consistent with
+        the IOPaint extender path) we pre-pad before sending.
+        """
+        src = Image.open(io.BytesIO(base64.b64decode(_strip_data_uri(image_b64)))).convert("RGB")
+        w, h = src.size
+        mx = max(1, int(round(w * _OUTPAINT_MARGIN)))
+        my = max(1, int(round(h * _OUTPAINT_MARGIN)))
+        new_w, new_h = w + 2 * mx, h + 2 * my
+
+        # Edge-replicate the source into the larger canvas so diffusion has
+        # plausible context to extend from.
+        padded = Image.new("RGB", (new_w, new_h))
+        padded.paste(src, (mx, my))
+        left = src.crop((0, 0, 1, h)).resize((mx, h))
+        right = src.crop((w - 1, 0, w, h)).resize((mx, h))
+        padded.paste(left, (0, my))
+        padded.paste(right, (mx + w, my))
+        top = padded.crop((0, my, new_w, my + 1)).resize((new_w, my))
+        bottom = padded.crop((0, my + h - 1, new_w, my + h)).resize((new_w, my))
+        padded.paste(top, (0, 0))
+        padded.paste(bottom, (0, my + h))
+
+        # White border = paint, black centre = keep.
+        mask = Image.new("L", (new_w, new_h), 255)
+        mask.paste(0, (mx, my, mx + w, my + h))
+
+        def _png_b64(img: Image.Image) -> str:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return base64.b64encode(buf.getvalue()).decode()
+
+        return _png_b64(padded), _png_b64(mask)
+
+    async def inpaint(
+        self,
+        image_b64: str,
+        mask_b64: str,
+        *,
+        prompt: str = "",
+        outpaint: bool = False,
+        steps: int = 28,
+        guidance: float = 30.0,
+        denoising_strength: float = 0.85,
+    ) -> bytes:
+        if outpaint:
+            image_b64, mask_b64 = self._pad_for_outpaint(image_b64, mask_b64)
+        else:
+            mask_b64 = _strip_data_uri(mask_b64)
+
+        # A1111-compatible servers (sd.cpp sd-server) fall back to a default
+        # 512x512 size when width/height are omitted, which wrongly resizes any
+        # non-512 image. Pin them to the dimensions of the image actually sent in
+        # ``init_images`` (the padded canvas in the outpaint case).
+        src_w, src_h = Image.open(
+            io.BytesIO(base64.b64decode(_strip_data_uri(image_b64)))
+        ).size
+
+        payload: dict = {
+            "init_images": [image_b64],
+            "mask": mask_b64,
+            "width": src_w,
+            "height": src_h,
+            "prompt": prompt,
+            "steps": steps,
+            "cfg_scale": guidance,
+            "denoising_strength": denoising_strength,
+            # 1 = fill the masked region (vs. original/latent noise/nothing).
+            "inpainting_fill": 1,
+            # Process the masked region at full resolution for sharper fills.
+            "inpaint_full_res": True,
+            "inpaint_full_res_padding": 32,
+            # 0 = inpaint the white (masked) area, matching our mask convention.
+            "inpainting_mask_invert": 0,
+            "sampler_name": "euler_a",
+            "seed": -1,
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.post(f"{self.base}/sdapi/v1/img2img", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        images = data.get("images") if isinstance(data, dict) else None
+        if not images:
+            raise RuntimeError("FLUX Fill server returned no images")
+        return base64.b64decode(_strip_data_uri(images[0]))
+
+
+# --------------------------------------------------------------------------- #
 #  Error helpers                                                               #
 # --------------------------------------------------------------------------- #
 _NO_BACKEND = {
@@ -238,21 +362,21 @@ async def edit_image(request: Request, body: EditRequest):
     if backend is None:
         return JSONResponse(_NO_BACKEND, status_code=503)
     url, backend_type, _name = backend
-    if backend_type != "iopaint":
-        # Only the IOPaint client is implemented today; flux-fill (the quality
-        # inpaint/outpaint tier) is routed by the catalog but its client is a
-        # follow-up. _get_edit_backend already falls back to iopaint when no
-        # flux-fill backend is healthy, so this only triggers if one exists.
+
+    image_b64 = base64.b64encode(source.read_bytes()).decode()
+    # flux-fill = the quality GPU diffusion tier (A1111 img2img inpaint); iopaint
+    # = the fast CPU/NPU tier (LaMa). _get_edit_backend falls back to iopaint
+    # when no flux-fill backend is healthy, so anything else is unexpected.
+    if backend_type == "flux-fill":
+        client: IOPaintClient | FluxFillClient = FluxFillClient(url)
+    elif backend_type == "iopaint":
+        client = IOPaintClient(url)
+    else:
         return JSONResponse(
-            {
-                "error": f"Edit backend '{backend_type}' has no client wired yet "
-                "(FLUX Fill pending); try the fast tier."
-            },
+            {"error": f"Edit backend '{backend_type}' has no client wired yet."},
             status_code=503,
         )
 
-    image_b64 = base64.b64encode(source.read_bytes()).decode()
-    client = IOPaintClient(url)
     try:
         result_bytes = await client.inpaint(
             image_b64,
