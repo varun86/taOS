@@ -403,7 +403,9 @@ export function TaosAssistantPanel() {
           top: "var(--spacing-topbar-h)",
           bottom: 0,
           width: 420,
-          backgroundColor: "rgba(21, 22, 37, 0.92)",
+          // Theme token, not a hardcoded indigo -- the old rgba(21,22,37) read
+          // as purple on the graphite/light themes.
+          backgroundColor: "var(--color-shell-bg-glass)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           animation: "taos-assistant-slidein 300ms ease-out",
