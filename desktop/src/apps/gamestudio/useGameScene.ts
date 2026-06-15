@@ -228,6 +228,42 @@ export function useGameScene(scene: SceneKind): GameSceneHandle {
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
 
+    // ---- keyboard capture for WASD / arrows ----
+    // Listeners live on the canvas (made focusable) so movement keys are only
+    // intercepted while the user is genuinely focused on the game, never OS-wide.
+    const MOVE_KEYS = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"];
+    const canvas = renderer.domElement;
+    canvas.tabIndex = 0;
+    canvas.style.outline = "none";
+    // Focus the canvas on pointer-down so a click hands movement input to the game.
+    const focusCanvas = () => canvas.focus();
+    canvas.addEventListener("pointerdown", focusCanvas);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (MOVE_KEYS.includes(k)) {
+        keysRef.current.add(k);
+        // Only swallow the key while actively playing; the canvas already holds
+        // focus to receive this event, so page scroll/shortcuts stay free elsewhere.
+        if (playingRef.current) e.preventDefault();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      keysRef.current.delete(e.key.toLowerCase());
+    };
+    // Release every held key when focus is lost, so a key held during a
+    // tab/window switch can never stick and drive the character forever.
+    const clearKeys = () => keysRef.current.clear();
+    const onVisibility = () => {
+      if (document.hidden) clearKeys();
+    };
+    canvas.addEventListener("keydown", onKeyDown);
+    canvas.addEventListener("keyup", onKeyUp);
+    canvas.addEventListener("blur", clearKeys);
+    canvas.addEventListener("pointerleave", clearKeys);
+    window.addEventListener("blur", clearKeys);
+    document.addEventListener("visibilitychange", onVisibility);
+
     // ---- reset ----
     const startHero = hero.position.clone();
     const startCam = { ...cam };
@@ -325,6 +361,14 @@ export function useGameScene(scene: SceneKind): GameSceneHandle {
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointerdown", focusCanvas);
+      canvas.removeEventListener("keydown", onKeyDown);
+      canvas.removeEventListener("keyup", onKeyUp);
+      canvas.removeEventListener("blur", clearKeys);
+      canvas.removeEventListener("pointerleave", clearKeys);
+      window.removeEventListener("blur", clearKeys);
+      document.removeEventListener("visibilitychange", onVisibility);
+      keysRef.current.clear();
       sceneObj.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (mesh.geometry) mesh.geometry.dispose();
@@ -338,25 +382,6 @@ export function useGameScene(scene: SceneKind): GameSceneHandle {
       }
     };
   }, [scene]);
-
-  // Keyboard capture for WASD / arrows while the stage is mounted.
-  useEffect(() => {
-    const keys = keysRef.current;
-    const down = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) {
-        keys.add(k);
-        if (playingRef.current) e.preventDefault();
-      }
-    };
-    const up = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase());
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-    };
-  }, []);
 
   return { hostRef, playing, setPlaying, togglePlay, fps, reset, supported };
 }
