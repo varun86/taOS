@@ -4,6 +4,9 @@ export interface ThemeConfig {
   effects: { module: string; params?: Record<string, unknown> }[];
   requires: string[];
   wallpaper?: string | null;
+  // Optional id of a registered wallpaper (see WALLPAPERS in theme-store) that
+  // this theme defaults to when kept, unless the user already chose one for it.
+  defaultWallpaperId?: string;
 }
 
 // Client-side allowlist — mirrors tinyagentos/themes/schema.py _ALL_TOKENS.
