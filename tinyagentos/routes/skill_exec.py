@@ -235,6 +235,16 @@ async def _skill_describe_image_capabilities(args: dict, request: Request) -> di
         return {"error": str(exc)}
 
 
+async def _skill_export_storybook(args: dict, request: Request) -> dict:
+    """Render a project's pages + illustrations into a storybook PDF."""
+    try:
+        from tinyagentos.tools.project_tools import execute_export_storybook
+
+        return await execute_export_storybook(args, request)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 SKILL_IMPLEMENTATIONS = {
     "memory_search": _skill_memory_search,
     "file_read": _skill_file_read,
@@ -250,6 +260,7 @@ SKILL_IMPLEMENTATIONS = {
     "add_task": _skill_add_task,
     "canvas_add_image": _skill_canvas_add_image,
     "describe_image_capabilities": _skill_describe_image_capabilities,
+    "export_storybook": _skill_export_storybook,
 }
 
 

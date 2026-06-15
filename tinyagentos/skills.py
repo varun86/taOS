@@ -385,6 +385,45 @@ class SkillStore(BaseStore):
                 "install_method": "builtin",
                 "install_target": "tinyagentos.tools.cluster_tools",
             },
+            {
+                "id": "export_storybook",
+                "name": "Export Storybook PDF",
+                "category": "projects",
+                "description": "Render a project's pages + illustrations into an illustrated storybook PDF",
+                "tool_schema": {
+                    "name": "export_storybook",
+                    "description": "Assemble an illustrated children's-book PDF from a project's pages and the images you generated. Saved to the project's Files (exports/) and downloadable. Call this as the final step after generating the art.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "project_id": {"type": "string", "description": "Id from create_project."},
+                            "title": {"type": "string", "description": "The book title (shown on the cover)."},
+                            "pages": {
+                                "type": "array",
+                                "description": "Ordered pages. Each is {text, image_ref} where image_ref is a filename returned by generate_image.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {"type": "string", "description": "The page's caption/story text."},
+                                        "image_ref": {"type": "string", "description": "image_ref returned by generate_image for this page."},
+                                    },
+                                    "required": ["text"],
+                                },
+                            },
+                            "cover_image_ref": {"type": "string", "description": "Optional cover image_ref; defaults to the first page's image."},
+                            "author": {"type": "string", "description": "Optional author shown on the cover."},
+                        },
+                        "required": ["project_id", "title", "pages"],
+                    },
+                },
+                "frameworks": {
+                    "smolagents": "adapter", "openclaw": "adapter", "pocketflow": "adapter",
+                    "langroid": "adapter", "hermes": "adapter", "agent-zero": "adapter",
+                    "openai-agents-sdk": "adapter", "generic": "adapter",
+                },
+                "install_method": "builtin",
+                "install_target": "tinyagentos.tools.project_tools",
+            },
         ]
 
         for skill in defaults:

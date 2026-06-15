@@ -63,6 +63,16 @@ def _resolve_safe(workspace: Path, subpath: str) -> Path | None:
         return None
 
 
+def _is_within(dst: Path, src: Path) -> bool:
+    """True if *dst* is *src* itself or nested inside it.
+
+    Copying or moving a directory into a path under itself makes
+    ``shutil.copytree`` / ``Path.rename`` raise, which would otherwise escape
+    as a bare 500. Both paths are already resolved by ``_resolve_safe``.
+    """
+    return dst == src or dst.is_relative_to(src)
+
+
 class MkdirRequest(BaseModel):
     path: str
 
@@ -232,10 +242,49 @@ async def api_rename(request: Request, body: RenameRequest):
         return JSONResponse({"error": "Source not found"}, status_code=404)
     if dst.exists():
         return JSONResponse({"error": "Target already exists"}, status_code=409)
+    if _is_within(dst, src):
+        return JSONResponse(
+            {"error": "Cannot move a directory into itself"}, status_code=400
+        )
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     src.rename(dst)
     return {"path": str(dst.relative_to(workspace)), "status": "renamed"}
+
+
+class CopyRequest(BaseModel):
+    src: str
+    dst: str
+
+
+@router.post("/api/workspace/copy")
+async def api_copy(request: Request, body: CopyRequest):
+    """Copy a file or directory tree within the user workspace."""
+    workspace = _get_workspace_root(request)
+
+    if not body.src.strip() or not body.dst.strip():
+        return JSONResponse({"error": "src and dst are required"}, status_code=400)
+
+    src = _resolve_safe(workspace, body.src.strip())
+    dst = _resolve_safe(workspace, body.dst.strip())
+    if src is None or dst is None:
+        return JSONResponse({"error": "Invalid path"}, status_code=400)
+    if not src.exists():
+        return JSONResponse({"error": "Source not found"}, status_code=404)
+    if dst.exists():
+        return JSONResponse({"error": "Target already exists"}, status_code=409)
+    if _is_within(dst, src):
+        return JSONResponse(
+            {"error": "Cannot copy a directory into itself"}, status_code=400
+        )
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    # Run the blocking copy off the event loop so large trees do not stall it.
+    if src.is_dir():
+        await asyncio.to_thread(shutil.copytree, src, dst)
+    else:
+        await asyncio.to_thread(shutil.copy2, src, dst)
+    return {"path": str(dst.relative_to(workspace)), "status": "copied"}
 
 
 @router.get("/api/workspace/files/{file_path:path}")

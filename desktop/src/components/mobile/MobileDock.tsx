@@ -24,11 +24,14 @@ export function MobileDock({ onOpenApp, onToggleSwitcher, onOpenLaunchpad, activ
   const dockApps = useMobileHomeStore((s) => s.dockApps);
   const windows = useProcessStore((s) => s.windows);
 
-  // In PWA mode the home indicator is handled by env(safe-area-inset-bottom)
-  // on the viewport, so 24 px of padding is enough to clear it.
-  // In browser mode safe-area-inset-bottom is 0, so we need extra room to
-  // keep the dock above Safari's ~50 px URL/tab bar.
-  const dockPaddingBottom = isBrowserMobile ? 54 : 24;
+  // The dock is the bottom-most element in the mobile column, so it owns the
+  // home-indicator / browser-chrome clearance for everything above it. We add
+  // env(safe-area-inset-bottom) on TOP of a base gap so the dock (and the app
+  // content that ends just above it) always clears the home indicator. In PWA
+  // mode the inset is non-zero (notch devices); in browser mode it is 0, so we
+  // add extra room to keep the dock above Safari's ~50 px URL/tab bar.
+  const dockBaseGap = isBrowserMobile ? 54 : 12;
+  const dockPaddingBottom = `calc(env(safe-area-inset-bottom, 0px) + ${dockBaseGap}px)`;
 
   return (
     <div

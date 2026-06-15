@@ -89,13 +89,13 @@ taOS ships with a full browser-based desktop environment. Open it at `http://you
 - **Standalone Chat PWA**. Messages available as a dedicated installable app at `/chat-pwa`
 - **shadcn/ui primitives**. Button, Card, Input, Tabs, Switch, Toolbar
 
-### 36 Bundled Desktop Apps
+### 39 Bundled Desktop Apps
 
-**Platform apps (24):** Messages (WebSocket chat), Projects (Kanban + A2A), Agents (deploy wizard + logs + skills), Store (47+ apps), Settings (multi-section with Memory capture toggles), Models, Providers (cloud LLM provider management, add/test/remove OpenAI, Anthropic, and compatible APIs), Memory (User + Agent sections), MCP (plugin manager), Channels, Secrets, Tasks, Import, Images, Dashboard (Activity), Cluster (worker management + health), Library (knowledge pipeline, document library with collections and search), Reddit (subreddit browser with saved threads and memory ingest), YouTube (video library with transcript extraction), GitHub (repository browser with code search), X (feed monitor with bookmarks and memory capture), Agent Browsers (manage agent browser sessions), Files (real VFS with workspace + shared folders), Guides.
+**Platform apps (25):** Messages (WebSocket chat), Projects (Kanban + A2A), Agents (deploy wizard + logs + skills), Store (47+ apps), Settings (multi-section with Memory capture toggles), Models, Providers (cloud LLM provider management, add/test/remove OpenAI, Anthropic, DeepSeek, and compatible APIs), Memory (User + Agent sections), MCP (plugin manager), Channels, Secrets, Tasks, Import, Images (Image Studio: Create / Library / Edit with tier-aware inpaint + upscale backends), Dashboard (Activity), Cluster (worker management + health), Library (knowledge pipeline, document library with collections and search), Reddit (subreddit browser with saved threads and memory ingest), YouTube (video library with transcript extraction), GitHub (repository browser with code search), X (feed monitor with bookmarks and memory capture), Agent Browsers (manage agent browser sessions), Files (real VFS with workspace + shared folders), taOS Agent (Agent-as-a-Model endpoint), Guides.
 
-**OS apps (9):** Weather, Calculator (math.js), Calendar (month view), Contacts (CRUD), Browser (URL-rewriting proxy, agent-ready), Media Player (Plyr), Text Editor (CodeMirror 6 with Obsidian-style theme), Image Viewer (zoom/rotate), Terminal (real PTY + SSH client).
+**OS apps (10):** Weather, Calculator (math.js), Calendar (month view), Contacts (CRUD), Browser (URL-rewriting proxy, agent-ready), Browser (Streamed) (real WebRTC Chromium streamed from the host), Media Player (Plyr), Text Editor (CodeMirror 6 with Obsidian-style theme), Image Viewer (zoom/rotate), Terminal (real PTY + SSH client).
 
-**Games (3):** Chess (plays against real agents via LLM), Wordle, Crosswords.
+**Games & studios (4):** Game Studio (offline-AI game maker, three.js + react-three-fiber, fullscreen play with mandatory exit-to-taOS, test then optionally share to the Store), Chess (plays against real agents via LLM), Wordle, Crosswords.
 
 The Activity app includes a Cluster overview panel showing live worker status and resource stats alongside the process monitor. The Model Browser surfaces cloud models (from configured providers) alongside local catalog models, with a provider badge per entry. The deploy wizard accepts cloud models as inference targets.
 
@@ -108,7 +108,7 @@ The Activity app includes a Cluster overview panel showing live worker status an
 ## Key Features
 
 ### Web Desktop Shell
-Full browser-based desktop OS with window manager (float + snap), dock, launchpad, right-click context menu, wallpaper picker, notifications, widgets, and persistent sessions that follow you across devices. 36 bundled apps, platform tools, OS utilities, and games, plus an optional password login gate. See [Web Desktop Experience](#web-desktop-experience) above.
+Full browser-based desktop OS with window manager (float + snap), dock, launchpad, right-click context menu, wallpaper picker, notifications, widgets, and persistent sessions that follow you across devices. 39 bundled apps, platform tools, OS utilities, and games, plus an optional password login gate. See [Web Desktop Experience](#web-desktop-experience) above.
 
 ### Mobile & Tablet Mode
 Auto-detects touch devices and swaps the desktop for a widget-first home screen with customisable multi-page layout (swipe or tap dots to navigate), a persistent dock with app launcher and app switcher, and desktop-style app windows with close/minimise title bars. The top bar features iOS 26-style frosted glass buttons for search and notifications, with a "taOS" home button. Installable as a fullscreen PWA on iOS and Android. A standalone Chat PWA is available at `/chat-pwa` and installs like a private Discord.
@@ -214,10 +214,17 @@ Hidden internal gateway that unifies all inference providers behind a single Ope
 ### Dynamic Capabilities
 Features unlock automatically based on your hardware and cluster. Solo Pi sees core features. Add a GPU worker and image generation, video, and training appear. No configuration, the platform just knows what's possible.
 
+### Creative Studios
+Two first-party studio apps turn the cluster's generation backends into something you can actually use, both built to the same design bar as the Store.
+
+- **Image Studio.** Create, Library, and Edit in one app. Generate from a prompt on any discovered Stable Diffusion backend (NPU / GPU / CPU), browse a thumbnail library, and edit with tier-aware backends: inpaint and object removal, plus upscale. The platform picks the best installed backend per task and degrades gracefully when a higher tier is missing.
+- **Game Studio.** An offline-AI game maker built on three.js and react-three-fiber. Less-capable, tool-calling-weak models get guided building blocks and templates; more capable local or cloud models can author scenes directly. Games run fullscreen on desktop and mobile with a mandatory exit-to-taOS control, can be playtested in place, and optionally shared to the Store.
+
 ### AI Generation
-- **Images**. Stable Diffusion via NPU, GPU, or CPU (multi-backend auto-discovery)
+- **Images**. Stable Diffusion via NPU, GPU, or CPU (multi-backend auto-discovery), surfaced through Image Studio
 - **Video**. WanGP, LTX Video (unlocks with 6GB+ GPU worker)
 - **Audio**. Kokoro TTS, Chatterbox, Piper, Whisper STT, MusicGPT
+- **Games**. three.js + react-three-fiber scenes authored offline through Game Studio
 
 ### Training & Fine-Tuning
 - **LoRA Training.** Train agent-specific adapters from the web UI (8GB+ GPU)
@@ -315,7 +322,7 @@ Search across agents, apps, messages, and files from a single endpoint. Finds an
 - **System Updates.** Pull latest from GitHub via Settings page. taOS periodically checks for updates and reports an anonymous install count (a daily aggregate estimate, no identifiers); disable with `TAOS_NO_UPDATE_PING=1` or in Settings.
 - **Provider Management.** Add/test/remove inference providers with live connectivity checks. The Providers desktop app manages cloud LLM credentials; the model browser reflects configured providers automatically.
 
-## App Catalog (108 Catalog Apps + 36 Desktop Apps + 47 MCP Plugins)
+## App Catalog (108 Catalog Apps + 39 Desktop Apps + 47 MCP Plugins)
 
 | Category | Apps |
 |----------|------|

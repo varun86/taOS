@@ -9,6 +9,9 @@
   --color-shell-surface-active: rgba(255, 255, 255, 0.08);
   --color-shell-border: rgba(255, 255, 255, 0.06);
   --color-shell-border-strong: rgba(255, 255, 255, 0.1);
+  /* Semi-transparent shell bg for frosted-glass bars (mobile top bar, etc.).
+     A theme can override this; base is neutral graphite, never indigo. */
+  --color-shell-bg-glass: rgba(22, 22, 24, 0.72);
 
   /* Text */
   --color-shell-text: rgba(255, 255, 255, 0.85);
@@ -23,6 +26,14 @@
   /* Accent — cool neutral grey, no purple/indigo */
   --color-accent: #8b92a3;
   --color-accent-glow: rgba(139, 146, 163, 0.3);
+  /* Slate accent fills — tinted surfaces + hairlines for accented UI
+     (Messages thread bubbles, the read-only Coordination Bus rail).
+     Restrained slate, never purple. The unread badge is a slate-blue. */
+  --color-accent-soft: rgba(139, 146, 163, 0.16);
+  --color-accent-line: rgba(139, 146, 163, 0.38);
+  --color-accent-strong: #c3c8d4;
+  --color-unread: #5b8def;
+  --color-bubble-self: rgba(139, 146, 163, 0.14);
 
   /* Dock + top bar — neutral graphite frosted chrome */
   --color-dock-bg: rgba(29, 29, 31, 0.92);
@@ -90,6 +101,18 @@
 :root[data-scheme="light"] [class~="text-white/25"] { color: rgba(0, 0, 0, 0.40); }
 :root[data-scheme="light"] [class~="text-white/20"] { color: rgba(0, 0, 0, 0.40); }
 :root[data-scheme="light"] [class~="text-white/15"] { color: rgba(0, 0, 0, 0.38); }
+
+/* Slate accent fills — light-scheme values (mirror the approved Messages
+   mockup): a touch cooler/darker so tinted surfaces and the unread badge
+   read correctly on the light graphite background. */
+:root[data-scheme="light"] {
+  --color-accent: #6b7280;
+  --color-accent-soft: rgba(107, 114, 128, 0.13);
+  --color-accent-line: rgba(107, 114, 128, 0.34);
+  --color-accent-strong: #4b5160;
+  --color-unread: #3b6fd4;
+  --color-bubble-self: rgba(107, 114, 128, 0.12);
+}
 
 /* Hover overlays: re-assert the inverted fill on :hover so the affordance
    does not flatten under the base-state override. */
@@ -228,13 +251,24 @@
    the viewport so the dock sits above the tab bar instead of behind it.
    The PWA layout is UNCHANGED — this only activates with .taos-browser.
    ================================================================== */
+/* Every mobile/tablet shell uses the dynamic viewport height so the bottom of
+   the column (the dock, and the app content/action bar that ends just above
+   it) is never pushed below the visible viewport. Tailwind's h-screen resolves
+   to 100vh, which on iOS includes the area behind the collapsing URL bar /
+   home indicator; 100dvh tracks the actual visible viewport. The 100vh line is
+   the fallback for browsers without dvh. Per-component safe-area insets still
+   handle the home-indicator clearance. */
+.taos-mobile-root {
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+
 .taos-browser {
   /* Note: safe-area insets are applied inline on individual components
      (ChatStandalone, BottomSheet, OnboardingScreen, ModelPickerModal, …),
      not on this element, and env(safe-area-inset-*) is already 0 in browser
-     (non-standalone) mode — so a padding reset here would be a no-op. We only
-     fix the viewport height: use dvh so Safari's collapsing URL bar doesn't
-     leave a gap, with 100vh as the fallback for browsers without dvh. */
+     (non-standalone) mode, so a padding reset here would be a no-op. The
+     viewport-height fix lives on .taos-mobile-root (shared with PWA mode). */
   height: 100vh !important;
   height: 100dvh !important;
 }

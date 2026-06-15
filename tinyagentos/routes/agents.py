@@ -555,6 +555,7 @@ async def deploy_agent_endpoint(request: Request, body: DeployAgentRequest):
         from tinyagentos.deployer import deploy_agent, DeployRequest
         data_dir = request.app.state.data_dir
         llm_proxy = getattr(request.app.state, "llm_proxy", None)
+        secrets_store = getattr(request.app.state, "secrets", None)
 
         async def _background_deploy():
             try:
@@ -572,6 +573,7 @@ async def deploy_agent_endpoint(request: Request, body: DeployAgentRequest):
                         "registry": request.app.state.registry,
                     },
                     can_read_user_memory=body.can_read_user_memory,
+                    secrets_store=secrets_store,
                 ))
                 agent = find_agent(config, body.name)
                 if result.get("success"):

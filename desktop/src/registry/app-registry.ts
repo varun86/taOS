@@ -57,6 +57,7 @@ const apps: AppManifest[] = [
   { id: "chess", name: "Chess", icon: "crown", category: "game", component: () => import("@/apps/ChessApp").then((m) => ({ default: m.ChessApp })), defaultSize: { w: 700, h: 700 }, minSize: { w: 500, h: 500 }, singleton: true, pinned: false, launchpadOrder: 40 },
   { id: "wordle", name: "Wordle", icon: "spell-check", category: "game", component: () => import("@/apps/WordleApp").then((m) => ({ default: m.WordleApp })), defaultSize: { w: 500, h: 650 }, minSize: { w: 400, h: 550 }, singleton: true, pinned: false, launchpadOrder: 41 },
   { id: "crosswords", name: "Crosswords", icon: "grid-3x3", category: "game", component: () => import("@/apps/CrosswordsApp").then((m) => ({ default: m.CrosswordsApp })), defaultSize: { w: 700, h: 600 }, minSize: { w: 500, h: 450 }, singleton: true, pinned: false, launchpadOrder: 42 },
+  { id: "game-studio", name: "Game Studio", icon: "gamepad-2", category: "game", component: () => import("@/apps/GameStudioApp").then((m) => ({ default: m.GameStudioApp })), defaultSize: { w: 1080, h: 760 }, minSize: { w: 640, h: 520 }, singleton: true, pinned: false, launchpadOrder: 42.5 },
 ];
 
 export function getApp(id: string): AppManifest | undefined {
