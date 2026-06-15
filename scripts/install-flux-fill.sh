@@ -36,6 +36,16 @@
 set -euo pipefail
 
 FLUX_FILL_PORT="${TAOS_FLUX_FILL_PORT:-38298}"
+
+# Host interface that Docker publishes the backend on.
+# SECURITY: sd-server has NO authentication. By default we publish on 0.0.0.0
+# because the taOS controller dials this backend over the tailnet from another
+# host, so 127.0.0.1 would break that cross-host call. This is only safe while
+# the host sits on a private tailnet or a firewalled LAN. Operators running on
+# an exposed host MUST set TAOS_FLUX_FILL_BIND to a specific private interface
+# IP (e.g. the tailnet address) so the unauthenticated server is not reachable
+# from public interfaces. (Mirrors the bind note in install-sd-cpp.sh.)
+FLUX_FILL_BIND="${TAOS_FLUX_FILL_BIND:-0.0.0.0}"
 FLUX_FILL_CONTAINER="${TAOS_FLUX_FILL_CONTAINER:-taos-sdcpp-fill}"
 FLUX_FILL_IMAGE="${TAOS_FLUX_FILL_IMAGE:-taos-sdcpp:cuda}"
 MODELS_DIR="${TAOS_FLUX_FILL_MODELS_DIR:-$HOME/.cache/taos-sdcpp/models}"
@@ -60,6 +70,10 @@ if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi >/dev/null 2>&1; then
     die "no CUDA GPU detected (nvidia-smi unavailable) - flux-fill is the GPU quality tier and requires an NVIDIA GPU. Use the iopaint backend on CPU/ARM hosts."
 fi
 command -v docker >/dev/null 2>&1 || die "docker not found - install Docker with the NVIDIA container toolkit first"
+# curl is used by the idempotency probe below; wget by the model fetch further down.
+for tool in curl wget; do
+    command -v "$tool" >/dev/null 2>&1 || die "required tool '$tool' not found on PATH"
+done
 
 # --- idempotency: skip if the container already answers on the port ---------
 if curl -fsS --max-time 3 "http://127.0.0.1:${FLUX_FILL_PORT}/sdapi/v1/options" >/dev/null 2>&1; then
@@ -78,13 +92,28 @@ fi
 
 # --- fetch the model + support files (idempotent; wget -c resumes) ----------
 mkdir -p "$MODELS_DIR"
-command -v wget >/dev/null 2>&1 || die "wget not found - install wget first"
 
+# Resume-aware fetch. We never skip solely because the destination exists and is
+# non-empty: a partial/corrupt prior download is non-empty too, and skipping it
+# would leave a truncated model in place. Instead we ask the server for the
+# expected size (Content-Length) and, when known, only treat the file as done if
+# its on-disk size already matches; otherwise we always invoke `wget -c` so a
+# partial file resumes from where it left off and a genuinely complete file is a
+# fast no-op (wget -c sees nothing left to fetch and exits quickly).
 fetch() {
     local name="$1" url="$2" dest="${MODELS_DIR}/$1"
-    if [[ -s "$dest" ]]; then
-        log "$name already present - skipping download"
-        return 0
+    local expected="" actual=""
+    if [[ -f "$dest" ]]; then
+        expected="$(curl -fsSIL --max-time 30 "$url" 2>/dev/null \
+            | awk 'BEGIN{IGNORECASE=1} /^content-length:/ {v=$2} END{gsub(/\r/,"",v); print v}')"
+        if [[ -n "$expected" ]]; then
+            actual="$(wc -c < "$dest" 2>/dev/null | tr -d ' ')"
+            if [[ "$actual" == "$expected" ]]; then
+                log "$name already complete (${actual} bytes) - skipping download"
+                return 0
+            fi
+            log "$name incomplete (${actual:-0}/${expected} bytes) - resuming"
+        fi
     fi
     log "downloading $name"
     wget -c -O "$dest" "$url" || die "download failed for $name ($url)"
@@ -106,7 +135,7 @@ fi
 # Host ${FLUX_FILL_PORT} -> container 7864 (the server's internal listen port).
 log "starting $FLUX_FILL_CONTAINER on port ${FLUX_FILL_PORT} (encoders pinned to CPU)"
 docker run -d --gpus all --name "$FLUX_FILL_CONTAINER" \
-    -p "${FLUX_FILL_PORT}:7864" \
+    -p "${FLUX_FILL_BIND}:${FLUX_FILL_PORT}:7864" \
     -v "${MODELS_DIR}:/models" \
     "$FLUX_FILL_IMAGE" \
     sd-server --listen-ip 0.0.0.0 --listen-port 7864 \
