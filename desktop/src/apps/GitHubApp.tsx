@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Github,
   Star,
@@ -151,6 +151,10 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
   const [, setView] = useState<View>("list");
   const [detail, setDetail] = useState<DetailTarget | null>(null);
 
+  /* root container ref — scopes the Escape-to-back handler to this app's
+     own subtree so it never fires while another window/app is focused */
+  const rootRef = useRef<HTMLDivElement>(null);
+
   /* ---------- sidebar state ---------- */
   const [activeSection, setActiveSection] = useState<SidebarSection>("starred");
   const [contentType, setContentType] = useState<ContentType>("repos");
@@ -270,12 +274,20 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
 
   /* Escape returns to the list from anywhere in an open detail view.
      Skips list view (no detail open) and editable targets (inputs,
-     textareas, contentEditable) so it never hijacks closing a field. */
+     textareas, contentEditable) so it never hijacks closing a field.
+     Scoped to this app's own DOM subtree: taOS is a multi-window desktop,
+     so the handler must bail when focus is in another window/app. */
   useEffect(() => {
     if (!detail) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      const root = rootRef.current;
+      if (!root) return;
       const target = e.target as HTMLElement | null;
+      // Only act when focus / the event originates within the GitHub app.
+      const insideApp =
+        (target ? root.contains(target) : false) || root.contains(document.activeElement);
+      if (!insideApp) return;
       if (target) {
         const tag = target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
@@ -1176,6 +1188,8 @@ export function GitHubApp({ windowId: _windowId }: { windowId: string }) {
 
   return (
     <div
+      ref={rootRef}
+      tabIndex={-1}
       className={`${styles.root} flex flex-col h-full min-h-0 overflow-hidden bg-shell-bg text-shell-text select-none relative`}
     >
       {/* Mobile-only toolbar — hidden when detail is shown (MobileSplitView nav handles it).
