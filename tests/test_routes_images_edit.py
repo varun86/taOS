@@ -1,10 +1,26 @@
 """Tests for the tier-aware image-editing routes (routes/images_edit.py)."""
+import base64
+import io
 from types import SimpleNamespace
 
+import httpx
 import pytest
+import respx
+from PIL import Image
 
 from tinyagentos.app import create_app
-from tinyagentos.routes.images_edit import _get_edit_backend
+from tinyagentos.routes.images_edit import (
+    EditRequest,
+    FluxFillClient,
+    _get_edit_backend,
+    edit_image,
+)
+
+
+def _png_b64(width=8, height=8, color=(20, 120, 200)) -> str:
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), color).save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
 
 def _backend(name, btype, priority=10):
@@ -75,3 +91,129 @@ def test_no_catalog_returns_none():
     """No live catalog (scheduler not started) → None, never raises."""
     req = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(backend_catalog=None)))
     assert _get_edit_backend(req, "upscale", "fast") is None
+
+
+# --------------------------------------------------------------------------- #
+#  FluxFillClient (A1111 img2img inpaint)                                      #
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+@respx.mock
+async def test_flux_fill_inpaint_posts_a1111_img2img():
+    """inpaint() POSTs base64 init_images + mask to /sdapi/v1/img2img and
+    decodes images[0] from the JSON response back to PNG bytes."""
+    result_b64 = _png_b64(color=(255, 0, 0))
+    route = respx.post("http://flux:7864/sdapi/v1/img2img").mock(
+        return_value=httpx.Response(200, json={"images": [result_b64]})
+    )
+
+    client = FluxFillClient("http://flux:7864")
+    out = await client.inpaint(_png_b64(), _png_b64(width=8, height=8, color=(0, 0, 0)), prompt="a cat")
+
+    assert route.called
+    sent = route.calls.last.request
+    import json
+
+    payload = json.loads(sent.content)
+    assert sent.url.path == "/sdapi/v1/img2img"
+    assert isinstance(payload["init_images"], list) and len(payload["init_images"]) == 1
+    # init_images[0] and mask are valid base64 PNGs.
+    assert Image.open(io.BytesIO(base64.b64decode(payload["init_images"][0]))).format == "PNG"
+    assert Image.open(io.BytesIO(base64.b64decode(payload["mask"]))).format == "PNG"
+    assert payload["prompt"] == "a cat"
+    assert payload["cfg_scale"] == pytest.approx(30.0)
+    # Returned bytes are the decoded result PNG.
+    assert out == base64.b64decode(result_b64)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_flux_fill_outpaint_pads_canvas():
+    """Outpaint pre-pads the init image + mask larger than the source, since
+    sd.cpp img2img does not natively grow the canvas."""
+    src_b64 = _png_b64(width=16, height=16)
+    respx.post("http://flux:7864/sdapi/v1/img2img").mock(
+        return_value=httpx.Response(200, json={"images": [_png_b64()]})
+    )
+
+    client = FluxFillClient("http://flux:7864")
+    await client.inpaint(src_b64, _png_b64(width=16, height=16, color=(0, 0, 0)), outpaint=True)
+
+    import json
+
+    payload = json.loads(respx.calls.last.request.content)
+    padded = Image.open(io.BytesIO(base64.b64decode(payload["init_images"][0])))
+    mask = Image.open(io.BytesIO(base64.b64decode(payload["mask"])))
+    assert padded.size[0] > 16 and padded.size[1] > 16
+    assert mask.size == padded.size
+    # The outpaint mask border is white (paint) and the centre is black (keep).
+    assert mask.convert("L").getpixel((0, 0)) == 255
+    assert mask.convert("L").getpixel((mask.size[0] // 2, mask.size[1] // 2)) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_flux_fill_missing_images_raises():
+    """A response without images raises, which edit_image maps to an error."""
+    respx.post("http://flux:7864/sdapi/v1/img2img").mock(
+        return_value=httpx.Response(200, json={"images": []})
+    )
+    client = FluxFillClient("http://flux:7864")
+    with pytest.raises(Exception):
+        await client.inpaint(_png_b64(), _png_b64())
+
+
+# --------------------------------------------------------------------------- #
+#  edit_image dispatch → FluxFillClient on the quality tier                    #
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+@respx.mock
+async def test_edit_image_quality_routes_to_flux_fill(tmp_path):
+    """A healthy flux-fill backend on the quality tier dispatches to
+    FluxFillClient (POST /sdapi/v1/img2img) and saves the returned bytes."""
+    # Workspace: config_path.parent/workspace/images/generated/
+    images_dir = tmp_path / "workspace" / "images" / "generated"
+    images_dir.mkdir(parents=True)
+    src_bytes = base64.b64decode(_png_b64())
+    (images_dir / "src.png").write_bytes(src_bytes)
+
+    result_b64 = _png_b64(color=(7, 8, 9))
+    route = respx.post("http://flux/sdapi/v1/img2img").mock(
+        return_value=httpx.Response(200, json={"images": [result_b64]})
+    )
+
+    catalog = _FakeCatalog({"image-editing": [_backend("flux", "flux-fill")]})
+    state = SimpleNamespace(backend_catalog=catalog, config_path=str(tmp_path / "config.json"))
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    body = EditRequest(image_ref="src.png", op="inpaint", mask=_png_b64(), prompt="sky", tier="quality")
+    result = await edit_image(request, body)
+
+    assert route.called
+    assert result["status"] == "edited"
+    saved = (images_dir / result["filename"]).read_bytes()
+    assert saved == base64.b64decode(result_b64)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_edit_image_quality_falls_back_to_iopaint(tmp_path):
+    """With no flux-fill backend, the quality tier still uses iopaint
+    (POST /api/v1/inpaint), leaving the fast path untouched."""
+    images_dir = tmp_path / "workspace" / "images" / "generated"
+    images_dir.mkdir(parents=True)
+    (images_dir / "src.png").write_bytes(base64.b64decode(_png_b64()))
+
+    result_png = base64.b64decode(_png_b64(color=(1, 2, 3)))
+    route = respx.post("http://io/api/v1/inpaint").mock(
+        return_value=httpx.Response(200, content=result_png, headers={"content-type": "image/png"})
+    )
+
+    catalog = _FakeCatalog({"image-editing": [_backend("io", "iopaint")]})
+    state = SimpleNamespace(backend_catalog=catalog, config_path=str(tmp_path / "config.json"))
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    body = EditRequest(image_ref="src.png", op="inpaint", mask=_png_b64(), tier="quality")
+    result = await edit_image(request, body)
+
+    assert route.called
+    assert (images_dir / result["filename"]).read_bytes() == result_png
