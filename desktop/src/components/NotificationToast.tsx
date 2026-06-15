@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Info, CheckCircle, AlertTriangle, AlertCircle, Server, Bot, BellOff } from "lucide-react";
 import { useNotificationStore, type Notification } from "@/stores/notification-store";
 import { useProcessStore } from "@/stores/process-store";
@@ -306,10 +306,34 @@ function ToastItem({ notif }: { notif: Notification }) {
   );
 }
 
+// A notification only pops as a toast when it is genuinely fresh. Without this,
+// a reload re-toasts the entire unread backlog (the whole server feed arrives
+// at once, all unread) -- the "notification spam on reload" bug. The backlog
+// still populates the bell; it just does not pop.
+const TOAST_FRESH_MS = 20_000;
+
 export function NotificationToasts() {
   const notifications = useNotificationStore((s) => s.notifications);
-  // Only show unread, non-persisted notifications as toasts (latest 3)
-  const active = notifications.filter((n) => !n.read).slice(0, 3);
+  // Each notification toasts at most once per session.
+  const toastedRef = useRef<Set<string>>(new Set());
+  const [toastIds, setToastIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const now = Date.now();
+    const toasted = toastedRef.current;
+    const fresh = notifications.filter(
+      (n) => !n.read && !toasted.has(n.id) && now - n.timestamp < TOAST_FRESH_MS,
+    );
+    if (fresh.length === 0) return;
+    for (const n of fresh) toasted.add(n.id);
+    setToastIds((prev) => [...fresh.map((n) => n.id), ...prev].slice(0, 3));
+  }, [notifications]);
+
+  const byId = new Map(notifications.map((n) => [n.id, n] as const));
+  const active = toastIds
+    .map((id) => byId.get(id))
+    .filter((n): n is Notification => !!n && !n.read)
+    .slice(0, 3);
 
   return (
     <div
