@@ -18,6 +18,10 @@ install:
   method: script
   script: scripts/install-flux-fill.sh
 
+lifecycle:
+  backend_type: flux-fill
+  default_url: http://127.0.0.1:38298
+
 # GPU / CUDA only. The encoders run on CPU so a 12GB card fits the model with
 # headroom; smaller cards and non-CUDA hosts use the iopaint editing tier.
 hardware_tiers:

@@ -1,6 +1,6 @@
 id: iopaint
 name: IOPaint
-type: iopaint
+type: service
 category: image-gen
 version: 1.6.0
 description: "AI image editing — erase objects, inpaint, remove backgrounds and upscale. Runs on CPU including ARM."
@@ -16,6 +16,10 @@ requires:
 install:
   method: script
   script: scripts/install-iopaint.sh
+
+lifecycle:
+  backend_type: iopaint
+  default_url: http://127.0.0.1:30493
 
 hardware_tiers:
   arm-npu-16gb: degraded
