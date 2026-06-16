@@ -35,15 +35,15 @@ A full web desktop environment with 36 bundled apps, 108 catalog apps, 47 MCP pl
 <p align="center">
   <img src="docs/images/mobile-home.jpg" alt="taOS mobile home" width="30%">
   &nbsp;
-  <img src="docs/images/mobile-search.png" alt="Global search on mobile" width="30%">
+  <img src="docs/images/mobile-search.jpg" alt="Global search on mobile" width="30%">
   &nbsp;
-  <img src="docs/images/mobile-store.png" alt="App store on mobile" width="30%">
+  <img src="docs/images/mobile-store.jpg" alt="App store on mobile" width="30%">
 </p>
 
 <p align="center"><sub>Same platform, same session -- desktop, tablet, and phone.</sub></p>
 
 <p align="center">
-  <img src="docs/images/agents-working.png" alt="Six agents on different frameworks chatting in a shared taOS channel" width="100%">
+  <img src="docs/images/agents-working.jpg" alt="Six agents on different frameworks chatting in a shared taOS channel" width="100%">
 </p>
 
 <p align="center"><sub>Six agents on six different frameworks (OpenClaw, Hermes, SmolAgents, Langroid, PocketFlow, OpenAI Agents SDK) talking in a single shared channel.</sub></p>
@@ -102,7 +102,7 @@ taOS ships with a full browser-based desktop environment. Open it at `http://you
 The Activity app includes a Cluster overview panel showing live worker status and resource stats alongside the process monitor. The Model Browser surfaces cloud models (from configured providers) alongside local catalog models, with a provider badge per entry. The deploy wizard accepts cloud models as inference targets.
 
 <p align="center">
-  <img src="docs/images/desktop-store.png" alt="App store -- 108 catalog apps, 16 agent frameworks, hardware-filtered" width="100%">
+  <img src="docs/images/desktop-store.jpg" alt="App store -- 108 catalog apps, 16 agent frameworks, hardware-filtered" width="100%">
 </p>
 
 <p align="center"><sub>The Store -- agent frameworks, models, plugins, services. One-click install, hardware-filtered.</sub></p>
@@ -116,11 +116,11 @@ Full browser-based desktop OS with window manager (float + snap), dock, launchpa
 Auto-detects touch devices and swaps the desktop for a widget-first home screen with customisable multi-page layout (swipe or tap dots to navigate), a persistent dock with app launcher and app switcher, and desktop-style app windows with close/minimise title bars. The top bar features iOS 26-style frosted glass buttons for search and notifications, with a "taOS" home button. Installable as a fullscreen PWA on iOS and Android. A standalone Chat PWA is available at `/chat-pwa` and installs like a private Discord.
 
 <p align="center">
-  <img src="docs/images/mobile-activity-system.png" alt="Mobile activity view -- per-core CPU, NPU, RAM" width="30%">
+  <img src="docs/images/mobile-activity-system.jpg" alt="Mobile activity view -- per-core CPU, NPU, RAM" width="30%">
   &nbsp;
-  <img src="docs/images/mobile-activity-cluster.png" alt="Mobile cluster view -- worker hardware, thermals, network" width="30%">
+  <img src="docs/images/mobile-activity-cluster.jpg" alt="Mobile cluster view -- worker hardware, thermals, network" width="30%">
   &nbsp;
-  <img src="docs/images/mobile-activity-scheduler.png" alt="Mobile scheduler view -- worker hardware and capabilities" width="30%">
+  <img src="docs/images/mobile-activity-scheduler.jpg" alt="Mobile scheduler view -- worker hardware and capabilities" width="30%">
 </p>
 
 <p align="center"><sub>Full system observability on your phone -- per-core stats, cluster health, and the hardware-aware scheduler.</sub></p>
@@ -197,7 +197,7 @@ One-click install for agent frameworks, AI models, and services. Hardware-aware,
 > **Running taOS *inside* an LXC (e.g. Proxmox)?** Deploying an agent creates a *nested* container, which an **unprivileged** LXC cannot do -- the kernel can't remap the nested container's filesystem, so the deploy fails with an `idmapped storage / change ownership` error. Run the taOS LXC as **privileged with nesting enabled**. On Proxmox: untick *Unprivileged container* and set Options → Features → `nesting=1` (plus `keyctl=1`, `fuse=1`), then redeploy. Bare-metal and VM installs are unaffected. (taOS detects this and surfaces the fix in the deploy error.)
 
 <p align="center">
-  <img src="docs/images/mobile-agents-empty.png" alt="Agents app empty state on mobile -- one tap to deploy" width="30%">
+  <img src="docs/images/mobile-agents-empty.jpg" alt="Agents app empty state on mobile -- one tap to deploy" width="30%">
 </p>
 
 <p align="center"><sub>The Agents app on mobile -- one tap from empty to your first deployed agent.</sub></p>
@@ -307,11 +307,11 @@ Search across agents, apps, messages, and files from a single endpoint. Finds an
 ### Monitoring & Management
 
 <p align="center">
-  <img src="docs/images/desktop-activity-system.png" alt="Activity -- CPU, NPU, memory, disk, cluster" width="100%">
+  <img src="docs/images/desktop-activity-system.jpg" alt="Activity -- CPU, NPU, memory, disk, cluster" width="100%">
 </p>
 
 <p align="center">
-  <img src="docs/images/desktop-activity-scheduler.png" alt="Activity scheduler -- per-worker hardware and capabilities" width="100%">
+  <img src="docs/images/desktop-activity-scheduler.jpg" alt="Activity scheduler -- per-worker hardware and capabilities" width="100%">
 </p>
 
 <p align="center"><sub>Every core, every worker, every capability -- visible at a glance.</sub></p>
