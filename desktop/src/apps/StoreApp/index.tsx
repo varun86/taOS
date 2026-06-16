@@ -16,6 +16,8 @@ import { compatVisuals } from "./compat-visuals";
 import { loadFilter, saveFilter } from "./storage";
 import { emitAppEvent, APP_INSTALLED } from "@/lib/app-event-bus";
 import { TaosAppsSection } from "./TaosAppsSection";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { MobileStore } from "./MobileStore";
 
 /* ------------------------------------------------------------------
    Dashboard-icons CDN helper
@@ -877,6 +879,7 @@ function CommunityView() {
    ------------------------------------------------------------------ */
 
 export function StoreApp({ windowId: _windowId }: { windowId: string }) {
+  const isMobile = useIsMobile();
   const [apps, setApps] = useState<CatalogApp[]>([]);
   const [search, setSearch] = useState("");
   const [activeNav, setActiveNav] = useState<NavId>("discover");
@@ -1079,6 +1082,25 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
   // Discover/Community views (which otherwise ignore the search box).
   const searching = search.trim().length > 0;
   const showGrid = searching || (activeNav !== "discover" && activeNav !== "community");
+
+  // Mobile reads like the Apple App Store: bottom tab bar, full-width feed,
+  // snap-scroll carousels and a full-screen search. Same data and install
+  // handlers as desktop; only the presentation changes. The desktop render
+  // path below is left untouched.
+  if (isMobile) {
+    return (
+      <MobileStore
+        apps={apps}
+        loading={loading}
+        installTargets={installTargets}
+        selectedDevices={selectedDevices}
+        onDevicesChange={setSelectedDevices}
+        selectedBackends={selectedBackends}
+        compatMap={compatMap}
+        onInstall={handleInstall}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden bg-shell-bg">
