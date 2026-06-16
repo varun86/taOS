@@ -229,12 +229,17 @@ const MOCK_APPS: CatalogApp[] = [
 /* Static cover art keyed by app id, so the designed gradient and the
    real cover photo survive a live `/api/store/catalog` response that
    doesn't carry them. Derived from the curated catalog above. */
-const COVER_BY_ID: Record<string, { cover?: string; coverImage?: string }> =
-  Object.fromEntries(
+const COVER_BY_ID: Record<string, { cover?: string; coverImage?: string }> = {
+  ...Object.fromEntries(
     MOCK_APPS
       .filter((a) => a.cover || a.coverImage)
       .map((a) => [a.id, { cover: a.cover, coverImage: a.coverImage }]),
-  );
+  ),
+  // taOS agent frameworks: official banners (no dashboard-icons logo upstream),
+  // keyed by id so they resolve for both the curated and the backend-sourced rows.
+  openclaw: { coverImage: "/desktop/store-covers/openclaw.webp" },
+  hermes: { coverImage: "/desktop/store-covers/hermes.webp" },
+};
 
 /* ------------------------------------------------------------------
    Community showcase items (static mock -- no backend yet)
