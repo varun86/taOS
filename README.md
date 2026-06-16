@@ -217,7 +217,7 @@ Hidden internal gateway that unifies all inference providers behind a single Ope
 Features unlock automatically based on your hardware and cluster. Solo Pi sees core features. Add a GPU worker and image generation, video, and training appear. No configuration, the platform just knows what's possible.
 
 ### Creative Studios
-Dedicated studio apps for every kind of project, each a focused, native taOS workspace that runs entirely on your own cluster. Two ship today, with Coding, App, Design, Music, and Office studios on the way (App Studio is taOS's own app builder, so agents and users can build and share new apps).
+Dedicated studio apps for every kind of project, each a focused, native taOS workspace that runs entirely on your own cluster. Two are in beta, with Coding, App, Design, Music, and Office studios on the way (App Studio is taOS's own app builder, so agents and users can build and share new apps).
 
 <p align="center">
   <img src="docs/images/images-studio.jpg" alt="Images Studio -- generate from a prompt and edit on a local GPU" width="49%">
