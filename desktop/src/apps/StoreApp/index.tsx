@@ -239,6 +239,11 @@ const COVER_BY_ID: Record<string, { cover?: string; coverImage?: string }> = {
   // keyed by id so they resolve for both the curated and the backend-sourced rows.
   openclaw: { coverImage: "/desktop/store-covers/openclaw.webp" },
   hermes: { coverImage: "/desktop/store-covers/hermes.webp" },
+  ollama: { coverImage: "/desktop/store-covers/ollama.webp" },
+  // Both Stable Diffusion WebUI cards share one banner; the AUTOMATIC1111
+  // build (sd-webui) gets a grayscale cut so the two read as distinct.
+  "stable-diffusion-webui": { coverImage: "/desktop/store-covers/stable-diffusion.webp" },
+  "sd-webui": { coverImage: "/desktop/store-covers/stable-diffusion-bw.webp" },
 };
 
 /* ------------------------------------------------------------------
