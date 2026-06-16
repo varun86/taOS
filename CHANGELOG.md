@@ -7,6 +7,17 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] - 2026-06-16
+
+### Added
+- Mobile Store redesigned into an Apple App Store-style layout: bottom tab bar (Discover/Apps/Agents/Search/Updates), a featured hero, horizontal app carousels with Get pills and star counts, full-screen search, and a device filter.
+- Real cover banners and icons across the Store: OpenClaw, Hermes, Ollama, ComfyUI, n8n, and the self-hosted apps, plus a shared Stable Diffusion banner (the AUTOMATIC1111 build shown in grayscale to distinguish it). A shared AppIcon component falls back to a branded monogram when no logo exists, so no tile renders blank.
+
+### Fixed
+- Installed apps in the mobile Store no longer show a non-interactive "Open" control; they show an honest installed status.
+- Failed Store installs now surface a Retry action instead of failing silently.
+- Store icons and cover images reset correctly when a reused tile switches to a different app.
+
 ## [1.0.0-beta.2] - 2026-06-16
 
 ### Added
