@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CatalogApp } from "./types";
 
 /* ------------------------------------------------------------------
@@ -181,6 +181,10 @@ export function coverFor(app: CatalogApp): string {
    ------------------------------------------------------------------ */
 export function StoreCover({ app }: { app: CatalogApp }) {
   const [failed, setFailed] = useState(false);
+  // A reused instance must retry the new image: clear the failure flag
+  // whenever the cover URL changes, so a prior app's load error does not
+  // suppress the next app's cover.
+  useEffect(() => { setFailed(false); }, [app.coverImage]);
   const gradient = coverFor(app);
   const showImage = !!app.coverImage && !failed;
 
@@ -244,6 +248,12 @@ export function AppIcon({
     if (!urls.includes(derived)) urls.push(derived);
     return urls;
   }, [app]);
+
+  // A reused instance must start from the first candidate for a new app:
+  // reset the resolution stage whenever the candidate URL set changes, so a
+  // stale error stage from a prior app does not skip straight to its monogram.
+  const candidateKey = candidates.join("|");
+  useEffect(() => { setStage(0); }, [candidateKey]);
 
   const url = candidates[stage];
   const showMonogram = stage >= candidates.length;

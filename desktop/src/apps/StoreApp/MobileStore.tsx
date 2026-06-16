@@ -45,10 +45,12 @@ function GetButton({
   installTargets: InstallTarget[];
 }) {
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   const handleGet = useCallback(async () => {
     if (app.installed || busy) return;
     setBusy(true);
+    setFailed(false);
     try {
       const target = installTargets[0]?.name ?? "local";
       const res = await fetch("/api/store/install-v2", {
@@ -57,14 +59,21 @@ function GetButton({
         body: JSON.stringify({ app_id: app.id, target_remote: target }),
       });
       if (res.ok) onInstall(app.id);
-    } catch { /* network blip - leave as Get */ }
+      else setFailed(true);
+    } catch { setFailed(true); }
     setBusy(false);
   }, [app.id, app.installed, busy, installTargets, onInstall]);
 
   if (app.installed) {
+    // Installed services are managed elsewhere, not launched from the store,
+    // so this is an honest status indicator rather than a fake "Open" action.
     return (
-      <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-400 px-2">
-        <Check className="w-3.5 h-3.5" /> Open
+      <span
+        role="status"
+        aria-label={`${app.name} installed`}
+        className="shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-400 px-2"
+      >
+        <Check className="w-3.5 h-3.5" /> Installed
       </span>
     );
   }
@@ -74,10 +83,14 @@ function GetButton({
       type="button"
       onClick={handleGet}
       disabled={busy}
-      aria-label={`Get ${app.name}`}
-      className="shrink-0 min-w-[68px] h-7 inline-flex items-center justify-center rounded-full bg-shell-surface-active text-shell-text text-[13px] font-bold tracking-wide active:scale-[0.94] transition-transform"
+      aria-label={failed ? `Retry installing ${app.name}` : `Get ${app.name}`}
+      className={`shrink-0 min-w-[68px] h-7 inline-flex items-center justify-center rounded-full text-[13px] font-bold tracking-wide active:scale-[0.94] transition-transform ${
+        failed
+          ? "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/40"
+          : "bg-shell-surface-active text-shell-text"
+      }`}
     >
-      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Get"}
+      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : failed ? "Retry" : "Get"}
     </button>
   );
 }
