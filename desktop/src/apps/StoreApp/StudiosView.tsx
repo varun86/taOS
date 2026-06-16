@@ -232,18 +232,19 @@ function StudioHero({
   onOpen: (appId: string) => void;
   onInstall: (appId: string) => Promise<void>;
 }) {
-  const isInstalled = installed.has(studio.id);
+  const appId = studioAppId(studio.id);
+  const isInstalled = installed.has(appId);
   const [busy, setBusy] = useState(false);
   const handleGet = useCallback(async () => {
     setBusy(true);
     try {
-      await onInstall(studio.id);
+      await onInstall(appId);
     } catch {
       /* leave the button as Get so the user can retry */
     } finally {
       setBusy(false);
     }
-  }, [studio.id, onInstall]);
+  }, [appId, onInstall]);
 
   return (
     <div
@@ -280,7 +281,7 @@ function StudioHero({
           </div>
           <button
             type="button"
-            onClick={isInstalled ? () => onOpen(studio.id) : handleGet}
+            onClick={isInstalled ? () => onOpen(appId) : handleGet}
             disabled={busy}
             className="px-5 py-2 rounded-full text-[13px] font-bold text-white transition-colors disabled:opacity-60 inline-flex items-center gap-2"
             style={{ background: "var(--color-accent)" }}
@@ -289,7 +290,7 @@ function StudioHero({
           </button>
           <button
             type="button"
-            onClick={() => onOpen(studio.id)}
+            onClick={() => onOpen(appId)}
             className="px-5 py-2 rounded-full text-[13px] font-bold text-shell-text bg-shell-surface-active hover:bg-white/10 transition-colors"
           >
             Preview
