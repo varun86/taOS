@@ -930,7 +930,7 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
     fetchLatestFrameworks().then(setLatest).catch(() => {});
     fetch("/api/agents").then((r) => r.ok ? r.json() : []).then((j) => setAgentList(Array.isArray(j) ? j : (j?.agents ?? []))).catch(() => {});
     fetch("/api/cluster/install-targets", { headers: { Accept: "application/json" } }).then((r) => r.ok ? r.json() : null).then((data) => { if (Array.isArray(data)) setInstallTargets(data); }).catch(() => {});
-    fetch("/api/apps/optional/catalog", { headers: { Accept: "application/json" } }).then((r) => r.ok ? r.json() : null).then((data) => { if (data?.apps) setOptionalCatalog(data.apps); }).catch(() => {});
+    fetch("/api/apps/optional/catalog", { headers: { Accept: "application/json" } }).then((r) => r.ok ? r.json() : null).then((data) => { if (Array.isArray(data?.apps)) setOptionalCatalog(data.apps); }).catch(() => {});
     refreshInstalled();
   }, [refreshInstalled]);
 
