@@ -26,7 +26,12 @@ _GENERIC_ICON = "/static/app-icons/generic-service.svg"
 # runtime location). The frontend owns name/icon/cover; the backend only tracks
 # which ids are installed, gated to this allowlist so the endpoint can't be used
 # to write arbitrary install rows.
-OPTIONAL_FRONTEND_APPS = {"reddit", "youtube-library", "github-browser", "x-monitor"}
+OPTIONAL_FRONTEND_APPS = {
+    "reddit", "youtube-library", "github-browser", "x-monitor",
+    # Creative Studios install the same way: a frontend-only optional app whose
+    # install row just flips the launcher visibility, no service spawned.
+    "coding-studio", "design-studio", "music-studio", "app-studio", "office-suite",
+}
 _FRONTEND_APP_KIND = "frontend-app"
 
 
