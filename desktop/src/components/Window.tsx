@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import { motion, useReducedMotion } from "motion/react";
 import { useProcessStore, type WindowState, type SnapPosition } from "@/stores/process-store";
@@ -13,9 +13,20 @@ interface Props {
   onDragStop: () => SnapPosition;
 }
 
-export function Window({ win, onDrag, onDragStop }: Props) {
-  const { focusWindow, closeWindow, removeWindow, minimizeWindow, maximizeWindow, updatePosition, updateSize, snapWindow } =
-    useProcessStore();
+function WindowImpl({ win, onDrag, onDragStop }: Props) {
+  // Select each action individually. Destructuring useProcessStore() with no
+  // selector subscribes the window to EVERY store change, so any unrelated
+  // store write would re-render it mid-drag and react-rnd would reset its
+  // controlled position. Action references are stable, so these never trigger
+  // a re-render on their own.
+  const focusWindow = useProcessStore((s) => s.focusWindow);
+  const closeWindow = useProcessStore((s) => s.closeWindow);
+  const removeWindow = useProcessStore((s) => s.removeWindow);
+  const minimizeWindow = useProcessStore((s) => s.minimizeWindow);
+  const maximizeWindow = useProcessStore((s) => s.maximizeWindow);
+  const updatePosition = useProcessStore((s) => s.updatePosition);
+  const updateBounds = useProcessStore((s) => s.updateBounds);
+  const snapWindow = useProcessStore((s) => s.snapWindow);
   const app = getApp(win.appId);
   const preSnapRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const isMobile = useIsMobile();
@@ -95,12 +106,37 @@ export function Window({ win, onDrag, onDragStop }: Props) {
     [onDragStop, snapWindow, updatePosition, win.id, win.size],
   );
 
-  const handleResizeStop = useCallback(
-    (_e: unknown, _dir: unknown, ref: HTMLElement) => {
-      setDragging(false);
-      updateSize(win.id, ref.offsetWidth, ref.offsetHeight);
+  // Feed react-rnd's live position+size back every resize tick. react-rnd's
+  // position prop is controlled, and resizing from a top/left edge changes the
+  // position; without live feedback react-rnd's own internal re-render re-reads
+  // the stale stored position and the window jumps sideways mid-resize. Keeping
+  // the controlled props in lockstep with react-rnd's reported bounds keeps the
+  // resize smooth from every edge.
+  const handleResize = useCallback(
+    (
+      _e: unknown,
+      _dir: unknown,
+      ref: HTMLElement,
+      _delta: unknown,
+      position: { x: number; y: number },
+    ) => {
+      updateBounds(win.id, position.x, position.y, ref.offsetWidth, ref.offsetHeight);
     },
-    [updateSize, win.id],
+    [updateBounds, win.id],
+  );
+
+  const handleResizeStop = useCallback(
+    (
+      _e: unknown,
+      _dir: unknown,
+      ref: HTMLElement,
+      _delta: unknown,
+      position: { x: number; y: number },
+    ) => {
+      setDragging(false);
+      updateBounds(win.id, position.x, position.y, ref.offsetWidth, ref.offsetHeight);
+    },
+    [updateBounds, win.id],
   );
 
   const minSize = app?.minSize ?? { w: 300, h: 200 };
@@ -142,6 +178,7 @@ export function Window({ win, onDrag, onDragStop }: Props) {
       onDrag={handleDrag}
       onDragStop={handleDragStop}
       onResizeStart={() => setDragging(true)}
+      onResize={handleResize}
       onResizeStop={handleResizeStop}
       onMouseDown={() => focusWindow(win.id)}
       bounds="parent"
@@ -248,3 +285,9 @@ export function Window({ win, onDrag, onDragStop }: Props) {
     </Rnd>
   );
 }
+
+// Memoized so unrelated desktop re-renders (snap-zone preview, the live
+// wallpaper, the agent command stream) do not re-render every window during a
+// drag. Props are stable: `win` only changes when this window's own state
+// changes, and onDrag/onDragStop are stabilized in useSnapZones.
+export const Window = memo(WindowImpl);
