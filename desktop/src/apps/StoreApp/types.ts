@@ -25,6 +25,12 @@ export interface CatalogApp {
   tagline?: string;
   /** Cover art URL or gradient CSS value for rich cards. */
   cover?: string;
+  /**
+   * Real cover photo (official screenshot / hero) shown behind a featured
+   * or carousel card. A bottom-up dark scrim keeps overlaid text legible.
+   * Falls back to `cover` (gradient) when absent or if the image fails to load.
+   */
+  coverImage?: string;
   /** True when an installed app has a newer version available (drives Updates). */
   update_available?: boolean;
 }

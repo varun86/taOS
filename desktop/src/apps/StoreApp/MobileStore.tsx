@@ -6,7 +6,7 @@ import {
 import type { CatalogApp, InstallTarget } from "./types";
 import type { ResolveResponse } from "./resolver-types";
 import { filterCatalog, compatFromResolver } from "./filter";
-import { AppIcon, coverFor } from "./AppIcon";
+import { AppIcon, StoreCover } from "./AppIcon";
 
 /* ------------------------------------------------------------------
    Mobile Store - Apple App Store-style presentation.
@@ -146,30 +146,21 @@ function FeatureCard({
       className={`relative shrink-0 overflow-hidden rounded-3xl border border-shell-border-strong ${hero ? "w-full" : "w-[84%] max-w-[330px]"}`}
       style={{ scrollSnapAlign: "start" }}
     >
-      {/* Cover */}
-      <div
-        className={hero ? "h-52" : "h-44"}
-        style={{ background: coverFor(app) }}
-      />
-      {/* Scrim for legibility */}
-      <div
-        className="absolute inset-x-0 bottom-0"
-        style={{
-          height: "70%",
-          background: "linear-gradient(180deg,transparent,color-mix(in srgb,var(--color-shell-bg) 92%,transparent))",
-        }}
-      />
+      {/* Cover: real photo with gradient fallback + legibility scrim */}
+      <div className={`relative ${hero ? "h-52" : "h-44"}`}>
+        <StoreCover app={app} />
+      </div>
       {hero && (
-        <div className="absolute top-3.5 left-4 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--color-accent-strong)" }}>
+        <div className="absolute top-3.5 left-4 text-[11px] font-bold uppercase tracking-[0.14em] text-white" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.55)" }}>
           Editor's Choice
         </div>
       )}
-      {/* Footer meta */}
+      {/* Footer meta - sits over the cover scrim, so use white-on-dark */}
       <div className="absolute inset-x-0 bottom-0 p-3.5 flex items-center gap-3">
         <AppIcon app={app} size={hero ? 56 : 48} />
-        <div className="flex-1 min-w-0">
-          <div className={`${hero ? "text-[17px]" : "text-[15px]"} font-bold text-shell-text leading-tight truncate`}>{app.name}</div>
-          <div className="text-[12.5px] text-shell-text-secondary leading-tight truncate">
+        <div className="flex-1 min-w-0" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.55)" }}>
+          <div className={`${hero ? "text-[17px]" : "text-[15px]"} font-bold text-white leading-tight truncate`}>{app.name}</div>
+          <div className="text-[12.5px] text-white/80 leading-tight truncate">
             {subtitleFor(app)}
           </div>
         </div>

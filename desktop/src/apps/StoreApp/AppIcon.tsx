@@ -168,6 +168,56 @@ export function coverFor(app: CatalogApp): string {
 }
 
 /* ------------------------------------------------------------------
+   StoreCover - the cover surface behind a featured / carousel card.
+
+   With app.coverImage: the real photo fills the card (object-cover),
+   warmed by a faint top wash and a strong bottom-up dark scrim so the
+   icon, name and Get pill overlaid by the caller clear >= 4.5:1.
+   Without it (or if the image 404s / is offline): the designed
+   gradient from coverFor() shows instead, so a card is never blank.
+
+   The caller positions its own footer/badges absolutely over this; the
+   scrim here is purely the legibility layer for that overlaid text.
+   ------------------------------------------------------------------ */
+export function StoreCover({ app }: { app: CatalogApp }) {
+  const [failed, setFailed] = useState(false);
+  const gradient = coverFor(app);
+  const showImage = !!app.coverImage && !failed;
+
+  return (
+    <div className="absolute inset-0" aria-hidden style={{ background: gradient }}>
+      {showImage && (
+        <img
+          src={app.coverImage}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+      )}
+      {/* Top wash: takes the edge off bright screenshots behind a badge. */}
+      <div
+        className="absolute inset-x-0 top-0"
+        style={{
+          height: "42%",
+          background: "linear-gradient(180deg,rgba(0,0,0,0.34),transparent)",
+        }}
+      />
+      {/* Bottom-up scrim: the legibility layer for the overlaid footer. */}
+      <div
+        className="absolute inset-x-0 bottom-0"
+        style={{
+          height: "78%",
+          background:
+            "linear-gradient(180deg,transparent 0%,rgba(0,0,0,0.30) 42%,rgba(0,0,0,0.74) 100%)",
+        }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
    AppIcon
    ------------------------------------------------------------------ */
 

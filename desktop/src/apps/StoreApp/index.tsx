@@ -18,7 +18,7 @@ import { emitAppEvent, APP_INSTALLED } from "@/lib/app-event-bus";
 import { TaosAppsSection } from "./TaosAppsSection";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { MobileStore } from "./MobileStore";
-import { AppIcon, coverFor } from "./AppIcon";
+import { AppIcon, StoreCover } from "./AppIcon";
 
 /* ------------------------------------------------------------------
    Nav sections
@@ -68,6 +68,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     installed: false, compat: "green",
     repo: "home-assistant/core", iconSlug: "home-assistant", stars: 72400,
     cover: "radial-gradient(120% 120% at 30% 20%,#16607a,transparent 60%),linear-gradient(140deg,#0e2230,#0a1620)",
+    coverImage: "/desktop/store-covers/home-assistant.webp",
     category: "home",
   },
   {
@@ -77,6 +78,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     installed: false, compat: "green",
     repo: "immich-app/immich", iconSlug: "immich", stars: 50100,
     cover: "radial-gradient(120% 120% at 70% 30%,#5a2f7a,transparent 60%),linear-gradient(140deg,#21142b,#150d1a)",
+    coverImage: "/desktop/store-covers/immich.webp",
     category: "home",
   },
   {
@@ -86,6 +88,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     installed: false, compat: "green",
     repo: "jellyfin/jellyfin", iconSlug: "jellyfin", stars: 35000,
     cover: "radial-gradient(120% 120% at 40% 30%,#1f4d63,transparent 60%),linear-gradient(140deg,#10222a,#0b161b)",
+    coverImage: "/desktop/store-covers/jellyfin.webp",
     category: "home",
   },
   {
@@ -95,6 +98,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     installed: false, compat: "green",
     repo: "dani-garcia/vaultwarden", iconSlug: "vaultwarden", stars: 42000,
     cover: "radial-gradient(120% 120% at 60% 25%,#1f5a3a,transparent 60%),linear-gradient(140deg,#12261b,#0c1712)",
+    coverImage: "/desktop/store-covers/vaultwarden.webp",
     category: "home",
   },
   {
@@ -103,6 +107,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     tagline: "Smart PVR for Usenet and BitTorrent users",
     installed: false, compat: "green",
     repo: "Sonarr/Sonarr", iconSlug: "sonarr", stars: 11200,
+    coverImage: "/desktop/store-covers/sonarr.webp",
     category: "home",
   },
   {
@@ -111,6 +116,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     tagline: "Fork of Sonarr to work with movies",
     installed: false, compat: "green",
     repo: "Radarr/Radarr", iconSlug: "radarr", stars: 9600,
+    coverImage: "/desktop/store-covers/radarr.webp",
     category: "home",
   },
   {
@@ -151,6 +157,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     tagline: "Fancy self-hosted monitoring tool",
     installed: false, compat: "green",
     repo: "louislam/uptime-kuma", iconSlug: "uptime-kuma", stars: 60300,
+    coverImage: "/desktop/store-covers/uptime-kuma.webp",
     category: "monitoring",
   },
   {
@@ -159,6 +166,7 @@ const HOMELAB_APPS: CatalogApp[] = [
     tagline: "The most popular self-hosted collaboration platform",
     installed: false, compat: "green",
     repo: "nextcloud/server", iconSlug: "nextcloud", stars: 28100,
+    coverImage: "/desktop/store-covers/nextcloud.webp",
     category: "productivity",
   },
 ];
@@ -190,7 +198,7 @@ const MOCK_APPS: CatalogApp[] = [
   // Services
   { id: "searxng", name: "SearXNG", type: "service", category: "infrastructure", version: "latest", description: "Privacy-respecting metasearch engine", installed: false, compat: "green" },
   { id: "gitea",   name: "Gitea",   type: "service", category: "dev-tool",       version: "latest", description: "Lightweight self-hosted Git service", installed: false, compat: "green" },
-  { id: "n8n",     name: "n8n",     type: "service", category: "automation",     version: "latest", description: "Workflow automation platform", installed: false, compat: "green", iconSlug: "n8n" },
+  { id: "n8n",     name: "n8n",     type: "service", category: "automation",     version: "latest", description: "Workflow automation platform", installed: false, compat: "green", iconSlug: "n8n", coverImage: "/desktop/store-covers/n8n.webp" },
   // Streaming apps
   { id: "code-server-kasm", name: "Code Server (Streamed)", type: "streaming-app", version: "latest", description: "VS Code in the browser via KasmVNC", installed: false, compat: "green" },
   { id: "blender",           name: "Blender",               type: "streaming-app", version: "latest", description: "3D creation suite streamed via KasmVNC", installed: false, compat: "yellow" },
@@ -203,6 +211,7 @@ const MOCK_APPS: CatalogApp[] = [
     installed: false, compat: "yellow",
     iconSlug: "comfyui",
     cover: "radial-gradient(120% 140% at 12% 18%,#3a2d5e,transparent 55%),radial-gradient(120% 130% at 85% 80%,#1e4d63,transparent 55%),linear-gradient(120deg,#20202a,#14141a)",
+    coverImage: "/desktop/store-covers/comfyui.webp",
   },
   { id: "fooocus", name: "Fooocus", type: "image-gen", version: "latest", description: "Simple Stable Diffusion with minimal setup", installed: false, compat: "yellow" },
   // Audio / video / devtools / infra
@@ -210,12 +219,22 @@ const MOCK_APPS: CatalogApp[] = [
   { id: "whisper-stt",   name: "Whisper STT",   type: "voice",    version: "latest", description: "OpenAI Whisper speech-to-text", installed: false, compat: "green" },
   { id: "animatediff",   name: "AnimateDiff",   type: "video-gen",version: "latest", description: "AI video generation from text and images", installed: false, compat: "yellow" },
   { id: "corridorkey",   name: "CorridorKey",   type: "video-gen",version: "latest", description: "AI video generation via ComfyUI workflows", installed: false, compat: "yellow" },
-  { id: "code-server",   name: "Code Server",   type: "dev-tool", version: "latest", description: "VS Code in the browser -- remote development environment", installed: false, compat: "green" },
+  { id: "code-server",   name: "Code Server",   type: "dev-tool", version: "latest", description: "VS Code in the browser -- remote development environment", installed: false, compat: "green", coverImage: "/desktop/store-covers/code-server.webp" },
   { id: "jupyter-lab",   name: "JupyterLab",    type: "dev-tool", version: "latest", description: "Interactive notebooks for data science and experimentation", installed: false, compat: "green" },
   { id: "tailscale",     name: "Tailscale",     type: "infrastructure", version: "latest", description: "Zero-config mesh VPN for secure networking between devices", installed: false, compat: "green", iconSlug: "tailscale" },
   { id: "caddy",         name: "Caddy",         type: "infrastructure", version: "latest", description: "Automatic HTTPS reverse proxy and web server", installed: false, compat: "green" },
   ...HOMELAB_APPS,
 ];
+
+/* Static cover art keyed by app id, so the designed gradient and the
+   real cover photo survive a live `/api/store/catalog` response that
+   doesn't carry them. Derived from the curated catalog above. */
+const COVER_BY_ID: Record<string, { cover?: string; coverImage?: string }> =
+  Object.fromEntries(
+    MOCK_APPS
+      .filter((a) => a.cover || a.coverImage)
+      .map((a) => [a.id, { cover: a.cover, coverImage: a.coverImage }]),
+  );
 
 /* ------------------------------------------------------------------
    Community showcase items (static mock -- no backend yet)
@@ -381,11 +400,9 @@ function AppCard({
       style={{ borderColor: undefined }}
       title={visuals.tooltip || undefined}
     >
-      {/* Cover strip */}
-      <div
-        className="h-20 relative shrink-0"
-        style={{ background: coverFor(app) }}
-      >
+      {/* Cover strip: real photo with gradient fallback */}
+      <div className="h-20 relative shrink-0 overflow-hidden">
+        <StoreCover app={app} />
         <span className="absolute top-2 left-2 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white/80">
           {appType}
         </span>
@@ -499,8 +516,9 @@ function RichCard({
 
   return (
     <div className="flex flex-col rounded-2xl border border-shell-border bg-shell-surface/60 overflow-hidden shrink-0" style={{ width: 264 }}>
-      {/* Cover */}
-      <div className="h-28 relative shrink-0" style={{ background: coverFor(app) }}>
+      {/* Cover: real photo with gradient fallback */}
+      <div className="h-28 relative shrink-0 overflow-hidden">
+        <StoreCover app={app} />
         <span className="absolute top-2 left-2 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white/80">
           {app.category || app.type}
         </span>
@@ -633,12 +651,11 @@ function HeroFeatured({ app, onInstall, installTargets }: { app: CatalogApp; onI
   };
 
   return (
-    <div
-      className="relative h-56 rounded-2xl overflow-hidden border border-shell-border-strong flex items-end"
-      style={{ background: coverFor(app) }}
-    >
-      {/* Scrim */}
-      <div className="absolute inset-0" style={{ background: "linear-gradient(90deg,rgba(10,10,12,0.80) 0%,rgba(10,10,12,0.35) 55%,rgba(10,10,12,0) 100%)" }} />
+    <div className="relative h-56 rounded-2xl overflow-hidden border border-shell-border-strong flex items-end">
+      {/* Real photo cover with gradient fallback */}
+      <StoreCover app={app} />
+      {/* Left-to-right scrim that anchors the text column */}
+      <div className="absolute inset-0" style={{ background: "linear-gradient(90deg,rgba(10,10,12,0.84) 0%,rgba(10,10,12,0.45) 55%,rgba(10,10,12,0) 100%)" }} />
       <div className="relative p-7" style={{ maxWidth: "62%" }}>
         <div className="text-[11px] font-bold tracking-widest uppercase mb-2" style={{ color: "var(--color-accent)" }}>
           Featured · Editor's Choice
@@ -849,7 +866,8 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
             iconSlug: a.iconSlug ? String(a.iconSlug) : undefined,
             stars: typeof a.stars === "number" ? a.stars : undefined,
             tagline: a.tagline ? String(a.tagline) : undefined,
-            cover: a.cover ? String(a.cover) : undefined,
+            cover: a.cover ? String(a.cover) : COVER_BY_ID[String(a.id)]?.cover,
+            coverImage: a.coverImage ? String(a.coverImage) : COVER_BY_ID[String(a.id)]?.coverImage,
           }));
           // Merge homelab apps: only add those not already in the catalog
           const catalogIds = new Set(normalized.map((a) => a.id));
