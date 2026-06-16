@@ -217,9 +217,14 @@ Hidden internal gateway that unifies all inference providers behind a single Ope
 Features unlock automatically based on your hardware and cluster. Solo Pi sees core features. Add a GPU worker and image generation, video, and training appear. No configuration, the platform just knows what's possible.
 
 ### Creative Studios
-Two first-party studio apps turn the cluster's generation backends into something you can actually use, both built to the same design bar as the Store.
+Dedicated studio apps for every kind of project, each built to the same design bar as the Store and running entirely on your own cluster. Two ship today, with Design, Music, and Office studios on the way.
 
-- **Image Studio.** Create, Library, and Edit in one app. Generate from a prompt on any discovered Stable Diffusion backend (NPU / GPU / CPU), browse a thumbnail library, and edit with tier-aware backends: inpaint and object removal, plus upscale. The platform picks the best installed backend per task and degrades gracefully when a higher tier is missing.
+<p align="center">
+  <img src="docs/images/images-studio.jpg" alt="Images Studio -- generate from a prompt and edit on a local GPU" width="49%">
+  <img src="docs/images/game-studio.jpg" alt="Game Studio -- describe a 3D game and play it in the browser" width="49%">
+</p>
+
+- **Images Studio.** Create, Library, and Edit in one app. Generate from a prompt on any discovered Stable Diffusion backend (NPU / GPU / CPU), browse a thumbnail library, and edit with tier-aware backends: inpaint and object removal, plus upscale. The platform picks the best installed backend per task and degrades gracefully when a higher tier is missing.
 - **Game Studio.** An offline-AI game maker built on three.js and react-three-fiber. Less-capable, tool-calling-weak models get guided building blocks and templates; more capable local or cloud models can author scenes directly. Games run fullscreen on desktop and mobile with a mandatory exit-to-taOS control, can be playtested in place, and optionally shared to the Store.
 
 ### AI Generation
