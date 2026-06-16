@@ -13,8 +13,13 @@ CURRENT STATE: dev=65d4fcad (= origin/dev), master=59c296d2 (UNTOUCHED -- Jay ga
   Runtime draft -- foundation for the active initiative).
 ACTIVE INITIATIVE = task #89 USERSPACE APP PACKAGES + PER-APP UPDATES. Recon DONE + SPEC
   DRAFTED -> ~/tinyagentos-private/specs/userspace-app-packages-spec-2026-06-16.md
-  (private). AWAITING JAY: spec sign-off + the Track-A-vs-B sequencing call + 5 open
-  questions (spec section 8). NO code until Jay approves the spec.
+  (private). Jay SIGNED OFF: Track A (rails first) + studios-only. P1 (per-app versioning +
+  Updates UI) MERGED to dev via #967 (gitar 2 bugs + 1 edge-case fixed pre-merge). NEXT = P2
+  (taos.my app-release endpoint + signed-bundle download + verify). NEW THREADS: Automation
+  Studio brainstorm started (#968, n8n-meets-AI-Shortcuts; n8n already in catalog at
+  app-catalog/streaming/n8n with an agent integration). Web search FIXED: sandbox blocks the
+  open web, so route via the Pi -- offline SearXNG (Pi:36130, JSON enabled) + ~/.taos-websearch.sh
+  helper (searx-first, Tavily fallback); searx-JSON-by-default catalog fix filed as an issue.
 NO uncommitted work, no orphaned subagents.
 ==================================================================
 
