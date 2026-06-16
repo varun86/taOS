@@ -15,9 +15,16 @@ ACTIVE INITIATIVE = task #89 USERSPACE APP PACKAGES + PER-APP UPDATES. Recon DON
   DRAFTED -> ~/tinyagentos-private/specs/userspace-app-packages-spec-2026-06-16.md
   (private). Jay SIGNED OFF: Track A (rails first) + studios-only. P1 (per-app versioning +
   Updates UI) MERGED to dev via #967 (gitar 2 bugs + 1 edge-case fixed pre-merge). NEXT = P2
-  (taos.my app-release endpoint + signed-bundle download + verify). NEW THREADS: Automation
-  Studio brainstorm started (#968, n8n-meets-AI-Shortcuts; n8n already in catalog at
-  app-catalog/streaming/n8n with an agent integration). Web search FIXED: sandbox blocks the
+  (distribution). JAY 2026-06-17: BUILD THE FULL APP SYSTEM NOW (P2-P5), THEN Automation Studio.
+  DECISIONS LOCKED: distribution = the OFFICIAL taOS REPO on taos.my, Linux-repo model (signed
+  machine index + HTML-browsable catalog + bundles; client RepoManager; user-added CUSTOM repos a
+  later phase); first-party signing = offline Ed25519 JAN LABS key (pubkey in core); container
+  packages = WEB-ONLY first. Build order = P3 first-party iframe runtime on the #476 foundation
+  (NOTE: #476 / feat/app-runtime-v1 is 598 commits behind dev, so re-integrate its userspace
+  runtime onto current dev, do not merge the stale branch) -> P4 migrate a reference studio to a
+  .taosapp -> P2 the taOS repo on taos.my + signing + verify -> P5 community/custom repos.
+  AUTOMATION STUDIO: spec SIGNED OFF (private specs/automation-studio-design-2026-06-16.md, #968),
+  DEFERRED until the app system is done. Web search FIXED: sandbox blocks the
   open web, so route via the Pi -- offline SearXNG (Pi:36130, JSON enabled) + ~/.taos-websearch.sh
   helper (searx-first, Tavily fallback); searx-JSON-by-default catalog fix filed as an issue.
 NO uncommitted work, no orphaned subagents.
