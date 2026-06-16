@@ -110,9 +110,11 @@ export function ThreadPanel({
   return (
     <div
       className={
+        // bg-shell-bg is opaque; the shell-surface token is ~4% alpha, which
+        // let the chat list behind bleed through (overlapping/garbled text).
         isFullscreen
-          ? "fixed inset-0 z-50 bg-shell-surface flex flex-col"
-          : "fixed top-0 right-0 h-full w-[360px] bg-shell-surface border-l border-white/10 flex flex-col z-40"
+          ? "fixed inset-0 z-50 bg-shell-bg flex flex-col"
+          : "fixed top-0 right-0 h-full w-[360px] bg-shell-bg border-l border-white/10 flex flex-col z-40"
       }
       role="complementary"
       aria-label="Thread panel"
@@ -129,15 +131,15 @@ export function ThreadPanel({
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
         {parent && (
-          <div className="pb-3 border-b border-white/10">
-            <div className="text-xs text-white/50 mb-1">{displayAuthor(parent, authorCtx)}</div>
-            <div className="text-sm">{parent.content}</div>
+          <div className="pb-3 border-b border-shell-border">
+            <div className="text-xs text-shell-text-secondary mb-1">{displayAuthor(parent, authorCtx)}</div>
+            <div className="text-sm text-shell-text whitespace-pre-wrap break-words">{parent.content}</div>
           </div>
         )}
         {renderedReplies.map((m) => (
           <div key={m.id}>
-            <div className="text-xs text-white/50 mb-0.5">{displayAuthor(m, authorCtx)}</div>
-            <div className="text-sm">{m.content}</div>
+            <div className="text-xs text-shell-text-secondary mb-0.5">{displayAuthor(m, authorCtx)}</div>
+            <div className="text-sm text-shell-text whitespace-pre-wrap break-words">{m.content}</div>
           </div>
         ))}
         {loadError && (

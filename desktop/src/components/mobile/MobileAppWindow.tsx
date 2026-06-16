@@ -70,10 +70,11 @@ export function MobileAppWindow({ appId, windowId, onClose, onMinimise }: Props)
         <div style={{ width: "44px" }} />
       </div>
 
-      {/* App content */}
+      {/* App content. Use the theme bg token (graphite); a hardcoded
+          rgba(15,15,35) here read as an indigo flash on the dark theme. */}
       <div
         className="flex-1 overflow-hidden"
-        style={{ background: "rgba(15,15,35,0.95)" }}
+        style={{ background: "var(--color-shell-bg)" }}
       >
         <Suspense
           fallback={

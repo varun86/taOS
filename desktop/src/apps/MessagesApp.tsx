@@ -1619,7 +1619,7 @@ export function MessagesApp({
             aria-controls="projects-section-mobile"
             style={{ fontSize: 12, textTransform: "uppercase" as const, letterSpacing: 0.5, color: "var(--color-shell-text-secondary)", padding: "0 20px 6px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", width: "100%" }}
           >
-            <ChevronRight size={12} style={{ transition: "transform 0.15s", transform: projectsExpanded ? "rotate(90deg)" : "none", color: "rgba(255,255,255,0.3)" }} aria-hidden="true" />
+            <ChevronRight size={12} style={{ transition: "transform 0.15s", transform: projectsExpanded ? "rotate(90deg)" : "none", color: "var(--color-shell-text-tertiary)" }} aria-hidden="true" />
             Projects ({projectGroups.length})
           </button>
           <div id="projects-section-mobile" style={{ display: projectsExpanded ? "block" : "none" }}>
@@ -1632,9 +1632,9 @@ export function MessagesApp({
                     onClick={() => setProjectChannelExpanded((prev) => ({ ...prev, [g.id]: !isOpen }))}
                     aria-expanded={isOpen}
                     aria-controls={`project-section-mobile-${g.id}`}
-                    style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", padding: "0 20px 4px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", width: "100%" }}
+                    style={{ fontSize: 11, color: "var(--color-shell-text-secondary)", padding: "0 20px 4px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", width: "100%" }}
                   >
-                    <ChevronRight size={10} style={{ transition: "transform 0.15s", transform: isOpen ? "rotate(90deg)" : "none", color: "rgba(255,255,255,0.3)" }} aria-hidden="true" />
+                    <ChevronRight size={10} style={{ transition: "transform 0.15s", transform: isOpen ? "rotate(90deg)" : "none", color: "var(--color-shell-text-tertiary)" }} aria-hidden="true" />
                     {g.name}
                   </button>
                   <div id={`project-section-mobile-${g.id}`} style={{ display: isOpen ? "block" : "none" }}>
@@ -1664,10 +1664,10 @@ export function MessagesApp({
                             <Bot
                               size={14}
                               aria-hidden
-                              style={{ color: "rgba(255,255,255,0.6)", flexShrink: 0 }}
+                              style={{ color: "var(--color-shell-text-secondary)", flexShrink: 0 }}
                             />
                           )}
-                          <span style={{ flex: 1, fontSize: 15, fontWeight: 400, color: "rgba(255,255,255,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <span style={{ flex: 1, fontSize: 15, fontWeight: 400, color: "var(--color-shell-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {ch.name}
                           </span>
                           {(unread[ch.id] ?? 0) > 0 && (
@@ -1695,9 +1695,9 @@ export function MessagesApp({
             onClick={() => setArchivedExpanded((v) => !v)}
             aria-expanded={archivedExpanded}
             aria-controls="archived-channels-mobile"
-            style={{ fontSize: 12, textTransform: "uppercase" as const, letterSpacing: 0.5, color: "rgba(255,255,255,0.35)", padding: "0 20px 6px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", width: "100%" }}
+            style={{ fontSize: 12, textTransform: "uppercase" as const, letterSpacing: 0.5, color: "var(--color-shell-text-tertiary)", padding: "0 20px 6px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", width: "100%" }}
           >
-            <ChevronRight size={12} style={{ transition: "transform 0.15s", transform: archivedExpanded ? "rotate(90deg)" : "none", color: "rgba(255,255,255,0.3)" }} aria-hidden="true" />
+            <ChevronRight size={12} style={{ transition: "transform 0.15s", transform: archivedExpanded ? "rotate(90deg)" : "none", color: "var(--color-shell-text-tertiary)" }} aria-hidden="true" />
             <Archive size={12} aria-hidden="true" />
             Archived ({archivedChannels.length})
           </button>
@@ -1723,8 +1723,8 @@ export function MessagesApp({
                       aria-label={`Archived channel ${ch.name}`}
                       style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "12px 8px 12px 16px", background: selectedChannel === ch.id ? "var(--color-shell-surface-active)" : "none", border: "none", cursor: "pointer", color: "inherit", textAlign: "left" as const, minWidth: 0 }}
                     >
-                      <Archive size={11} aria-hidden="true" style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontSize: 14, color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.name}</span>
+                      <Archive size={11} aria-hidden="true" style={{ color: "var(--color-shell-text-tertiary)", flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: 14, color: "var(--color-shell-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.name}</span>
                     </button>
                     <div style={{ display: "flex", gap: 2, paddingRight: 8 }}>
                       <button

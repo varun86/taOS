@@ -105,7 +105,7 @@ export function DesktopIcons() {
 
   const open = useCallback(
     (f: FileEntry) => {
-      if (f.is_dir) openWindow("files", { w: 780, h: 540 }, { location: "workspace", path: f.path });
+      if (f.is_dir) openWindow("files", { w: 780, h: 540 }, { path: f.path });
       else window.open(fileUrl(f.path), "_blank");
     },
     [openWindow],
@@ -153,7 +153,9 @@ export function DesktopIcons() {
   return (
     <>
       <div className="pointer-events-none absolute inset-0 z-0 p-3 pt-4">
-        <div className="flex h-full flex-col flex-wrap content-start gap-0.5">
+        {/* content-end packs the wrapped columns to the right edge, so icons
+            arrange from the top-right and wrap leftward. */}
+        <div className="flex h-full flex-col flex-wrap content-end gap-0.5">
           {files.map((f) => {
             const isEditing = editing === f.name;
             const isSel = selected === f.name;

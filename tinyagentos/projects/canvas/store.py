@@ -98,11 +98,20 @@ class ProjectCanvasStore(BaseStore):
             raise ValueError(f"invalid author_kind: {author_kind}")
         eid = element.get("id") or new_id("cve")
         now = time.time()
+        # Upsert: the client may re-send an element it already created (e.g. a
+        # shape hydrated then nudged), which a plain INSERT rejected with a
+        # UNIQUE constraint 500. On conflict, update in place (keep created_at).
         await self._db.execute(
             """INSERT INTO project_canvas_elements
                (id, project_id, kind, author_kind, author_id,
                 x, y, w, h, rotation, z_index, payload, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 kind=excluded.kind, author_kind=excluded.author_kind,
+                 author_id=excluded.author_id, x=excluded.x, y=excluded.y,
+                 w=excluded.w, h=excluded.h, rotation=excluded.rotation,
+                 z_index=excluded.z_index, payload=excluded.payload,
+                 updated_at=excluded.updated_at""",
             (
                 eid, project_id, kind, author_kind, author_id,
                 float(element["x"]), float(element["y"]),

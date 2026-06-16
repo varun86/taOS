@@ -60,6 +60,7 @@ from tinyagentos.torrent_settings import TorrentSettingsStore
 from tinyagentos.relationships import RelationshipManager
 from tinyagentos.github_identities import GitHubIdentitiesStore
 from tinyagentos.secrets import SecretsStore
+from tinyagentos.mail_store import MailAccountStore
 from tinyagentos.training import TrainingManager
 from tinyagentos.conversion import ConversionManager
 from tinyagentos.agent_messages import AgentMessageStore
@@ -102,7 +103,7 @@ PROJECT_DIR = Path(__file__).parent.parent
 _STARTUP_EXEMPT_PATHS = frozenset({"/api/health", "/api/version"})
 _STARTUP_EXEMPT_PREFIXES = ("/static/", "/desktop/", "/chat-pwa/", "/ws/", "/auth/", "/setup", "/shortcut/")
 
-from tinyagentos.task_utils import _create_supervised_task  # noqa: E402
+from tinyagentos.task_utils import _create_supervised_task, cancel_and_wait  # noqa: E402
 
 
 def _resolve_browser_cookie_key(data_dir: "Path") -> str:
@@ -261,6 +262,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     torrent_settings_store = TorrentSettingsStore(data_dir / "torrent_settings.json")
     download_manager = DownloadManager(torrent_settings_store=torrent_settings_store)
     secrets_store = SecretsStore(data_dir / "secrets.db")
+    mail_store = MailAccountStore(data_dir / "mail.db")
     github_identities_store = GitHubIdentitiesStore(data_dir / "github_identities.db")
     relationship_mgr = RelationshipManager(data_dir / "relationships.db")
     channel_store = ChannelStore(data_dir / "channels.db")
@@ -392,6 +394,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await notif_store.init()
         await qmd_client.init()
         await secrets_store.init()
+        await mail_store.init()
+        app.state.mail_store = mail_store
         await github_identities_store.init()
         await relationship_mgr.init()
         await channel_store.init()
@@ -1031,13 +1035,17 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         # gracefully drain here. Only true system halt (system-shutdown) and
         # explicit agent pause/stop go through the orchestrator.
 
-        # Cancel supervised background tasks (fire-and-forget loops etc.)
-        _bg = getattr(app.state, "_background_tasks", set())
-        for _t in list(_bg):
-            if not _t.done():
-                _t.cancel()
-        if _bg:
-            await asyncio.gather(*_bg, return_exceptions=True)
+        # Cancel supervised background tasks (fire-and-forget loops etc.) plus
+        # the local-heartbeat loop under ONE bounded budget. An unbounded gather
+        # here is what stranded shutdown in the FastAPI lifespan: if any loop did
+        # not unwind promptly on cancel, the context manager blocked until systemd
+        # SIGKILLed the process at TimeoutStopUSec (~45s). cancel_and_wait caps the
+        # wait and logs any straggler by name instead of blocking forever.
+        _bg = set(getattr(app.state, "_background_tasks", set()))
+        _hb_task = getattr(app.state, "local_heartbeat_task", None)
+        if _hb_task is not None:
+            _bg.add(_hb_task)
+        await cancel_and_wait(_bg, timeout=5.0)
 
         # Unregister mDNS first so the goodbye packet goes out before other
         # services start tearing down (and potentially blocking the loop).
@@ -1052,15 +1060,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
             await c.stop()
         await score_cache.stop()
         await backend_catalog.stop()
-        _hb_task = getattr(app.state, "local_heartbeat_task", None)
-        if _hb_task is not None:
-            _hb_task.cancel()
-            # Await it so the loop has actually exited before teardown moves on
-            # (cancel() alone doesn't guarantee the coroutine has unwound).
-            try:
-                await _hb_task
-            except asyncio.CancelledError:
-                pass
+        # local_heartbeat_task is cancelled+awaited above under the bounded
+        # cancel_and_wait budget alongside the supervised background tasks.
         await cluster_manager.stop()
         llm_proxy.stop()
         try:
@@ -1140,6 +1141,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await browser_cookie_store.close()
         await browser_store.close()
         await secrets_store.close()
+        await mail_store.close()
         await notif_store.close()
         await app.state.system_events.close()
         await metrics_store.close()
@@ -1149,6 +1151,21 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await auth_requests_store.close()
         await cluster_pairing_store.close()
         await agent_registry_store.close()
+        await github_identities_store.close()
+        # Backstop: close any aiosqlite-backed store still open on app.state.
+        # An unclosed BaseStore leaves a NON-daemon connection worker thread
+        # alive, which blocks Python's threading._shutdown() until systemd
+        # SIGKILLs at the 45s stop timeout (this was the real restart-hang;
+        # github_identities was the omission). close() is idempotent, so this
+        # never double-closes and catches any future store we forget to list.
+        from tinyagentos.base_store import BaseStore as _BaseStore
+
+        for _name, _obj in list(vars(app.state).items()):
+            if isinstance(_obj, _BaseStore):
+                try:
+                    await _obj.close()
+                except Exception:
+                    logger.debug("shutdown: close failed for app.state.%s", _name, exc_info=True)
 
     app = FastAPI(title="TinyAgentOS", version="0.1.0", lifespan=lifespan)
 

@@ -11,6 +11,11 @@ from pathlib import Path
 
 from tinyagentos.app import PROJECT_DIR, create_app, load_config
 
+# Bound uvicorn's graceful-shutdown wait for open connections on SIGTERM.
+# Long-lived SSE streams + cluster heartbeats would otherwise keep uvicorn
+# waiting indefinitely, hanging the full 45s systemd stop timeout each restart.
+GRACEFUL_SHUTDOWN_SECS = 5
+
 
 def main() -> None:
     env_host = os.environ.get("TAOS_HOST")
@@ -61,7 +66,13 @@ def main() -> None:
 
         # backlog=128 — see issue #323. Keeps the kernel accept queue from
         # silently growing into the thousands if the event loop ever wedges.
-        uvicorn.run(app, host=host, port=port, backlog=128)
+        # timeout_graceful_shutdown — without it uvicorn waits indefinitely for
+        # long-lived connections (SSE streams, cluster heartbeats) to close on
+        # SIGTERM, so a restart hung the full 45s systemd stop timeout. Bound it
+        # so the lifespan shutdown actually runs and the process exits fast.
+        uvicorn.run(
+            app, host=host, port=port, backlog=128, timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECS
+        )
         return
 
     # Advertise the proxy port to the frontend (see proxy_config route) so it
@@ -99,10 +110,30 @@ def _serve_dual_port(app, *, host: str, port: int, proxy_port: int) -> None:
 
     proxy_app = create_browser_proxy_app(app.state)
 
-    main_config = uvicorn.Config(app, host=host, port=port, backlog=128)
-    proxy_config = uvicorn.Config(proxy_app, host=host, port=proxy_port, backlog=128)
-    main_server = uvicorn.Server(main_config)
-    proxy_server = uvicorn.Server(proxy_config)
+    # timeout_graceful_shutdown: bound the wait for open connections on SIGTERM
+    # (see the single-port path above) so neither server hangs the 45s stop.
+    main_config = uvicorn.Config(
+        app, host=host, port=port, backlog=128, timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECS
+    )
+    proxy_config = uvicorn.Config(
+        proxy_app, host=host, port=proxy_port, backlog=128, timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECS
+    )
+    # Two uvicorn servers under one loop each install their OWN SIGTERM handler,
+    # and the second registration silently overrides the first -- so on SIGTERM
+    # only the proxy server got should_exit, the main server never did, and the
+    # FIRST_COMPLETED+cancel path then force-cancelled the main server mid-serve,
+    # which hung the full 45s systemd stop. Neuter uvicorn's per-server signal
+    # capture and drive shutdown ourselves with one unified handler below.
+    import contextlib
+
+    class _NoSignalServer(uvicorn.Server):
+        @contextlib.contextmanager
+        def capture_signals(self):
+            # Shutdown is driven by the unified handler in _serve_until_first_exit.
+            yield
+
+    main_server = _NoSignalServer(main_config)
+    proxy_server = _NoSignalServer(proxy_config)
 
     started = asyncio.run(_serve_until_first_exit(main_server, proxy_server))
     if not started:
@@ -115,12 +146,33 @@ def _serve_dual_port(app, *, host: str, port: int, proxy_port: int) -> None:
 
 
 async def _serve_until_first_exit(main_server, proxy_server) -> bool:
-    """Drive both servers; cancel the survivor when one exits.
+    """Drive both servers; on shutdown signal exit BOTH gracefully.
+
+    One unified SIGTERM/SIGINT handler flips should_exit on both servers so they
+    each shut down gracefully (bounded by timeout_graceful_shutdown). When one
+    serve() returns first (e.g. a startup failure), the survivor is asked to exit
+    gracefully and awaited with a bound, falling back to cancel only if it does
+    not stop in time -- never an unconditional force-cancel mid-serve.
 
     Returns True when the main server reached the started state before
     either serve() returned, False otherwise (startup failure).
     """
     import asyncio
+    import contextlib
+    import signal
+
+    loop = asyncio.get_running_loop()
+
+    def _request_shutdown() -> None:
+        main_server.should_exit = True
+        proxy_server.should_exit = True
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, _request_shutdown)
+        except (NotImplementedError, RuntimeError):
+            # Windows / non-main-thread: fall back to default behaviour.
+            pass
 
     main_task = asyncio.create_task(main_server.serve())
     proxy_task = asyncio.create_task(proxy_server.serve())
@@ -130,12 +182,17 @@ async def _serve_until_first_exit(main_server, proxy_server) -> bool:
         return_when=asyncio.FIRST_COMPLETED,
     )
 
-    for task in pending:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    # Ask the survivor to stop gracefully, then await it with a bound so a stuck
+    # graceful shutdown cannot hang the process; only cancel as a last resort.
+    for task, server in ((main_task, main_server), (proxy_task, proxy_server)):
+        if task in pending:
+            server.should_exit = True
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=GRACEFUL_SHUTDOWN_SECS + 3)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     for task in done:
         if task.exception() is not None:

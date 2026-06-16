@@ -24,7 +24,7 @@ A full web desktop environment with 36 bundled apps, 108 catalog apps, 47 MCP pl
 
 **Framework-agnostic by design.** taOS owns everything that matters: your agent's memory, files, communication channels, model access, and configuration. The agent framework is just a replaceable execution engine. Switch from SmolAgents to LangChain to OpenClaw and your agent keeps its entire history, all its Telegram/Discord/Slack connections, its trained LoRA adapters, its files, and its API keys. No migration, no data loss, no reconfiguration. This is possible because taOS manages the full agent lifecycle outside the framework.
 
-**[taOSmd](https://github.com/jaylfc/taosmd) — Framework-agnostic AI memory system.** 97.0% **end-to-end Judge accuracy** on [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval) — retrieve → generate → judge-with-LLM-grader, 500 questions across 50+ sessions each. For context, the most-cited open comparators — MemPalace (96.6%) and agentmemory (95.2%) — publish **Recall@5** retrieval scores on the same dataset, which measures only whether the correct session lands in the top-5 (no generation, no judge). The metrics aren't apples-to-apples until one of us re-runs end-to-end; ours is the stricter measurement. Per-category on our hybrid-plus-query-expansion config: knowledge-update 100%, multi-session 98.5%, single-session-user 97.1%, single-session-assistant 96.4%, temporal-reasoning 94.0%, single-session-preference 90.0%. Everything runs on a £170 Orange Pi 5 Plus with no cloud dependencies. The stack: temporal knowledge graph with validity windows + contradiction detection, hybrid semantic+keyword vector search with cross-encoder rerank and LLM-assisted query expansion (the "Librarian" layer), zero-loss append-only archive, automatic fact extraction, intent-aware retrieval routing, multi-layer context assembly. Any agent framework can read/write through the HTTP API.
+**[taOSmd](https://github.com/jaylfc/taosmd) -- Framework-agnostic AI memory system.** 97.0% **end-to-end Judge accuracy** on [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval) -- retrieve → generate → judge-with-LLM-grader, 500 questions across 50+ sessions each. For context, the most-cited open comparators -- MemPalace (96.6%) and agentmemory (95.2%) -- publish **Recall@5** retrieval scores on the same dataset, which measures only whether the correct session lands in the top-5 (no generation, no judge). The metrics aren't apples-to-apples until one of us re-runs end-to-end; ours is the stricter measurement. Per-category on our hybrid-plus-query-expansion config: knowledge-update 100%, multi-session 98.5%, single-session-user 97.1%, single-session-assistant 96.4%, temporal-reasoning 94.0%, single-session-preference 90.0%. Everything runs on a £170 Orange Pi 5 Plus with no cloud dependencies. The stack: temporal knowledge graph with validity windows + contradiction detection, hybrid semantic+keyword vector search with cross-encoder rerank and LLM-assisted query expansion (the "Librarian" layer), zero-loss append-only archive, automatic fact extraction, intent-aware retrieval routing, multi-layer context assembly. Any agent framework can read/write through the HTTP API.
 
 ---
 
@@ -40,7 +40,7 @@ A full web desktop environment with 36 bundled apps, 108 catalog apps, 47 MCP pl
   <img src="docs/images/mobile-store.png" alt="App store on mobile" width="30%">
 </p>
 
-<p align="center"><sub>Same platform, same session — desktop, tablet, and phone.</sub></p>
+<p align="center"><sub>Same platform, same session -- desktop, tablet, and phone.</sub></p>
 
 <p align="center">
   <img src="docs/images/agents-working.png" alt="Six agents on different frameworks chatting in a shared taOS channel" width="100%">
@@ -91,7 +91,9 @@ taOS ships with a full browser-based desktop environment. Open it at `http://you
 
 ### 39 Bundled Desktop Apps
 
-**Platform apps (25):** Messages (WebSocket chat), Projects (Kanban + A2A), Agents (deploy wizard + logs + skills), Store (47+ apps), Settings (multi-section with Memory capture toggles), Models, Providers (cloud LLM provider management, add/test/remove OpenAI, Anthropic, DeepSeek, and compatible APIs), Memory (User + Agent sections), MCP (plugin manager), Channels, Secrets, Tasks, Import, Images (Image Studio: Create / Library / Edit with tier-aware inpaint + upscale backends), Dashboard (Activity), Cluster (worker management + health), Library (knowledge pipeline, document library with collections and search), Reddit (subreddit browser with saved threads and memory ingest), YouTube (video library with transcript extraction), GitHub (repository browser with code search), X (feed monitor with bookmarks and memory capture), Agent Browsers (manage agent browser sessions), Files (real VFS with workspace + shared folders), taOS Agent (Agent-as-a-Model endpoint), Guides.
+**Platform apps (22):** Messages (WebSocket chat), Mail (IMAP/SMTP accounts, read and send), Projects (Kanban + A2A), Agents (deploy wizard + logs + skills), Store (47+ apps), Settings (multi-section with Memory capture toggles), Models, Providers (cloud LLM provider management, add/test/remove OpenAI, Anthropic, DeepSeek, and compatible APIs), Memory (User + Agent sections), MCP (plugin manager), Channels, Secrets, Tasks, Import, Images (Image Studio: Create / Library / Edit with tier-aware inpaint + upscale backends), Dashboard (Activity), Cluster (worker management + health), Library (knowledge pipeline, document library with collections and search), Agent Browsers (manage agent browser sessions), Files (real VFS with workspace + shared folders), taOS Agent (Agent-as-a-Model endpoint), Guides.
+
+**Optional taOS apps (4):** Reddit (subreddit browser with saved threads and memory ingest), YouTube (video library with transcript extraction), GitHub (repository browser with code search), and X (feed monitor with bookmarks and memory capture) ship in the build but are not installed by default; install or remove them from the Store's "taOS Apps" section.
 
 **OS apps (10):** Weather, Calculator (math.js), Calendar (month view), Contacts (CRUD), Browser (URL-rewriting proxy, agent-ready), Browser (Streamed) (real WebRTC Chromium streamed from the host), Media Player (Plyr), Text Editor (CodeMirror 6 with Obsidian-style theme), Image Viewer (zoom/rotate), Terminal (real PTY + SSH client).
 
@@ -100,10 +102,10 @@ taOS ships with a full browser-based desktop environment. Open it at `http://you
 The Activity app includes a Cluster overview panel showing live worker status and resource stats alongside the process monitor. The Model Browser surfaces cloud models (from configured providers) alongside local catalog models, with a provider badge per entry. The deploy wizard accepts cloud models as inference targets.
 
 <p align="center">
-  <img src="docs/images/desktop-store.png" alt="App store — 108 catalog apps, 16 agent frameworks, hardware-filtered" width="100%">
+  <img src="docs/images/desktop-store.png" alt="App store -- 108 catalog apps, 16 agent frameworks, hardware-filtered" width="100%">
 </p>
 
-<p align="center"><sub>The Store — agent frameworks, models, plugins, services. One-click install, hardware-filtered.</sub></p>
+<p align="center"><sub>The Store -- agent frameworks, models, plugins, services. One-click install, hardware-filtered.</sub></p>
 
 ## Key Features
 
@@ -114,14 +116,14 @@ Full browser-based desktop OS with window manager (float + snap), dock, launchpa
 Auto-detects touch devices and swaps the desktop for a widget-first home screen with customisable multi-page layout (swipe or tap dots to navigate), a persistent dock with app launcher and app switcher, and desktop-style app windows with close/minimise title bars. The top bar features iOS 26-style frosted glass buttons for search and notifications, with a "taOS" home button. Installable as a fullscreen PWA on iOS and Android. A standalone Chat PWA is available at `/chat-pwa` and installs like a private Discord.
 
 <p align="center">
-  <img src="docs/images/mobile-activity-system.png" alt="Mobile activity view — per-core CPU, NPU, RAM" width="30%">
+  <img src="docs/images/mobile-activity-system.png" alt="Mobile activity view -- per-core CPU, NPU, RAM" width="30%">
   &nbsp;
-  <img src="docs/images/mobile-activity-cluster.png" alt="Mobile cluster view — worker hardware, thermals, network" width="30%">
+  <img src="docs/images/mobile-activity-cluster.png" alt="Mobile cluster view -- worker hardware, thermals, network" width="30%">
   &nbsp;
-  <img src="docs/images/mobile-activity-scheduler.png" alt="Mobile scheduler view — worker hardware and capabilities" width="30%">
+  <img src="docs/images/mobile-activity-scheduler.png" alt="Mobile scheduler view -- worker hardware and capabilities" width="30%">
 </p>
 
-<p align="center"><sub>Full system observability on your phone — per-core stats, cluster health, and the hardware-aware scheduler.</sub></p>
+<p align="center"><sub>Full system observability on your phone -- per-core stats, cluster health, and the hardware-aware scheduler.</sub></p>
 
 ### User Memory System
 Personal memory powered by [taOSmd](https://github.com/jaylfc/taosmd), think Pieces App but self-hosted. Temporal knowledge graph + hybrid vector search + zero-loss archive auto-captures conversations from the Message Hub, notes from the Text Editor, file activity, and search queries. Per-category capture toggles live in Settings. Available in global search (Ctrl+Space) alongside apps, with a "Save to Memory" right-click option on the desktop. Agents can optionally read user memory with explicit permission via the `TAOS_USER_MEMORY_URL` environment variable. A "My Memory" section in the Memory app sits alongside agent memories.
@@ -149,7 +151,7 @@ curl -sL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/tinyagentos
 
 ```powershell
 # Windows 10/11, one-line worker install (PowerShell, mirrors the
-# Linux/macOS installer — registers a Scheduled Task so the worker
+# Linux/macOS installer -- registers a Scheduled Task so the worker
 # starts at boot and survives logout)
 $env:TAOS_CONTROLLER_URL = 'http://your-server:6969'
 iwr -useb https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scripts/install-worker.ps1 | iex
@@ -192,13 +194,13 @@ One-click install for agent frameworks, AI models, and services. Hardware-aware,
 ### Agent Deployment
 5-step wizard: pick framework → choose model → configure → deploy into an isolated container (LXC on bare metal, Docker on VPS, auto-detected). Each agent gets its own memory system (taOSmd instance), its own file storage, and its own network identity. The framework runs inside the container but taOS manages everything around it: memory, channels, secrets, model access, scheduled tasks, and inter-agent communication. This means the framework is a swappable component, not a lock-in decision.
 
-> **Running taOS *inside* an LXC (e.g. Proxmox)?** Deploying an agent creates a *nested* container, which an **unprivileged** LXC cannot do — the kernel can't remap the nested container's filesystem, so the deploy fails with an `idmapped storage / change ownership` error. Run the taOS LXC as **privileged with nesting enabled**. On Proxmox: untick *Unprivileged container* and set Options → Features → `nesting=1` (plus `keyctl=1`, `fuse=1`), then redeploy. Bare-metal and VM installs are unaffected. (taOS detects this and surfaces the fix in the deploy error.)
+> **Running taOS *inside* an LXC (e.g. Proxmox)?** Deploying an agent creates a *nested* container, which an **unprivileged** LXC cannot do -- the kernel can't remap the nested container's filesystem, so the deploy fails with an `idmapped storage / change ownership` error. Run the taOS LXC as **privileged with nesting enabled**. On Proxmox: untick *Unprivileged container* and set Options → Features → `nesting=1` (plus `keyctl=1`, `fuse=1`), then redeploy. Bare-metal and VM installs are unaffected. (taOS detects this and surfaces the fix in the deploy error.)
 
 <p align="center">
-  <img src="docs/images/mobile-agents-empty.png" alt="Agents app empty state on mobile — one tap to deploy" width="30%">
+  <img src="docs/images/mobile-agents-empty.png" alt="Agents app empty state on mobile -- one tap to deploy" width="30%">
 </p>
 
-<p align="center"><sub>The Agents app on mobile — one tap from empty to your first deployed agent.</sub></p>
+<p align="center"><sub>The Agents app on mobile -- one tap from empty to your first deployed agent.</sub></p>
 
 ### Channel Hub (Framework-Agnostic Messaging)
 Most agent frameworks force you to wire up Telegram, Discord, or Slack directly into their code. If you switch frameworks, you rebuild all those integrations from scratch. taOS flips this: the platform owns the messaging connections and routes messages to whichever framework the agent currently uses. Switch an agent from SmolAgents to LangChain and it keeps every channel, every conversation, every connection. The framework never touches the bot tokens.
@@ -236,12 +238,12 @@ Two first-party studio apps turn the cluster's generation backends into somethin
 ### Agent Memory System ([taOSmd](https://github.com/jaylfc/taosmd))
 taOSmd is installed as a Python dependency from PyPI (`pip install taosmd`, pinned to 0.3.0 in `pyproject.toml`, published via Trusted Publishing): **97.0% end-to-end Judge accuracy** on LongMemEval-S (retrieve, generate, LLM-grade against the reference answer). The most-cited open comparators (MemPalace 96.6%, agentmemory 95.2%) publish **Recall@5** retrieval scores on the same dataset, which measures only "did the right session land in the top-5" with no generation and no judge, so the numbers are not apples-to-apples until one of us re-runs end-to-end; ours is the stricter measurement. The Librarian layer's LLM-assisted query expansion adds a measured **+15.4% on the vocabulary-gap axis** (45% recall@lag25 with full pipeline + Librarian, vs 30% without) on long-horizon sessions where the cross-encoder alone isn't enough.
 
-Two recent additions (separate measurements — not part of the LongMemEval-S headline above):
+Two recent additions (separate measurements -- not part of the LongMemEval-S headline above):
 
 - **Upgraded low-tier embedding default.** Low-tier dense retrieval now defaults to `snowflake-arctic-embed-s`: **+0.057 judged retrieval quality** on the full 1540-QA LoCoMo set (0.730 vs 0.674 for MiniLM) at the same 384 dimensions and the same latency (about 13ms/embed on an Orange Pi). A free accuracy upgrade for low-end and SBC installs. MiniLM stays supported and is the model the 97.0% LongMemEval-S headline was measured on; existing installs are unchanged.
-- **Provable Memory (opt-in, off by default).** Because taOSmd keeps a zero-loss archive, it can verify every extracted fact against the source spans it came from, mark it supported or unsupported, and demote (never delete) the unsupported ones at recall. That makes the extraction-hallucination rate a standing, measurable number: **18.8% of extracted facts on LoCoMo were not fully supported by their source** (cross-family verified) — something extraction-based systems that discard the source cannot measure.
+- **Provable Memory (opt-in, off by default).** Because taOSmd keeps a zero-loss archive, it can verify every extracted fact against the source spans it came from, mark it supported or unsupported, and demote (never delete) the unsupported ones at recall. That makes the extraction-hallucination rate a standing, measurable number: **18.8% of extracted facts on LoCoMo were not fully supported by their source** (cross-family verified) -- something extraction-based systems that discard the source cannot measure.
 
-Memory layers: temporal knowledge graph with validity windows + contradiction detection, hybrid semantic+keyword vector search (ONNX arctic-embed-s low-tier default / MiniLM / Nomic), zero-loss append-only archive with FTS5, session catalog over the archive, and a crystal store of compressed session digests with extracted lessons. Processing: regex + LLM fact extraction (qwen3:4b), 30-min-gap session splitter, tiered enricher (heuristic / 4B / 9B+), session crystallizer, **secret filtering with 17 regex patterns auto-redacting on every ingest**, and Ebbinghaus retention scoring with hot/warm/cold tiers. Retrieval: parallel fan-out across all layers, query expansion, intent classifier that weights an RRF merge, ms-marco-MiniLM cross-encoder reranking, BFS graph expansion, and a token-budgeted L0–L3 context assembler.
+Memory layers: temporal knowledge graph with validity windows + contradiction detection, hybrid semantic+keyword vector search (ONNX arctic-embed-s low-tier default / MiniLM / Nomic), zero-loss append-only archive with FTS5, session catalog over the archive, and a crystal store of compressed session digests with extracted lessons. Processing: regex + LLM fact extraction (qwen3:4b), 30-min-gap session splitter, tiered enricher (heuristic / 4B / 9B+), session crystallizer, **secret filtering with 17 regex patterns auto-redacting on every ingest**, and Ebbinghaus retention scoring with hot/warm/cold tiers. Retrieval: parallel fan-out across all layers, query expansion, intent classifier that weights an RRF merge, ms-marco-MiniLM cross-encoder reranking, BFS graph expansion, and a token-budgeted L0-L3 context assembler.
 
 taOS wraps taOSmd with platform-specific scheduling (job queue, resource manager, worker heartbeat, gaming detection) for multi-agent coordination on resource-constrained devices. QMD (`qmd.service`, port 7832) remains as the NPU-accelerated embedding / rerank / query-expansion backend. Per-tenant isolation is handled by `dbPath` routing: each agent's index lives at `data/agent-memory/{name}/index.sqlite`.
 
@@ -305,14 +307,14 @@ Search across agents, apps, messages, and files from a single endpoint. Finds an
 ### Monitoring & Management
 
 <p align="center">
-  <img src="docs/images/desktop-activity-system.png" alt="Activity — CPU, NPU, memory, disk, cluster" width="100%">
+  <img src="docs/images/desktop-activity-system.png" alt="Activity -- CPU, NPU, memory, disk, cluster" width="100%">
 </p>
 
 <p align="center">
-  <img src="docs/images/desktop-activity-scheduler.png" alt="Activity scheduler — per-worker hardware and capabilities" width="100%">
+  <img src="docs/images/desktop-activity-scheduler.png" alt="Activity scheduler -- per-worker hardware and capabilities" width="100%">
 </p>
 
-<p align="center"><sub>Every core, every worker, every capability — visible at a glance.</sub></p>
+<p align="center"><sub>Every core, every worker, every capability -- visible at a glance.</sub></p>
 
 - **Dashboard**. KPIs, CPU/RAM sparklines, activity feed, quick actions, backend health, cluster stats. The Loaded Models widget unions controller-local models with each cluster worker's heartbeat-reported models, with a per-host badge on each entry. It always renders, shows an empty state when nothing is loaded rather than hiding.
 - **Health Debug Page.** Checks all services, backends, agents, disk, RAM with live status
@@ -378,7 +380,7 @@ taOS Controller (FastAPI + htmx + React Desktop Shell)
 ├── App Store + Registry (108 apps + 47 MCP plugins, manifest-based)
 ├── Live Model Browser (HuggingFace + Ollama search)
 ├── Container Manager (LXC or Docker, auto-detected)
-├── Agent Memory (taOSmd — temporal KG, hybrid vector search, zero-loss archive, session catalog, crystal store, librarian)
+├── Agent Memory (taOSmd -- temporal KG, hybrid vector search, zero-loss archive, session catalog, crystal store, librarian)
 ├── Health Monitor + Notifications
 ├── Secrets Manager (encrypted, per-agent access)
 ├── Task Scheduler (cron with presets)
@@ -414,7 +416,7 @@ Run `curl -fsSL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scri
 |---|---|
 | `/etc/systemd/system/tinyagentos.service` | Main controller systemd unit. Runs uvicorn on port 6969. |
 | `/etc/systemd/system/qmd.service` | Embedding backend (embed / rerank / query expansion) on port 7832. Used by taOSmd for vector operations. Backed by rkllama on RK3588 boards or local node-llama-cpp elsewhere. |
-| `tinyagentos-sdcpp.service` (repo root) | (RK3588 only) CPU image generation backend. Manual setup only — not auto-installed by the installer. |
+| `tinyagentos-sdcpp.service` (repo root) | (RK3588 only) CPU image generation backend. Manual setup only -- not auto-installed by the installer. |
 | `/home/<user>/tinyagentos/` | The repo checkout. All code, all configs. |
 | `/home/<user>/tinyagentos/.venv/` | Python virtualenv. All Python deps live here, never `pip install` to system Python. |
 | `/home/<user>/tinyagentos/data/` | All persistent state. **One directory to back up.** Contains: agent state YAMLs, agent memory SQLite indexes, agent workspaces, secrets DB, scheduler history, channel credentials, downloaded models, torrent settings, telemetry opt-in flag. |
@@ -492,7 +494,7 @@ cd desktop && npm install && npm run build && cd ..
 sudo systemctl restart tinyagentos
 ```
 
-The systemd unit also runs a conditional rebuild as an `ExecStartPre` step — if you skip the manual `npm run build`, the next service restart detects the stale bundle and rebuilds it automatically (~50s startup overhead when it fires).
+The systemd unit also runs a conditional rebuild as an `ExecStartPre` step -- if you skip the manual `npm run build`, the next service restart detects the stale bundle and rebuilds it automatically (~50s startup overhead when it fires).
 
 **Worker:**
 
@@ -516,7 +518,7 @@ sudo systemctl restart tinyagentos
 sudo systemctl status tinyagentos
 ```
 
-On RK3588 boards with CPU image generation enabled, the sd-cpp backend ships as an additional unit file at `tinyagentos-sdcpp.service` in the repo root. This requires manual setup — it is not auto-installed by `install-server.sh`. Copy to `/etc/systemd/system/`, substitute the `TAOS_USER`/`TAOS_INSTALL_DIR`/`TAOS_PYTHON` placeholders, then enable with `sudo systemctl enable --now tinyagentos-sdcpp`.
+On RK3588 boards with CPU image generation enabled, the sd-cpp backend ships as an additional unit file at `tinyagentos-sdcpp.service` in the repo root. This requires manual setup -- it is not auto-installed by `install-server.sh`. Copy to `/etc/systemd/system/`, substitute the `TAOS_USER`/`TAOS_INSTALL_DIR`/`TAOS_PYTHON` placeholders, then enable with `sudo systemctl enable --now tinyagentos-sdcpp`.
 
 ## RK3588 NPU Setup
 
@@ -593,7 +595,7 @@ uv run exo
 
 **Cluster-wide scheduler aggregation (deferred to v2).** The cluster scheduler currently routes tasks based on individual worker heartbeats. Aggregating the full cluster view for capacity planning, bin-packing, and priority preemption across all workers is a v2 milestone. The spec is at `docs/design/resource-scheduler.md`.
 
-**Multi-framework group chat ships via a shared SSE bridge (6 frameworks verified).** OpenClaw, Hermes, SmolAgents, Langroid, PocketFlow, and OpenAI Agents SDK all route chat through the same `/api/openclaw/sessions/{slug}/events` + `/reply` endpoints. Each non-openclaw framework ships a ~100-line Python bridge (see `tinyagentos/scripts/install_<framework>.sh`) that subscribes to the taOS event stream, runs each user message through the framework's native client, and posts replies back. The separate TAOS Framework Integration Bridge spec (OpenClaw → Hermes proxying, sessionKey routing, round-trip reply shaping) is still unimplemented — that's a deeper integration for cases where one agent wants to delegate a sub-task to another framework's runtime inline.
+**Multi-framework group chat ships via a shared SSE bridge (6 frameworks verified).** OpenClaw, Hermes, SmolAgents, Langroid, PocketFlow, and OpenAI Agents SDK all route chat through the same `/api/openclaw/sessions/{slug}/events` + `/reply` endpoints. Each non-openclaw framework ships a ~100-line Python bridge (see `tinyagentos/scripts/install_<framework>.sh`) that subscribes to the taOS event stream, runs each user message through the framework's native client, and posts replies back. The separate TAOS Framework Integration Bridge spec (OpenClaw → Hermes proxying, sessionKey routing, round-trip reply shaping) is still unimplemented -- that's a deeper integration for cases where one agent wants to delegate a sub-task to another framework's runtime inline.
 
 ## Design Docs
 
@@ -724,13 +726,13 @@ If you maintain one of the libraries above and want a different phrasing or a li
 
 taOS is better for the people testing it, filing issues, and sending fixes:
 
-- [@hognek](https://github.com/hognek) — the first community code contributions: Hermes bridge bounded-retry + dedup ([#468](https://github.com/jaylfc/tinyagentos/pull/468)), agent button states + feedback ([#469](https://github.com/jaylfc/tinyagentos/pull/469)), and browser/PWA mobile layout ([#470](https://github.com/jaylfc/tinyagentos/pull/470)).
-- [@johny-mnemonic](https://github.com/johny-mnemonic) — first to run taOS on a heterogeneous multi-GPU stack beyond our own hardware, surfacing the gaps behind the agent-deploy and UI fixes (the [#357](https://github.com/jaylfc/tinyagentos/discussions/357) thread).
-- [@m13v](https://github.com/m13v) and [@redkjuegos](https://github.com/redkjuegos) — sustained feedback and discussion across issues.
+- [@hognek](https://github.com/hognek) -- the first community code contributions: Hermes bridge bounded-retry + dedup ([#468](https://github.com/jaylfc/tinyagentos/pull/468)), agent button states + feedback ([#469](https://github.com/jaylfc/tinyagentos/pull/469)), and browser/PWA mobile layout ([#470](https://github.com/jaylfc/tinyagentos/pull/470)).
+- [@johny-mnemonic](https://github.com/johny-mnemonic) -- first to run taOS on a heterogeneous multi-GPU stack beyond our own hardware, surfacing the gaps behind the agent-deploy and UI fixes (the [#357](https://github.com/jaylfc/tinyagentos/discussions/357) thread).
+- [@m13v](https://github.com/m13v) and [@redkjuegos](https://github.com/redkjuegos) -- sustained feedback and discussion across issues.
 - …and everyone who's opened an issue or tested an early build. 🙏
 
 ## License
 
-taOS Sustainable Use License v0.1 — source-available, not open source. See [LICENSE](LICENSE).
+taOS Sustainable Use License v0.1 -- source-available, not open source. See [LICENSE](LICENSE).
 
-Free to use, modify, and self-host for personal use and for your own organisation's internal business purposes — forever. A separate commercial license from JAN LABS LTD is required to sell taOS, host it as a paid service, or build it into a product or service you monetise (contact info@taos.my). Prior releases tagged under AGPL-3.0 remain available under AGPL-3.0.
+Free to use, modify, and self-host for personal use and for your own organisation's internal business purposes -- forever. A separate commercial license from JAN LABS LTD is required to sell taOS, host it as a paid service, or build it into a product or service you monetise (contact info@taos.my). Prior releases tagged under AGPL-3.0 remain available under AGPL-3.0.

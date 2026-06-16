@@ -63,7 +63,10 @@ class ClusterManager:
         self._workers[info.name] = info
         logger.info(f"Worker registered: {info.name} ({info.platform}, {len(info.capabilities)} capabilities)")
 
-        if self._notifications:
+        # The "local" worker is the controller registering itself on every boot;
+        # that is not a noteworthy cluster event, so do not notify for it. Only
+        # real remote workers joining or coming back online should notify.
+        if self._notifications and info.name != "local":
             newly_unlocked = []
             if self._capabilities:
                 caps_after = {k for k, v in self._capabilities.get_all_capabilities().items() if v["available"]}

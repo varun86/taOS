@@ -9,6 +9,7 @@ export function ProjectsApp({ windowId: _windowId }: { windowId: string }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isMobile = useIsMobile();
 
   const refresh = async () => {
@@ -46,13 +47,26 @@ export function ProjectsApp({ windowId: _windowId }: { windowId: string }) {
     />
   );
 
+  // Desktop sidebar can collapse to a narrow rail so the workspace/chat area
+  // gets the room. Mobile uses its own split view, so collapse is desktop-only.
+  const desktopListPane = (
+    <ProjectList
+      projects={projects}
+      selectedId={selectedId}
+      onSelect={setSelectedId}
+      onCreated={refresh}
+      collapsed={sidebarCollapsed}
+      onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+    />
+  );
+
   const detailPane = (
     <>
       {error && <div role="alert" className="p-3 text-red-400">{error}</div>}
       {selected ? (
         <ProjectWorkspace project={selected} onChanged={refresh} />
       ) : (
-        <div className="p-6 text-zinc-500">Select or create a project.</div>
+        <div className="p-6 text-shell-text-secondary">Select or create a project.</div>
       )}
     </>
   );
@@ -69,13 +83,12 @@ export function ProjectsApp({ windowId: _windowId }: { windowId: string }) {
     );
   }
 
-  // Desktop branch — byte-identical layout preserved
+  // Desktop branch: project-list sidebar + main column. ProjectList renders
+  // its own <aside> (the 248px sidebar), so this row just lays them out.
   return (
-    <div className="flex h-full w-full">
-      <aside className="w-72 border-r border-zinc-800 flex flex-col">
-        {listPane}
-      </aside>
-      <main className="flex-1 min-w-0">
+    <div className="flex h-full w-full bg-shell-bg text-shell-text">
+      {desktopListPane}
+      <main className="flex-1 min-w-0 flex flex-col min-h-0">
         {detailPane}
       </main>
     </div>
