@@ -1,5 +1,26 @@
 SINGLE SOURCE OF TRUTH for cross-agent handoff.
-Last updated: 2026-06-16 ~21:35 BST, @taOS (ACTIVE).
+Last updated: 2026-06-16 ~21:40 BST, @taOS (PAUSED).
+
+==================================================================
+PAUSED 2026-06-16 ~21:40 BST -- Jay is resetting the Mac mini (this host). Clean handoff.
+ON RESUME (do these first, see docs/AGENT_HANDOFF.md "On arrival"):
+  1. Re-arm the session-scoped crons (they die with the host): freshness :08/:38,
+     repo-watch :23, the resume-pair, and the A2A bus monitor. No durable backstop.
+  2. Read this STATUS top-to-LATEST-16 + AGENT_HANDOFF. The handoff backup was just
+     refreshed (memory/AGENT_HANDOFF.backup.md == live, 109 lines).
+CURRENT STATE: dev=ea95493a (Creative Studios MERGED via #966), master=59c296d2
+  (UNTOUCHED -- Jay is gating master), Pi on feat/studios (3b63f841) for Jay's
+  click-through of the studios. Open PRs: #954 (dependabot uv), #476 (App Runtime
+  draft -- the foundation for the active initiative below).
+ACTIVE INITIATIVE = task #89 USERSPACE APP PACKAGES + PER-APP UPDATES (Jay decision,
+  see LATEST-17). The read-only architecture RECON IS DONE -- full analysis saved to
+  ~/tinyagentos-private/specs/userspace-app-packages-recon-2026-06-16.md (NOT in repo;
+  it is the spec basis). NEXT STEP (no code yet): write the spec from that recon
+  (Phase-1 in-core+versioning vs straight-to-.taosapp-packages; iframe + enhanced
+  broker, NOT module federation; taos.my app-release endpoint; Settings/Updates +
+  Store/Updates surfaces) -> Jay sign-off -> phased build. Do NOT re-run the recon.
+NO uncommitted work, no orphaned subagents (all studio builders + the recon finished).
+==================================================================
 
 ▶▶ LATEST-17 2026-06-16 ~21:35 BST, dev=b335b42a (feat/studios MERGED to dev via PR #966 -- supersedes LATEST-16's "not yet merged"; master STILL 59c296d2, Jay gating master). Pi still on feat/studios (3b63f841) for click-through. Jay: "it all looks awesome." NEW DECISION (Jay) -> USERSPACE APP PACKAGES + PER-APP UPDATES (task #89, [[project_app_runtime_immutable]]): make the Creative Studios + optional apps REAL userspace packages -- physically separate from the core build, installed into persistent userspace, version-tracked, updatable INDEPENDENTLY of the OS, surviving reinstalls/updates. Chose "userspace packages now" (revive App Runtime #476 / feat/app-runtime-v1 as the foundation) over phased/in-core. Updates UI = "Both, Settings authoritative" (Settings owns the full system Updates view: core on top + apps below; Store also surfaces per-app update badges + an Updates tab). Current gap: install STATE already persists (installed_apps flag in data_dir, preserved by auto_update.py) but app CODE still ships in core (app-registry Vite static imports) -- HARD PROBLEM = runtime loading of that code. DESIGN-FIRST: a read-only architecture recon (App Runtime #476 + current app-load/install/update paths) is RUNNING in the background; on its return I write a spec (private repo for strategy bits) -> Jay sign-off -> phased build (package format+loader -> migrate studios/optional apps out of core -> per-app versioning+update mechanism -> Updates UI Settings+Store). Studios = first-pass UI, static data, no backend yet (phase-2 backend wiring still pending).
 
