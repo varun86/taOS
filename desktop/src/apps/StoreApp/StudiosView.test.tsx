@@ -29,11 +29,11 @@ describe("StudiosView", () => {
     }
   });
 
-  it("shows Soon badges on the unreleased studios", () => {
+  it("shows a Soon badge on the unreleased studio", () => {
     render(<StudiosView />);
-    // 5 studios are "soon": Design, Music, App, Office, Web
+    // Only Web Studio is still "soon"; Coding/Design/Music/App/Office are in beta.
     const soonBadges = screen.getAllByText("Soon");
-    expect(soonBadges.length).toBe(5);
+    expect(soonBadges.length).toBe(1);
   });
 
   it("shows Coding Studio in the hero section with the featured eyebrow", () => {

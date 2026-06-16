@@ -1,5 +1,16 @@
-import { Check, Star } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Check, Loader2, Star } from "lucide-react";
 import type { CatalogApp } from "./types";
+import { useInstalledOptionalApps } from "@/hooks/use-installed-optional-apps";
+import { useProcessStore } from "@/stores/process-store";
+import { getApp } from "@/registry/app-registry";
+import { emitAppEvent, APP_OPTIONAL_CHANGED } from "@/lib/app-event-bus";
+
+/* The studio catalog card id maps 1:1 to the registry app id, except Images
+   Studio whose registry app id is "images". */
+function studioAppId(studioId: string): string {
+  return studioId === "images-studio" ? "images" : studioId;
+}
 
 /* ------------------------------------------------------------------
    Studio catalog entries (first-party, type "studio")
@@ -55,7 +66,7 @@ const STUDIOS: CatalogApp[] = [
     tagline: "Graphics and layouts",
     installed: false,
     compat: "green",
-    studioState: "soon",
+    studioState: "available",
     cover: "radial-gradient(120% 120% at 65% 20%,#4a3a4f,transparent 60%),linear-gradient(140deg,#241a27,#16121a)",
   },
   {
@@ -68,7 +79,7 @@ const STUDIOS: CatalogApp[] = [
     tagline: "Web DAW with AI",
     installed: false,
     compat: "green",
-    studioState: "soon",
+    studioState: "available",
     cover: "radial-gradient(120% 120% at 30% 25%,#2f4a3a,transparent 60%),linear-gradient(140deg,#16271d,#101a14)",
   },
   {
@@ -81,7 +92,7 @@ const STUDIOS: CatalogApp[] = [
     tagline: "taOS app builder",
     installed: false,
     compat: "green",
-    studioState: "soon",
+    studioState: "available",
     cover: "radial-gradient(120% 120% at 70% 25%,#3a4150,transparent 60%),linear-gradient(140deg,#1c1f28,#13151b)",
   },
   {
@@ -94,7 +105,7 @@ const STUDIOS: CatalogApp[] = [
     tagline: "Write, Calc, Slides",
     installed: false,
     compat: "green",
-    studioState: "soon",
+    studioState: "available",
     cover: "radial-gradient(120% 120% at 35% 20%,#4a4632,transparent 60%),linear-gradient(140deg,#262216,#181610)",
   },
   {
@@ -210,7 +221,30 @@ function formatStars(n: number): string {
    Hero card for the featured studio (Coding Studio)
    ------------------------------------------------------------------ */
 
-function StudioHero({ studio }: { studio: CatalogApp }) {
+function StudioHero({
+  studio,
+  installed,
+  onOpen,
+  onInstall,
+}: {
+  studio: CatalogApp;
+  installed: Set<string>;
+  onOpen: (appId: string) => void;
+  onInstall: (appId: string) => Promise<void>;
+}) {
+  const isInstalled = installed.has(studio.id);
+  const [busy, setBusy] = useState(false);
+  const handleGet = useCallback(async () => {
+    setBusy(true);
+    try {
+      await onInstall(studio.id);
+    } catch {
+      /* leave the button as Get so the user can retry */
+    } finally {
+      setBusy(false);
+    }
+  }, [studio.id, onInstall]);
+
   return (
     <div
       className="relative rounded-2xl overflow-hidden border border-shell-border-strong flex items-end"
@@ -246,13 +280,16 @@ function StudioHero({ studio }: { studio: CatalogApp }) {
           </div>
           <button
             type="button"
-            className="px-5 py-2 rounded-full text-[13px] font-bold text-white transition-colors"
+            onClick={isInstalled ? () => onOpen(studio.id) : handleGet}
+            disabled={busy}
+            className="px-5 py-2 rounded-full text-[13px] font-bold text-white transition-colors disabled:opacity-60 inline-flex items-center gap-2"
             style={{ background: "var(--color-accent)" }}
           >
-            Get
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isInstalled ? "Open" : "Get"}
           </button>
           <button
             type="button"
+            onClick={() => onOpen(studio.id)}
             className="px-5 py-2 rounded-full text-[13px] font-bold text-shell-text bg-shell-surface-active hover:bg-white/10 transition-colors"
           >
             Preview
@@ -268,9 +305,34 @@ function StudioHero({ studio }: { studio: CatalogApp }) {
    Studio card (grid)
    ------------------------------------------------------------------ */
 
-function StudioCard({ studio }: { studio: CatalogApp }) {
+function StudioCard({
+  studio,
+  installed,
+  onOpen,
+  onInstall,
+}: {
+  studio: CatalogApp;
+  installed: Set<string>;
+  onOpen: (appId: string) => void;
+  onInstall: (appId: string) => Promise<void>;
+}) {
+  const appId = studioAppId(studio.id);
   const isSoon = studio.studioState === "soon";
-  const isInstalled = studio.studioState === "installed";
+  // Bundled studios (Images, Game) ship with the OS; available ones become
+  // installed once they are in the optional-app set.
+  const isBundled = studio.studioState === "installed";
+  const isInstalled = isBundled || installed.has(appId);
+  const [busy, setBusy] = useState(false);
+  const handleGet = useCallback(async () => {
+    setBusy(true);
+    try {
+      await onInstall(appId);
+    } catch {
+      /* leave the button as Get so the user can retry */
+    } finally {
+      setBusy(false);
+    }
+  }, [appId, onInstall]);
 
   return (
     <div className="flex flex-col rounded-2xl border border-shell-border bg-shell-surface/60 overflow-hidden">
@@ -308,6 +370,7 @@ function StudioCard({ studio }: { studio: CatalogApp }) {
           {isInstalled ? (
             <button
               type="button"
+              onClick={() => onOpen(appId)}
               className="px-4 py-1.5 rounded-full bg-shell-surface-active text-shell-text text-[12px] font-bold hover:bg-white/10 transition-colors"
             >
               Open
@@ -315,17 +378,20 @@ function StudioCard({ studio }: { studio: CatalogApp }) {
           ) : isSoon ? (
             <button
               type="button"
-              className="px-4 py-1.5 rounded-full bg-shell-surface-active text-shell-text text-[12px] font-bold hover:bg-white/10 transition-colors"
+              disabled
+              className="px-4 py-1.5 rounded-full bg-shell-surface-active text-shell-text-tertiary text-[12px] font-bold cursor-default"
             >
               Notify me
             </button>
           ) : (
             <button
               type="button"
-              className="px-4 py-1.5 rounded-full text-[12px] font-bold text-white transition-colors"
+              onClick={handleGet}
+              disabled={busy}
+              className="px-4 py-1.5 rounded-full text-[12px] font-bold text-white transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
               style={{ background: "var(--color-accent)" }}
             >
-              Get
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Get"}
             </button>
           )}
         </div>
@@ -432,11 +498,32 @@ function SectionHeader({
 
 export function StudiosView() {
   const hero = STUDIOS.find((s) => s.id === "coding-studio")!;
+  const installed = useInstalledOptionalApps();
+  const openWindow = useProcessStore((s) => s.openWindow);
+
+  const openStudio = useCallback(
+    (appId: string) => {
+      const app = getApp(appId);
+      if (app) openWindow(appId, app.defaultSize);
+    },
+    [openWindow],
+  );
+
+  const installStudio = useCallback(async (appId: string) => {
+    const res = await fetch(`/api/apps/optional/${encodeURIComponent(appId)}/install`, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) throw new Error(`install failed (${res.status})`);
+    // Re-fetch the installed set so the card flips to Open and the launcher
+    // surfaces the studio at once.
+    emitAppEvent(APP_OPTIONAL_CHANGED, appId);
+  }, []);
 
   return (
     <div className="flex flex-col gap-8 pb-8">
       {/* Hero */}
-      <StudioHero studio={hero} />
+      <StudioHero studio={hero} installed={installed} onOpen={openStudio} onInstall={installStudio} />
 
       {/* taOS Studios grid */}
       <section aria-label="taOS Studios">
@@ -447,7 +534,7 @@ export function StudiosView() {
         />
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
           {STUDIOS.map((s) => (
-            <StudioCard key={s.id} studio={s} />
+            <StudioCard key={s.id} studio={s} installed={installed} onOpen={openStudio} onInstall={installStudio} />
           ))}
         </div>
       </section>
