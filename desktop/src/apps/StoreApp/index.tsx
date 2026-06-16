@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Search, Download, Trash2, Check, Package, Loader2, Server,
   Compass, Grid2x2, Bot, Brain, Plug, Wrench, Star, Globe,
-  ArrowDownToLine, RefreshCw, Users, Cpu,
+  ArrowDownToLine, RefreshCw, Users, Cpu, Sparkles,
 } from "lucide-react";
 import { Input } from "@/components/ui";
 import { fetchLatestFrameworks, LatestVersion } from "@/lib/framework-api";
@@ -19,6 +19,7 @@ import { TaosAppsSection } from "./TaosAppsSection";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { MobileStore } from "./MobileStore";
 import { AppIcon, StoreCover } from "./AppIcon";
+import { StudiosView } from "./StudiosView";
 
 /* ------------------------------------------------------------------
    Nav sections
@@ -27,6 +28,7 @@ import { AppIcon, StoreCover } from "./AppIcon";
 type NavId =
   | "discover"
   | "apps"
+  | "studios"
   | "agents"
   | "models"
   | "services"
@@ -46,6 +48,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: "discover",  label: "Discover",    icon: <Compass size={15} /> },
   { id: "apps",      label: "Apps",        icon: <Grid2x2 size={15} /> },
+  { id: "studios",   label: "Studios",     icon: <Sparkles size={15} /> },
   { id: "agents",    label: "Agents",      icon: <Bot size={15} /> },
   { id: "models",    label: "Models",      icon: <Brain size={15} /> },
   { id: "services",  label: "Services",    icon: <Globe size={15} /> },
@@ -957,6 +960,7 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
   const NAV_TYPE_MAP: Record<NavId, string[]> = {
     discover: [],
     apps: ["streaming-app", "ai-app", "productivity", "home", "monitoring", "automation", "image-gen", "voice", "video-gen", "plugin"],
+    studios: ["studio"],
     agents: ["agent-framework"],
     models: ["model", "llm-runtime"],
     services: ["service", "infrastructure"],
@@ -1027,9 +1031,9 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
   const profileSub = primaryTarget?.tier_id ? primaryTarget.tier_id.replace(/-/g, " ") : "Connect a device";
 
   // When the user is searching, show the results grid even on the curated
-  // Discover/Community views (which otherwise ignore the search box).
+  // Discover/Community/Studios views (which otherwise ignore the search box).
   const searching = search.trim().length > 0;
-  const showGrid = searching || (activeNav !== "discover" && activeNav !== "community");
+  const showGrid = searching || (activeNav !== "discover" && activeNav !== "community" && activeNav !== "studios");
 
   // Mobile reads like the Apple App Store: bottom tab bar, full-width feed,
   // snap-scroll carousels and a full-screen search. Same data and install
@@ -1131,6 +1135,8 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
             </div>
           ) : activeNav === "community" && !searching ? (
             <CommunityView />
+          ) : activeNav === "studios" && !searching ? (
+            <StudiosView />
           ) : activeNav === "discover" && !searching ? (
             <DiscoverView apps={apps} onInstall={handleInstall} installTargets={installTargets} />
           ) : showGrid ? (

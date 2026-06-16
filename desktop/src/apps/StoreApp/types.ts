@@ -33,6 +33,8 @@ export interface CatalogApp {
   coverImage?: string;
   /** True when an installed app has a newer version available (drives Updates). */
   update_available?: boolean;
+  /** Studios-specific lifecycle state. "soon" hides install and shows a badge. */
+  studioState?: "installed" | "available" | "soon";
 }
 
 export interface InstallTarget {
