@@ -6,6 +6,7 @@ import {
 import type { CatalogApp, InstallTarget } from "./types";
 import type { ResolveResponse } from "./resolver-types";
 import { filterCatalog, compatFromResolver } from "./filter";
+import { AppIcon, coverFor } from "./AppIcon";
 
 /* ------------------------------------------------------------------
    Mobile Store - Apple App Store-style presentation.
@@ -14,46 +15,10 @@ import { filterCatalog, compatFromResolver } from "./filter";
    path is untouched. All catalog data, install logic, device/backend
    filtering and resolver state are owned by StoreApp and passed in;
    this file only restructures the PRESENTATION for a phone.
+
+   Icons resolve through the shared AppIcon component (logo with a
+   branded-monogram fallback), so no app tile ever shows up blank.
    ------------------------------------------------------------------ */
-
-const di = (slug: string) =>
-  `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/${slug}.png`;
-const si = (slug: string): string => `/static/store-icons/brands/${slug}.svg`;
-const gh = (owner: string): string => `https://github.com/${owner}.png?size=96`;
-
-const APP_ICONS: Record<string, string> = {
-  "smolagents": gh("huggingface"), "pocketflow": gh("The-Pocket"),
-  "openclaw": "/static/store-icons/openclaw.jpg",
-  "openai-agents-sdk": si("openai"), "langroid": gh("langroid"),
-  "qwen3-4b": gh("QwenLM"), "qwen3-1.7b": gh("QwenLM"), "qwen3-8b": gh("QwenLM"),
-  "llama-3.1-8b": si("meta"), "llama-3.2-1b": si("meta"),
-  "gemma-3-4b": si("googlegemini"),
-  "github-mcp-server": si("github"), "playwright-mcp": si("playwright"),
-  "mcp-memory": gh("modelcontextprotocol"),
-  "searxng": si("searxng"), "gitea": si("gitea"), "n8n": si("n8n"),
-  "code-server": gh("coder"), "code-server-kasm": gh("coder"),
-  "blender": si("blender"), "libreoffice": si("libreoffice"),
-  "jupyter-lab": si("jupyter"), "tailscale": si("tailscale"),
-  "caddy": gh("caddyserver"), "animatediff": gh("guoyww"),
-  "comfyui": gh("comfyanonymous"), "fooocus": gh("lllyasviel"),
-  "kokoro-tts": gh("hexgrad"), "whisper-stt": si("openai"),
-  "home-assistant": si("homeassistant"), "uptime-kuma": si("uptimekuma"),
-};
-
-function resolveIconUrl(app: CatalogApp): string | null {
-  if (app.iconSlug) return di(app.iconSlug);
-  if (APP_ICONS[app.id]) return APP_ICONS[app.id] ?? null;
-  if (app.id.startsWith("qwen")) return gh("QwenLM");
-  if (app.id.startsWith("llama")) return si("meta");
-  if (app.id.startsWith("gemma")) return si("googlegemini");
-  if (app.id.startsWith("phi-")) return gh("microsoft");
-  if (app.id.startsWith("whisper")) return si("openai");
-  if (app.id.startsWith("deepseek")) return gh("deepseek-ai");
-  if (app.id.startsWith("mistral") || app.id.startsWith("mixtral")) return gh("mistralai");
-  if (app.id.startsWith("flux-")) return gh("black-forest-labs");
-  if (app.id.startsWith("sd-") || app.id.startsWith("sdxl") || app.id.startsWith("sd3")) return gh("Stability-AI");
-  return null;
-}
 
 function formatStars(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
@@ -66,32 +31,6 @@ function subtitleFor(app: CatalogApp): string {
   if (app.tagline) return app.tagline;
   const raw = (app.category || app.type).replace(/-/g, " ");
   return raw.charAt(0).toUpperCase() + raw.slice(1);
-}
-
-/* ------------------------------------------------------------------
-   AppIcon - rounded squircle logo with graceful fallback
-   ------------------------------------------------------------------ */
-
-function AppIcon({ app, size }: { app: CatalogApp; size: number }) {
-  const [failed, setFailed] = useState(false);
-  const url = resolveIconUrl(app);
-  const radius = Math.round(size * 0.23);
-  return (
-    <div
-      className="flex items-center justify-center shrink-0 overflow-hidden bg-white/[0.06]"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        padding: Math.round(size * 0.16),
-        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.07)",
-      }}
-    >
-      {url && !failed
-        ? <img src={url} alt="" className="w-full h-full object-contain" onError={() => setFailed(true)} loading="lazy" />
-        : <Package className="text-shell-text-tertiary" style={{ width: size * 0.42, height: size * 0.42 }} />}
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------------
@@ -210,7 +149,7 @@ function FeatureCard({
       {/* Cover */}
       <div
         className={hero ? "h-52" : "h-44"}
-        style={{ background: app.cover ?? "linear-gradient(140deg,var(--color-shell-surface-active),var(--color-shell-surface))" }}
+        style={{ background: coverFor(app) }}
       />
       {/* Scrim for legibility */}
       <div
