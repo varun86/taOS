@@ -61,22 +61,25 @@ class CodingWorkspaceStore(BaseStore):
         if not workspace_dir.is_relative_to(root):
             raise RuntimeError("invalid workspace path")
         workspace_dir.mkdir(parents=True, exist_ok=False)
-        await self._git_init(workspace_dir)
-
-        now = int(time.time())
-        row = {
-            "id": wid,
-            "name": name,
-            "path": str(workspace_dir),
-            "created_at": now,
-        }
-        await self._db.execute(
-            """INSERT INTO coding_workspaces (id, name, path, created_at)
-               VALUES (?, ?, ?, ?)""",
-            (row["id"], row["name"], row["path"], row["created_at"]),
-        )
-        await self._db.commit()
-        return row
+        try:
+            await self._git_init(workspace_dir)
+            now = int(time.time())
+            row = {
+                "id": wid,
+                "name": name,
+                "path": str(workspace_dir),
+                "created_at": now,
+            }
+            await self._db.execute(
+                """INSERT INTO coding_workspaces (id, name, path, created_at)
+                   VALUES (?, ?, ?, ?)""",
+                (row["id"], row["name"], row["path"], row["created_at"]),
+            )
+            await self._db.commit()
+            return row
+        except Exception:
+            shutil.rmtree(workspace_dir, ignore_errors=True)
+            raise
 
     async def list(self) -> list[dict]:
         async with self._db.execute(
@@ -103,13 +106,15 @@ class CodingWorkspaceStore(BaseStore):
         if row is None:
             return False
 
+        workspace_dir = Path(row["path"]).resolve()
+        root = self.workspaces_root.resolve()
+        if workspace_dir.is_relative_to(root) and workspace_dir != root and workspace_dir.exists():
+            shutil.rmtree(workspace_dir)
+            if workspace_dir.exists():
+                raise RuntimeError("workspace directory still exists after removal")
+
         await self._db.execute(
             "DELETE FROM coding_workspaces WHERE id = ?", (workspace_id,)
         )
         await self._db.commit()
-
-        workspace_dir = Path(row["path"]).resolve()
-        root = self.workspaces_root.resolve()
-        if workspace_dir.is_relative_to(root) and workspace_dir != root and workspace_dir.exists():
-            shutil.rmtree(workspace_dir, ignore_errors=True)
         return True

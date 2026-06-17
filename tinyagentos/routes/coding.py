@@ -24,11 +24,16 @@ def _invalid_rel_path(rel: str) -> bool:
     return ".." in Path(rel).parts
 
 
-def _resolve_jailed(root: Path, rel: str) -> Path | None:
+_MAX_READ_BYTES = 1_000_000
+
+
+def _resolve_jailed(root: Path, rel: str, *, allow_root: bool = False) -> Path | None:
     if _invalid_rel_path(rel):
         return None
-    target = (root / rel).resolve()
-    if not target.is_relative_to(root) or target == root:
+    target = (root / rel).resolve() if rel else root.resolve()
+    if not target.is_relative_to(root):
+        return None
+    if target == root and not allow_root:
         return None
     return target
 
@@ -38,7 +43,11 @@ async def _workspace_root(request: Request, workspace_id: str) -> tuple[Path | N
     row = await store.get(workspace_id)
     if row is None:
         return None, JSONResponse({"error": "workspace not found"}, status_code=404)
-    return Path(row["path"]).resolve(), None
+    root = store.workspaces_root.resolve()
+    workspace = Path(row["path"]).resolve()
+    if not workspace.is_relative_to(root) or workspace == root:
+        return None, JSONResponse({"error": "workspace not found"}, status_code=404)
+    return workspace, None
 
 
 @router.post("/api/coding/workspaces")
@@ -62,7 +71,7 @@ async def list_files(request: Request, workspace_id: str, subpath: str = ""):
     root, err = await _workspace_root(request, workspace_id)
     if err is not None:
         return err
-    target = _resolve_jailed(root, subpath)
+    target = _resolve_jailed(root, subpath, allow_root=True)
     if target is None:
         return JSONResponse({"error": "invalid path"}, status_code=400)
     if not target.is_dir():
@@ -83,7 +92,13 @@ async def read_file(request: Request, workspace_id: str, path: str):
         return JSONResponse({"error": "invalid path"}, status_code=400)
     if not target.is_file():
         return JSONResponse({"error": "not found"}, status_code=404)
-    return {"path": path, "content": target.read_text()}
+    if target.stat().st_size > _MAX_READ_BYTES:
+        return JSONResponse({"error": "file too large"}, status_code=400)
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return JSONResponse({"error": "binary file"}, status_code=400)
+    return {"path": path, "content": content}
 
 
 @router.put("/api/coding/workspaces/{workspace_id}/file")

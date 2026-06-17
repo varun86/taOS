@@ -92,6 +92,40 @@ async def test_delete_removes_workspace(coding_client):
 
 
 @pytest.mark.asyncio
+async def test_list_root_files(coding_client):
+    client, _app = coding_client
+    r = await client.post("/api/coding/workspaces", json={"name": "root-list"})
+    ws = r.json()
+
+    r = await client.put(
+        f"/api/coding/workspaces/{ws['id']}/file",
+        json={"path": "readme.txt", "content": "hi"},
+    )
+    assert r.status_code == 200
+
+    r = await client.get(f"/api/coding/workspaces/{ws['id']}/files")
+    assert r.status_code == 200
+    names = {e["name"] for e in r.json()}
+    assert "readme.txt" in names
+
+
+@pytest.mark.asyncio
+async def test_read_binary_file_rejected(coding_client):
+    client, app = coding_client
+    r = await client.post("/api/coding/workspaces", json={"name": "binary"})
+    ws = r.json()
+    workspace_dir = app.state.data_dir / "coding-workspaces" / ws["id"]
+    (workspace_dir / "blob.bin").write_bytes(b"\xff\xfe\x00\x01")
+
+    r = await client.get(
+        f"/api/coding/workspaces/{ws['id']}/file",
+        params={"path": "blob.bin"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"] == "binary file"
+
+
+@pytest.mark.asyncio
 async def test_unknown_workspace_returns_404(coding_client):
     client, _app = coding_client
     wid = "cws-nosuch"
