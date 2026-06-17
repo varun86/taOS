@@ -1,4 +1,5 @@
 import { Type, Square, Circle, Image, Plus, Star, Sparkles, AlignLeft, Italic, Underline, Undo, Download } from "lucide-react";
+import type { CanvasElement } from "./types";
 
 const ELEMENT_TILES: { label: string; icon: typeof Type }[] = [
   { label: "Text", icon: Type },
@@ -28,7 +29,11 @@ const COLOR_SWATCHES = [
 
 const MAGIC_CHIPS = ["Make it bolder", "Match brand", "Rewrite copy"];
 
-export function DesignView() {
+export interface DesignViewProps {
+  canvasElements?: CanvasElement[];
+}
+
+export function DesignView({ canvasElements = [] }: DesignViewProps) {
   return (
     <>
       {/* view header */}
@@ -165,6 +170,24 @@ export function DesignView() {
               >
                 Get started
               </div>
+
+              {canvasElements.map((el) =>
+                el.type === "image" ? (
+                  <img
+                    key={el.id}
+                    src={el.url}
+                    alt={el.prompt}
+                    className="absolute object-cover"
+                    style={{
+                      left: el.x,
+                      top: el.y,
+                      width: el.width,
+                      height: el.height,
+                      borderRadius: "6px",
+                    }}
+                  />
+                ) : null,
+              )}
 
               {/* selection box */}
               <div
