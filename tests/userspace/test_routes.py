@@ -1,6 +1,6 @@
 import io, zipfile
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 import httpx
 
 WEB_MANIFEST = "id: todo\nname: Todo\nversion: 1.0.0\napp_type: web\nentry: index.html\nicon: icon.png\npermissions: [app.net]\n"
@@ -63,7 +63,8 @@ async def test_install_malformed_json_returns_400(client):
 @pytest.mark.asyncio
 async def test_install_upstream_fetch_failure_returns_502(client):
     # Finding 2: httpx connectivity failure on source_url must return 502.
-    with patch("tinyagentos.routes.userspace_apps.is_safe_public_url", return_value=True):
+    with patch("tinyagentos.routes.userspace_apps.resolve_safe_public_ip",
+               return_value="93.184.216.34"):
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock,
                    side_effect=httpx.ConnectError("refused")):
             r = await client.post(
@@ -72,6 +73,38 @@ async def test_install_upstream_fetch_failure_returns_502(client):
             )
     assert r.status_code == 502
     assert "upstream" in r.json()["error"].lower() or "fetch" in r.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_install_pins_connection_to_resolved_ip(client):
+    # SSRF #971: the fetch must connect to the validated IP (closing the
+    # DNS-rebind TOCTOU window), keeping the original Host header + TLS SNI so
+    # the client never re-resolves the hostname to a different (internal) IP.
+    captured = {}
+
+    async def _fake_get(self, url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers")
+        captured["extensions"] = kwargs.get("extensions")
+        resp = Mock()
+        resp.raise_for_status = Mock(return_value=None)
+        resp.content = _zip()
+        return resp
+
+    with patch("tinyagentos.routes.userspace_apps.resolve_safe_public_ip",
+               return_value="93.184.216.34"):
+        with patch("httpx.AsyncClient.get", new=_fake_get):
+            r = await client.post(
+                "/api/userspace-apps/install",
+                json={"source_url": "http://example.com/app.taosapp"},
+            )
+    assert r.status_code == 200, r.text
+    # connected to the pinned IP, NOT the hostname
+    assert "93.184.216.34" in captured["url"]
+    assert "example.com" not in captured["url"]
+    # original host preserved for vhost routing + cert validation
+    assert captured["headers"]["Host"] == "example.com"
+    assert captured["extensions"]["sni_hostname"] == "example.com"
 
 
 def _container_zip():

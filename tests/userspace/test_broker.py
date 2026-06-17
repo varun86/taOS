@@ -43,6 +43,19 @@ async def test_table_capabilities(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_missing_required_arg_returns_clean_error(tmp_path):
+    # a capability that indexes args directly must return a clean error, not a 500
+    s = await _store(tmp_path)
+    out = await handle_capability("todo", "app.kv.get", {},
+                                  granted=[], data_store=s, app_dir=tmp_path / "todo", services={})
+    assert out == {"error": "missing_arg", "arg": "key"}
+    out2 = await handle_capability("todo", "app.table.delete", {"table": "t"},
+                                   granted=[], data_store=s, app_dir=tmp_path / "todo", services={})
+    assert out2 == {"error": "missing_arg", "arg": "id"}
+    await s.close()
+
+
+@pytest.mark.asyncio
 async def test_gated_capability_allowed_when_granted(tmp_path):
     s = await _store(tmp_path)
 
