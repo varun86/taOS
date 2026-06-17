@@ -1,7 +1,7 @@
 version: 2
 updates:
-  # Python (controller + worker)
-  - package-ecosystem: "pip"
+  # Python (controller + worker) -- managed by uv (pyproject.toml + uv.lock)
+  - package-ecosystem: "uv"
     directory: "/"
     target-branch: "dev"
     schedule:
