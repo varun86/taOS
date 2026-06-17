@@ -1,5 +1,5 @@
 SINGLE SOURCE OF TRUTH for cross-agent handoff.
-Last updated: 2026-06-17 ~22:30 BST, @taOS-dev (autonomous build team running -- grok shipped 6 tasks today via the dispatcher; user update method tested OK; dev->master promotion #979 HELD on SSRF #971 for Jay; see LATEST-23).
+Last updated: 2026-06-18 ~01:00 BST, @taOS-dev (SSRF #971 FIXED + merged via #984; dev->master promotion #979 MERGED so master is current. Autonomous build team running: grok via the dispatcher ships studio-MVP + test-coverage cards, @taOS-dev gates every PR via a 13-min sweep cron; queue ~36 deep; A2A + grok-pane monitors stopped in favour of the cron; ALL new work stays on dev for Jay to review/promote).
 
 ==================================================================
 STATE 2026-06-17 ~03:45 BST, @taOS (session continuous since the 06-16 Mac-mini reset).
