@@ -2,7 +2,7 @@ import io, types, zipfile
 import pytest
 from unittest.mock import AsyncMock, patch
 
-MANIFEST = "id: todo\nname: Todo\nversion: 1.0.0\napp_type: web\nentry: index.html\nicon: icon.png\npermissions: [app.memory]\n"
+MANIFEST = "id: todo\nname: Todo\nversion: 1.0.0\napp_type: web\nentry: index.html\nicon: icon.png\npermissions: [app.memory, app.net]\n"
 
 
 def _zip():

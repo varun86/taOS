@@ -118,9 +118,20 @@ async def install_app(request: Request, package: UploadFile | None = File(defaul
 
 @router.post("/api/userspace-apps/{app_id}/permissions")
 async def set_permissions(request: Request, app_id: str):
-    body = await request.json()
-    await request.app.state.userspace_apps.set_permissions_granted(app_id, body.get("granted", []))
-    return {"status": "ok"}
+    store = request.app.state.userspace_apps
+    app = await store.get(app_id)
+    if app is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    # Only grant permissions the package actually requested -- a caller cannot
+    # escalate an app to capabilities its manifest never declared.
+    requested = set(app.get("permissions_requested") or [])
+    safe = [p for p in body.get("granted", []) if p in requested]
+    await store.set_permissions_granted(app_id, safe)
+    return {"status": "ok", "granted": safe}
 
 
 @router.post("/api/userspace-apps/{app_id}/enable")
