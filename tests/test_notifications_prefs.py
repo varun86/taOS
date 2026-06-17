@@ -9,14 +9,14 @@ async def test_get_prefs_returns_all_event_types_default_unmuted(client):
     assert r.status_code == 200
     prefs = r.json()
     assert len(prefs) == len(NotificationStore.EVENT_TYPES)
+    assert {p["event_type"] for p in prefs} == set(NotificationStore.EVENT_TYPES)
     for pref in prefs:
-        assert pref["event_type"] in NotificationStore.EVENT_TYPES
         assert pref["muted"] is False
 
 
 @pytest.mark.asyncio
 async def test_put_valid_event_sets_muted_and_get_reflects(client):
-    event_type = "worker.join"
+    event_type = next(iter(NotificationStore.EVENT_TYPES))
     r = await client.put(
         f"/api/notifications/prefs/{event_type}",
         json={"muted": True},
