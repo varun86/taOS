@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Search, Download, Trash2, Check, Package, Loader2, Server,
   Compass, Grid2x2, Bot, Brain, Plug, Wrench, Star, Globe,
-  ArrowDownToLine, RefreshCw, Users, Cpu,
+  ArrowDownToLine, RefreshCw, Users, Cpu, Sparkles,
 } from "lucide-react";
 import { Input } from "@/components/ui";
 import { fetchLatestFrameworks, LatestVersion } from "@/lib/framework-api";
@@ -19,6 +19,8 @@ import { TaosAppsSection } from "./TaosAppsSection";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { MobileStore } from "./MobileStore";
 import { AppIcon, StoreCover } from "./AppIcon";
+import { getApp } from "@/registry/app-registry";
+import { StudiosView } from "./StudiosView";
 
 /* ------------------------------------------------------------------
    Nav sections
@@ -27,6 +29,7 @@ import { AppIcon, StoreCover } from "./AppIcon";
 type NavId =
   | "discover"
   | "apps"
+  | "studios"
   | "agents"
   | "models"
   | "services"
@@ -46,6 +49,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: "discover",  label: "Discover",    icon: <Compass size={15} /> },
   { id: "apps",      label: "Apps",        icon: <Grid2x2 size={15} /> },
+  { id: "studios",   label: "Studios",     icon: <Sparkles size={15} /> },
   { id: "agents",    label: "Agents",      icon: <Bot size={15} /> },
   { id: "models",    label: "Models",      icon: <Brain size={15} /> },
   { id: "services",  label: "Services",    icon: <Globe size={15} /> },
@@ -838,6 +842,7 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
   const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
   const [selectedBackends, setSelectedBackends] = useState<string[]>([]);
   const [compatMap, setCompatMap] = useState<Map<string, ResolveResponse>>(new Map());
+  const [optionalCatalog, setOptionalCatalog] = useState<Array<{ id: string; version: string; installed: boolean; update_available: boolean }>>([]);
 
   const userId = typeof window !== "undefined" ? window.localStorage.getItem("taos.user.id") || "anon" : "anon";
   const profileId = typeof window !== "undefined" ? window.localStorage.getItem("taos.profile.id") || "default" : "default";
@@ -925,6 +930,7 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
     fetchLatestFrameworks().then(setLatest).catch(() => {});
     fetch("/api/agents").then((r) => r.ok ? r.json() : []).then((j) => setAgentList(Array.isArray(j) ? j : (j?.agents ?? []))).catch(() => {});
     fetch("/api/cluster/install-targets", { headers: { Accept: "application/json" } }).then((r) => r.ok ? r.json() : null).then((data) => { if (Array.isArray(data)) setInstallTargets(data); }).catch(() => {});
+    fetch("/api/apps/optional/catalog", { headers: { Accept: "application/json" } }).then((r) => r.ok ? r.json() : null).then((data) => { if (Array.isArray(data?.apps)) setOptionalCatalog(data.apps); }).catch(() => {});
     refreshInstalled();
   }, [refreshInstalled]);
 
@@ -957,6 +963,7 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
   const NAV_TYPE_MAP: Record<NavId, string[]> = {
     discover: [],
     apps: ["streaming-app", "ai-app", "productivity", "home", "monitoring", "automation", "image-gen", "voice", "video-gen", "plugin"],
+    studios: ["studio"],
     agents: ["agent-framework"],
     models: ["model", "llm-runtime"],
     services: ["service", "infrastructure"],
@@ -1027,9 +1034,9 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
   const profileSub = primaryTarget?.tier_id ? primaryTarget.tier_id.replace(/-/g, " ") : "Connect a device";
 
   // When the user is searching, show the results grid even on the curated
-  // Discover/Community views (which otherwise ignore the search box).
+  // Discover/Community/Studios views (which otherwise ignore the search box).
   const searching = search.trim().length > 0;
-  const showGrid = searching || (activeNav !== "discover" && activeNav !== "community");
+  const showGrid = searching || (activeNav !== "discover" && activeNav !== "community" && activeNav !== "studios");
 
   // Mobile reads like the Apple App Store: bottom tab bar, full-width feed,
   // snap-scroll carousels and a full-screen search. Same data and install
@@ -1131,6 +1138,8 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
             </div>
           ) : activeNav === "community" && !searching ? (
             <CommunityView />
+          ) : activeNav === "studios" && !searching ? (
+            <StudiosView />
           ) : activeNav === "discover" && !searching ? (
             <DiscoverView apps={apps} onInstall={handleInstall} installTargets={installTargets} />
           ) : showGrid ? (
@@ -1142,16 +1151,40 @@ export function StoreApp({ windowId: _windowId }: { windowId: string }) {
                   <p className="text-[12px] text-shell-text-tertiary mt-0.5">{filtered.length} apps</p>
                 </div>
               </div>
+              {activeNav === "updates" && (() => {
+                const updatableOptional = optionalCatalog.filter((e) => e.installed && e.update_available);
+                if (updatableOptional.length === 0) return null;
+                return (
+                  <div className="mb-4">
+                    <h3 className="text-[13px] font-semibold text-shell-text mb-2">taOS Apps</h3>
+                    <div className="flex flex-col gap-1">
+                      {updatableOptional.map((entry) => {
+                        const meta = getApp(entry.id);
+                        return (
+                          <div key={entry.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-shell-surface border border-shell-border">
+                            <span className="text-[12.5px] font-medium text-shell-text">{meta?.name ?? entry.id}</span>
+                            <span className="font-mono text-[10px] text-shell-text-tertiary">{entry.version}</span>
+                            <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-shell-surface-active text-shell-text-tertiary border border-shell-border-strong">Core</span>
+                            <span className="ml-auto text-[11px] text-amber-300/80">Included in next system update</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               {searching && filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-shell-text-tertiary text-sm gap-2">
                   <Package className="w-8 h-8" />
                   <span>No matches for &ldquo;{search.trim()}&rdquo;</span>
                 </div>
               ) : activeNav === "updates" && filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-40 text-shell-text-tertiary text-sm gap-2">
-                  <Package className="w-8 h-8" />
-                  <span>You&rsquo;re all up to date</span>
-                </div>
+                optionalCatalog.some((e) => e.installed && e.update_available) ? null : (
+                  <div className="flex flex-col items-center justify-center h-40 text-shell-text-tertiary text-sm gap-2">
+                    <Package className="w-8 h-8" />
+                    <span>You&rsquo;re all up to date</span>
+                  </div>
+                )
               ) : activeNav === "installed" && filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-shell-text-tertiary text-sm gap-2">
                   <Package className="w-8 h-8" />

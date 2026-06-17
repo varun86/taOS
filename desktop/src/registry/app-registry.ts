@@ -4,7 +4,7 @@ export interface AppManifest {
   id: string;
   name: string;
   icon: string;
-  category: "platform" | "os" | "streaming" | "game";
+  category: "platform" | "os" | "streaming" | "game" | "userspace";
   component: () => Promise<{ default: ComponentType<{ windowId: string }> }>;
   defaultSize: { w: number; h: number };
   minSize: { w: number; h: number };
@@ -42,6 +42,11 @@ const apps: AppManifest[] = [
   { id: "tasks", name: "Tasks", icon: "calendar-clock", category: "platform", component: () => import("@/apps/TasksApp").then((m) => ({ default: m.TasksApp })), defaultSize: { w: 800, h: 500 }, minSize: { w: 450, h: 350 }, singleton: true, pinned: false, launchpadOrder: 11 },
   { id: "import", name: "Import", icon: "upload", category: "platform", component: () => import("@/apps/ImportApp").then((m) => ({ default: m.ImportApp })), defaultSize: { w: 700, h: 450 }, minSize: { w: 400, h: 300 }, singleton: true, pinned: false, launchpadOrder: 12 },
   { id: "images", name: "Images", icon: "image", category: "platform", component: () => import("@/apps/ImagesApp").then((m) => ({ default: m.ImagesApp })), defaultSize: { w: 900, h: 600 }, minSize: { w: 500, h: 400 }, singleton: true, pinned: false, launchpadOrder: 13 },
+  { id: "coding-studio", name: "Coding Studio", icon: "code-2", category: "platform", component: () => import("@/apps/CodingStudioApp").then((m) => ({ default: m.CodingStudioApp })), defaultSize: { w: 1080, h: 760 }, minSize: { w: 680, h: 540 }, singleton: true, pinned: false, launchpadOrder: 13.25, optional: true },
+  { id: "design-studio", name: "Design Studio", icon: "palette", category: "platform", component: () => import("@/apps/DesignStudioApp").then((m) => ({ default: m.DesignStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.26, optional: true },
+  { id: "music-studio", name: "Music Studio", icon: "music", category: "platform", component: () => import("@/apps/MusicStudioApp").then((m) => ({ default: m.MusicStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 700, h: 540 }, singleton: true, pinned: false, launchpadOrder: 13.27, optional: true },
+  { id: "app-studio", name: "App Studio", icon: "blocks", category: "platform", component: () => import("@/apps/AppStudioApp").then((m) => ({ default: m.AppStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.28, optional: true },
+  { id: "office-suite", name: "Office Suite", icon: "file-text", category: "platform", component: () => import("@/apps/OfficeSuiteApp").then((m) => ({ default: m.OfficeSuiteApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.29, optional: true },
   { id: "library", name: "Library", icon: "book-open", category: "platform", component: () => import("@/apps/LibraryApp").then((m) => ({ default: m.LibraryApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 550, h: 400 }, singleton: true, pinned: true, launchpadOrder: 13.5 },
   { id: "reddit", name: "Reddit", icon: "scroll-text", category: "platform", component: () => import("@/apps/RedditApp").then((m) => ({ default: m.RedditApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 550, h: 400 }, singleton: true, pinned: false, launchpadOrder: 14, optional: true },
   { id: "youtube-library", name: "YouTube", icon: "play-circle", category: "platform", component: () => import("@/apps/YouTubeApp").then((m) => ({ default: m.YouTubeApp })), defaultSize: { w: 1050, h: 700 }, minSize: { w: 600, h: 450 }, singleton: true, pinned: false, launchpadOrder: 14.5, optional: true },
@@ -184,4 +189,34 @@ export function getOrRegisterServiceApp(
   };
   apps.push(manifest);
   return manifest;
+}
+
+/**
+ * Reconcile the registered userspace app manifests against a fresh list.
+ *
+ * Preserves the object identity of already-registered manifests so that open
+ * userspace windows are not remounted on every sync. Only removes entries no
+ * longer present in the incoming list and only appends genuinely new ids.
+ * When an id is removed its prefetch-cache entries are also cleared so a
+ * reinstall triggers a fresh prefetch.
+ */
+export function syncUserspaceApps(manifests: AppManifest[]): void {
+  const incoming = new Map(manifests.map((m) => [m.id, m]));
+  // Drop userspace entries no longer present, and clear their prefetch state
+  for (let i = apps.length - 1; i >= 0; i--) {
+    const id = apps[i]?.id;
+    if (id?.startsWith("userspace:") && !incoming.has(id)) {
+      apps.splice(i, 1);
+      prefetched.delete(id);
+      prefetchFailed.delete(id);
+    }
+  }
+  // Add only new ids, preserving the identity of already-registered manifests
+  // so open userspace windows are not remounted on every sync.
+  const present = new Set(
+    apps.filter((a) => a.id.startsWith("userspace:")).map((a) => a.id),
+  );
+  for (const m of manifests) {
+    if (!present.has(m.id)) apps.push(m);
+  }
 }
