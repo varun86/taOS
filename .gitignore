@@ -93,6 +93,9 @@ data/browser_cookie_key.hex
 # (a tracked copy dirties the tree and blocks the in-app git-pull update).
 desktop/tsconfig.tsbuildinfo
 
+# never track installed deps
+desktop/node_modules/
+
 # Local-only operational playbook (contains LAN IP + ops detail; agents read it from the working tree)
 docs/AGENT_HANDOFF.md
 docs/audit/
