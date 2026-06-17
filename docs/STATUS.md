@@ -1,16 +1,18 @@
 SINGLE SOURCE OF TRUTH for cross-agent handoff.
-Last updated: 2026-06-16 ~22:40 BST, @taOS (RESUMED -- #89 spec drafted, awaiting Jay sign-off).
+Last updated: 2026-06-17 ~03:45 BST, @taOS (app-system milestone: P1+P3a+P3b+P4a merged; HOLDING for Jay on launcher UI / P4b studio / P2 signing key).
 
 ==================================================================
-RESUMED 2026-06-16 ~22:40 BST, @taOS -- Mac mini back online. Clean resume from the pause.
-Crons re-armed (session-scoped, no durable backstop): freshness :08/:38 (9cf28fee),
-  repo-watch :23 (eee7b770), resume-pair primary 23:43 BST (496fe83a) / retry 00:02 BST
-  (5dc91176), A2A SSE bus monitor (task bxmaqbz62). Verified at resume: Pi reachable
-  (:6969 401 = up, bus :7900 streaming), Keychain OAuth token OK, usage published to Pi
-  .taos-usage.json (5h 48% / 7d 68% -> PROCEED at full intensity).
-CURRENT STATE: dev=65d4fcad (= origin/dev), master=59c296d2 (UNTOUCHED -- Jay gating
-  master), Pi on feat/studios (3b63f841). Open PRs: #954 (dependabot uv), #476 (App
-  Runtime draft -- foundation for the active initiative).
+STATE 2026-06-17 ~03:45 BST, @taOS (session continuous since the 06-16 Mac-mini reset).
+Crons armed THIS SESSION (session-scoped, no durable backstop -- re-arm on any fresh start):
+  freshness :08/:38 (9cf28fee), repo-watch :23 (eee7b770), A2A SSE bus monitor (bxmaqbz62),
+  resume-pair primary 09:43 BST (8248b42e) / retry 10:02 BST (7c34ac0a) for the 08:40Z window.
+CURRENT STATE: dev=8349f40e (= origin/dev), master UNTOUCHED (Jay gates master). Open PRs: #954
+  (dependabot uv, master-gated). No active subagents. APP SYSTEM #89 MILESTONE: P1 + P3a + P3b +
+  P4a ALL MERGED = the userspace runtime + trust model + .taosapp format + boot-seeding are
+  COMPLETE (detail in LATEST-21/-20). HOLDING for Jay: (1) launcher/Store UI merge to surface +
+  open userspace apps (high-blast-radius, lead designs), (2) P4b which studio first, (3) the
+  offline JAN LABS Ed25519 signing key for P2. Queued: searx-json-default #969 (design-first),
+  DNS-rebind #971 (folds into P2).
 ACTIVE INITIATIVE = task #89 USERSPACE APP PACKAGES + PER-APP UPDATES. Recon DONE + SPEC
   DRAFTED -> ~/tinyagentos-private/specs/userspace-app-packages-spec-2026-06-16.md
   (private). Jay SIGNED OFF: Track A (rails first) + studios-only. P1 (per-app versioning +
