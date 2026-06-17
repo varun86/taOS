@@ -283,6 +283,22 @@ async def compose_music(request: Request, body: ComposeRequest):
 
     backend_id, backend_url, mode = await _resolve_music_backend(request)
     if not backend_id:
+        installed = [
+            app_id
+            for app_id in MUSIC_SERVICE_IDS
+            if await _is_service_installed(request, app_id)
+        ]
+        if installed:
+            names = ", ".join(installed)
+            return JSONResponse(
+                {
+                    "error": (
+                        f"Music backend(s) installed ({names}) but not runnable yet. "
+                        "Start the service runtime or install musicgpt/musicgen."
+                    ),
+                },
+                status_code=503,
+            )
         return JSONResponse(
             {
                 "error": (
@@ -314,7 +330,6 @@ async def compose_music(request: Request, body: ComposeRequest):
                 duration=body.duration,
                 output_path=output_path,
             )
-            audio_bytes = output_path.read_bytes()
         elif mode == "musicgen-cli":
             await _compose_via_musicgen_cli(
                 request,
@@ -322,7 +337,6 @@ async def compose_music(request: Request, body: ComposeRequest):
                 duration=body.duration,
                 output_path=output_path,
             )
-            audio_bytes = output_path.read_bytes()
         else:
             return JSONResponse(
                 {"error": f"Backend {backend_id!r} is installed but not runnable yet."},
@@ -343,9 +357,12 @@ async def compose_music(request: Request, body: ComposeRequest):
             {"error": f"Music backend returned error: {exc.response.status_code}"},
             status_code=502,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("music compose failed")
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse(
+            {"error": "Music generation failed. Check server logs for details."},
+            status_code=500,
+        )
 
     metadata = {
         "prompt": prompt,
@@ -359,7 +376,7 @@ async def compose_music(request: Request, body: ComposeRequest):
         "status": "generated",
         "filename": filename,
         "path": _music_url_path(filename),
-        "size_bytes": len(audio_bytes),
+        "size_bytes": output_path.stat().st_size,
         **metadata,
     }
 
