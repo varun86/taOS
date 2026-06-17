@@ -50,6 +50,7 @@ from tinyagentos.channels import ChannelStore
 from tinyagentos.download_manager import DownloadManager
 from tinyagentos.metrics import MetricsStore
 from tinyagentos.notifications import NotificationStore
+from tinyagentos.coding_workspaces import CodingWorkspaceStore
 from tinyagentos.qmd_client import QmdClient
 from tinyagentos.backend_adapters import check_backend_health
 from tinyagentos.benchmark import BenchmarkStore
@@ -344,6 +345,10 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     from tinyagentos.userspace.data_store import UserspaceDataStore
     userspace_apps = UserspaceAppStore(data_dir / "userspace_apps.db")
     userspace_data = UserspaceDataStore(data_dir / "userspace_data.db")
+    coding_workspaces_store = CodingWorkspaceStore(
+        data_dir / "coding_workspaces.db",
+        data_dir / "coding-workspaces",
+    )
     skills = SkillStore(data_dir / "skills.db")
     from tinyagentos.themes.store import ThemeStore
     themes = ThemeStore(data_dir / "themes.sqlite3")
@@ -424,6 +429,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.userspace_apps = userspace_apps
         await userspace_data.init()
         app.state.userspace_data = userspace_data
+        await coding_workspaces_store.init()
+        app.state.coding_workspaces = coding_workspaces_store
         try:
             from tinyagentos.userspace.seed import seed_bundled_apps
             await seed_bundled_apps(userspace_apps, data_dir / "apps")
@@ -672,6 +679,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.installed_apps = installed_apps
         app.state.userspace_apps = userspace_apps
         app.state.userspace_data = userspace_data
+        app.state.coding_workspaces = coding_workspaces_store
         app.state.skills = skills
         app.state.benchmark_store = benchmark_store
         app.state.score_cache = score_cache
@@ -1126,6 +1134,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await installed_apps.close()
         await userspace_apps.close()
         await userspace_data.close()
+        await coding_workspaces_store.close()
         await user_memory.close()
         await desktop_settings.close()
         await canvas_store.close()
@@ -1300,6 +1309,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.installed_apps = installed_apps
     app.state.userspace_apps = userspace_apps
     app.state.userspace_data = userspace_data
+    app.state.coding_workspaces = coding_workspaces_store
     app.state.skills = skills
     app.state.themes = themes
     app.state.knowledge_store = knowledge_store
