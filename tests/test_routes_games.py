@@ -39,7 +39,7 @@ class TestChessMove:
             json={"legal_moves": LEGAL_MOVES},
         )
         assert resp.status_code == 400
-        assert "agent_name" in resp.json()["error"].lower()
+        assert resp.json()["error"] == "Missing agent_name or legal_moves"
 
     async def test_missing_legal_moves_returns_400(self, client):
         resp = await client.post(
@@ -47,7 +47,7 @@ class TestChessMove:
             json={"agent_name": "chess-bot"},
         )
         assert resp.status_code == 400
-        assert "legal_moves" in resp.json()["error"].lower()
+        assert resp.json()["error"] == "Missing agent_name or legal_moves"
 
     async def test_empty_legal_moves_returns_400(self, client):
         resp = await client.post(
