@@ -156,3 +156,82 @@ async def test_files_write_to_jail_root_rejected(tmp_path):
                                   granted=[], data_store=s, app_dir=tmp_path / "todo", services={})
     assert out["error"] == "invalid_path"
     await s.close()
+
+
+@pytest.mark.asyncio
+async def test_files_escape_and_absolute_paths_rejected(tmp_path):
+    s = await _store(tmp_path)
+    app_dir = tmp_path / "todo"
+    (app_dir / "files").mkdir(parents=True)
+    for cap in ("app.files.read", "app.files.write"):
+        out = await handle_capability("todo", cap, {"path": "../escape.txt", "content": "x"},
+                                      granted=[], data_store=s, app_dir=app_dir, services={})
+        assert out == {"error": "invalid_path"}
+        out = await handle_capability("todo", cap, {"path": "/etc/passwd", "content": "x"},
+                                      granted=[], data_store=s, app_dir=app_dir, services={})
+        assert out == {"error": "invalid_path"}
+    wr = await handle_capability("todo", "app.files.write", {"path": "safe.txt", "content": "ok"},
+                                 granted=[], data_store=s, app_dir=app_dir, services={})
+    assert wr == {"result": True}
+    rd = await handle_capability("todo", "app.files.read", {"path": "safe.txt"},
+                                 granted=[], data_store=s, app_dir=app_dir, services={})
+    assert rd == {"result": "ok"}
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_files_write_to_existing_directory_rejected(tmp_path):
+    s = await _store(tmp_path)
+    app_dir = tmp_path / "todo"
+    subdir = app_dir / "files" / "nested"
+    subdir.mkdir(parents=True)
+    out = await handle_capability("todo", "app.files.write", {"path": "nested", "content": "x"},
+                                  granted=[], data_store=s, app_dir=app_dir, services={})
+    assert out == {"error": "invalid_path"}
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_missing_arg_matrix(tmp_path):
+    s = await _store(tmp_path)
+    cases = [
+        ("app.kv.get", {}, "key"),
+        ("app.kv.set", {}, "key"),
+        ("app.kv.delete", {}, "key"),
+        ("app.table.insert", {}, "table"),
+        ("app.table.query", {}, "table"),
+        ("app.table.delete", {}, "table"),
+        ("app.table.delete", {"table": "t"}, "id"),
+    ]
+    for cap, args, arg in cases:
+        out = await handle_capability("todo", cap, args,
+                                      granted=[], data_store=s, app_dir=tmp_path / "todo", services={})
+        assert out == {"error": "missing_arg", "arg": arg}
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_unknown_bogus_capability_rejected(tmp_path):
+    s = await _store(tmp_path)
+    out = await handle_capability("todo", "app.bogus.thing", {},
+                                  granted=[], data_store=s, app_dir=tmp_path / "todo", services={})
+    assert out == {"error": "unknown_capability", "capability": "app.bogus.thing"}
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_app_net_denied_without_grant(tmp_path):
+    s = await _store(tmp_path)
+    out = await handle_capability("todo", "app.net", {"path": "/ping"},
+                                  granted=[], data_store=s, app_dir=tmp_path / "todo", services={})
+    assert out == {"error": "permission_denied", "capability": "app.net"}
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_app_net_no_backend_when_granted(tmp_path):
+    s = await _store(tmp_path)
+    out = await handle_capability("todo", "app.net", {"path": "/ping"},
+                                  granted=["app.net"], data_store=s, app_dir=tmp_path / "todo", services={})
+    assert out == {"error": "no_backend"}
+    await s.close()
