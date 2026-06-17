@@ -12,7 +12,7 @@ import shutil
 import zipfile
 from pathlib import Path
 
-from tinyagentos.userspace.package import extract_package, PackageError, parse_manifest
+from tinyagentos.userspace.package import extract_package, parse_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -82,5 +82,5 @@ async def seed_bundled_apps(store, apps_root: Path, seed_dir: Path | None = None
                 trust="first-party",
             )
             logger.info("seeded bundled app %s v%s", app_id, version)
-        except (PackageError, Exception):
+        except Exception:
             logger.warning("failed to seed bundled app in %s", app_dir, exc_info=True)
