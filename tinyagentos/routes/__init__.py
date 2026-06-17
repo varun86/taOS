@@ -292,3 +292,6 @@ def register_all_routers(app):
 
     from tinyagentos.routes.userspace_apps import router as userspace_apps_router
     app.include_router(userspace_apps_router)
+
+    from tinyagentos.routes.office import router as office_router
+    app.include_router(office_router)
