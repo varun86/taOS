@@ -28,6 +28,7 @@ export function BuildView() {
   const [streaming, setStreaming] = useState(false);
   const [model, setModel] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const outputChunksRef = useRef<string[]>([]);
 
   useEffect(() => {
     const seeded = takePendingPrompt();
@@ -51,14 +52,17 @@ export function BuildView() {
   }, []);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [output, error, streaming]);
+    if (!streaming || error) {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [streaming, error]);
 
   const handleBuild = useCallback(async () => {
-    if (streaming) return;
+    if (streaming || !model) return;
     const text = prompt.trim();
     if (!text) return;
 
+    outputChunksRef.current = [];
     setOutput("");
     setError(null);
     setStreaming(true);
@@ -69,7 +73,10 @@ export function BuildView() {
     try {
       await streamTaosAgentChat(
         [{ role: "user", content: buildPrompt }],
-        (delta) => setOutput((prev) => prev + delta),
+        (delta) => {
+          outputChunksRef.current.push(delta);
+          setOutput(outputChunksRef.current.join(""));
+        },
         (message) => setError(message),
       );
     } catch (e) {
@@ -77,7 +84,7 @@ export function BuildView() {
     } finally {
       setStreaming(false);
     }
-  }, [prompt, streaming]);
+  }, [prompt, streaming, model]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -277,7 +284,7 @@ export function BuildView() {
         <button
           type="button"
           onClick={() => void handleBuild()}
-          disabled={streaming || !prompt.trim()}
+          disabled={streaming || !prompt.trim() || noModel}
           className="flex h-[50px] flex-none items-center gap-[9px] rounded-[15px] border-none px-6 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: "linear-gradient(135deg,var(--color-accent),var(--color-accent))" }}
         >

@@ -20,12 +20,7 @@ export async function streamTaosAgentChat(
   const decoder = new TextDecoder();
   let buf = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
+  const flushLines = (lines: string[]) => {
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
@@ -36,5 +31,17 @@ export async function streamTaosAgentChat(
         // skip malformed NDJSON
       }
     }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    flushLines(lines);
   }
+
+  buf += decoder.decode();
+  if (buf.trim()) flushLines([buf]);
 }
