@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Request, UploadFile, File
@@ -9,7 +10,7 @@ from fastapi.responses import JSONResponse, FileResponse, Response
 
 from tinyagentos.userspace.broker import handle_capability, GATED_CAPS
 from tinyagentos.userspace.package import extract_package, PackageError
-from tinyagentos.userspace.url_guard import is_safe_public_url
+from tinyagentos.userspace.url_guard import resolve_safe_public_ip
 
 router = APIRouter()
 
@@ -86,17 +87,31 @@ async def install_app(request: Request, package: UploadFile | None = File(defaul
         url = body.get("source_url")
         if not url:
             return JSONResponse({"error": "source_url or package required"}, status_code=400)
-        # SSRF guard: only fetch public http(s) hosts, and do not follow
-        # redirects (a 3xx could bounce to a blocked internal address).
-        if not is_safe_public_url(url):
+        # SSRF guard: resolve + validate the host ONCE, then pin the connection
+        # to that validated IP. Re-resolving at fetch time would reopen a
+        # DNS-rebinding TOCTOU window. follow_redirects stays off so a 3xx
+        # cannot bounce to a blocked host.
+        pinned_ip = resolve_safe_public_ip(url)
+        if pinned_ip is None:
             return JSONResponse(
                 {"error": "source_url is not allowed -- only public http(s) hosts "
                           "(no private, loopback, link-local or reserved addresses)"},
                 status_code=400,
             )
+        _u = urlparse(url)
+        _ip_host = f"[{pinned_ip}]" if ":" in pinned_ip else pinned_ip
+        _netloc = _ip_host if not _u.port else f"{_ip_host}:{_u.port}"
+        _pinned_url = _u._replace(netloc=_netloc).geturl()
+        _host_header = _u.hostname if not _u.port else f"{_u.hostname}:{_u.port}"
         try:
             async with httpx.AsyncClient(timeout=120, follow_redirects=False) as c:
-                resp = await c.get(url)
+                # Connect to the pinned IP; keep the original Host header + TLS
+                # SNI so vhost routing and certificate validation still work.
+                resp = await c.get(
+                    _pinned_url,
+                    headers={"Host": _host_header},
+                    extensions={"sni_hostname": _u.hostname},
+                )
                 resp.raise_for_status()
                 data = resp.content
         except httpx.HTTPStatusError as exc:

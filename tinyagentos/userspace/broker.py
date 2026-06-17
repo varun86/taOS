@@ -33,6 +33,18 @@ async def handle_capability(app_id, capability, args, *, granted, data_store, ap
 
     args = args or {}
 
+    # Validate required args up front so a missing key returns a clean error
+    # instead of an uncaught KeyError (a 500). Only caps that index args
+    # directly are listed; the rest use args.get with defaults.
+    _required = {
+        "app.kv.get": ("key",), "app.kv.set": ("key",), "app.kv.delete": ("key",),
+        "app.table.insert": ("table",), "app.table.query": ("table",),
+        "app.table.delete": ("table", "id"),
+    }
+    for _arg in _required.get(capability, ()):
+        if _arg not in args:
+            return {"error": "missing_arg", "arg": _arg}
+
     if capability == "app.kv.get":
         return {"result": await data_store.kv_get(app_id, args["key"])}
     if capability == "app.kv.set":
