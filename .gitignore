@@ -94,7 +94,7 @@ data/browser_cookie_key.hex
 desktop/tsconfig.tsbuildinfo
 
 # never track installed deps
-desktop/node_modules/
+desktop/node_modules
 
 # Local-only operational playbook (contains LAN IP + ops detail; agents read it from the working tree)
 docs/AGENT_HANDOFF.md
