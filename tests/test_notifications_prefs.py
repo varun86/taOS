@@ -42,6 +42,9 @@ async def test_put_unknown_event_type_returns_404(client):
 
 @pytest.mark.asyncio
 async def test_put_invalid_or_missing_body_returns_400(client):
+    r = await client.put("/api/notifications/prefs/worker.join")
+    assert r.status_code == 400
+
     r = await client.put(
         "/api/notifications/prefs/worker.join",
         content=b"{not valid json",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 from fastapi import APIRouter, Request
@@ -76,7 +77,7 @@ async def set_notification_pref(request: Request, event_type: str):
         return JSONResponse({"error": "unknown_event_type"}, status_code=404)
     try:
         body = await request.json()
-    except Exception:
+    except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
     if not isinstance(body, dict) or "muted" not in body:
         return JSONResponse({"error": "muted required"}, status_code=400)
