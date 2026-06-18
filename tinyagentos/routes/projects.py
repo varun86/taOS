@@ -555,6 +555,9 @@ async def claim_task(
         return JSONResponse({"error": "already claimed"}, status_code=409)
     _beads_mark_dirty(request, project_id)
     await pstore.log_activity(project_id, payload.claimer_id, "task.claimed", {"task_id": task_id})
+    notifs = getattr(request.app.state, "notifications", None)
+    if notifs is not None:
+        await notifs.emit_event("task.claimed", "Task claimed", f"{task_id} claimed by {payload.claimer_id}")
     return await store.get_task(task_id)
 
 
@@ -602,6 +605,9 @@ async def close_task(
         return JSONResponse({"error": "cannot close"}, status_code=409)
     _beads_mark_dirty(request, project_id)
     await pstore.log_activity(project_id, payload.closed_by, "task.closed", {"task_id": task_id})
+    notifs = getattr(request.app.state, "notifications", None)
+    if notifs is not None:
+        await notifs.emit_event("task.closed", "Task closed", f"{task_id} closed by {payload.closed_by}")
     project = project_or_err
     task = await store.get_task(task_id)
     qmd = getattr(request.app.state, "qmd_client", None)
