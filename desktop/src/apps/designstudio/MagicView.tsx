@@ -56,6 +56,7 @@ export function MagicView({
 
         <div className="mb-[26px] flex w-full max-w-[640px] gap-2.5">
           <textarea
+            aria-label="Design prompt"
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
             placeholder="a launch poster for taOS Studios, bold, dark, confident..."

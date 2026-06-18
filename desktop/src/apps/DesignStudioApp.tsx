@@ -86,20 +86,22 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
     !!magicPrompt.trim() && !generating && !!selectedVariant?.downloaded;
 
   const placeOnCanvas = useCallback((img: GeneratedImage) => {
-    const offset = canvasElements.length * 12;
-    const element: CanvasElement = {
-      id: img.id,
-      type: "image",
-      url: img.url,
-      prompt: img.prompt,
-      x: 24 + offset,
-      y: 280 + offset,
-      width: 312,
-      height: 140,
-    };
-    setCanvasElements((prev) => [...prev, element]);
+    setCanvasElements((prev) => {
+      const offset = prev.length * 12;
+      const element: CanvasElement = {
+        id: `${img.id}-${prev.length}-${Date.now()}`,
+        type: "image",
+        url: img.url,
+        prompt: img.prompt,
+        x: 24 + offset,
+        y: 280 + offset,
+        width: 312,
+        height: 140,
+      };
+      return [...prev, element];
+    });
     setView("design");
-  }, [canvasElements.length]);
+  }, []);
 
   const runGenerate = useCallback(async () => {
     const usePrompt = magicPrompt.trim();
