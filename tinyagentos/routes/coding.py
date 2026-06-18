@@ -56,7 +56,12 @@ async def create_workspace(request: Request, body: CreateWorkspaceBody):
     if not name:
         return JSONResponse({"error": "name is required"}, status_code=400)
     store = request.app.state.coding_workspaces
-    row = await store.create(name)
+    try:
+        row = await store.create(name)
+    except RuntimeError as exc:
+        # workspace creation (git init / id allocation) failed -- surface a
+        # clean error instead of letting it escape as an unhandled 500.
+        return JSONResponse({"error": str(exc)}, status_code=503)
     return row
 
 
