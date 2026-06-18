@@ -11,8 +11,10 @@ import yaml
 # external origin (it is added to the sandbox CSP connect-src). The origin is
 # strictly validated so it can never inject extra CSP directives: scheme://host
 # with an optional leading "*." subdomain wildcard and an optional :port, and
-# nothing else (no spaces, semicolons, quotes, or paths).
-_NET_ORIGIN_RE = re.compile(r"^(?:wss|https)://(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?$")
+# nothing else (no spaces, semicolons, quotes, paths, or newlines). \A and \Z
+# anchor the WHOLE string -- `$` would also match just before a trailing
+# newline, which would let "wss://host\n; ..." slip a newline into the value.
+_NET_ORIGIN_RE = re.compile(r"\A(?:wss|https)://(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?\Z")
 
 _ALLOWED_TYPES = {"web", "container"}
 _REQUIRED = ("id", "name", "version", "app_type")

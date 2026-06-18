@@ -102,6 +102,13 @@ def test_network_permission_origins_validated():
         "network:ftp://h.com",
         "network:*",
         "network:'unsafe-inline'",
+        "network:wss://h.com\n",
+        "network:wss://h.com\n; script-src x",
     ]:
         with pytest.raises(PackageError):
             parse_manifest(base + "permissions: ['" + bad + "']\n")
+    # gitar finding: `$` would match before a trailing newline; \Z must not.
+    from tinyagentos.userspace.package import _NET_ORIGIN_RE
+    assert _NET_ORIGIN_RE.match("wss://irc-ws.chat.twitch.tv")
+    assert not _NET_ORIGIN_RE.match("wss://evil.com\n")
+    assert not _NET_ORIGIN_RE.match("wss://evil.com\n; script-src 'unsafe-inline'")
