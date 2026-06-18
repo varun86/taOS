@@ -26,7 +26,7 @@ const RAIL: { id: StudioView; label: string; icon: typeof Sparkles }[] = [
   { id: "share", label: "Share", icon: Share2 },
 ];
 
-export function GameStudioApp({ windowId: _windowId }: { windowId: string }) {
+export function GameStudioApp({ windowId }: { windowId: string }) {
   const [view, setView] = useState<StudioView>("create");
 
   // Create-form state (illustrative in phase 1; the template drives Play).
@@ -100,6 +100,7 @@ export function GameStudioApp({ windowId: _windowId }: { windowId: string }) {
         <div className="flex min-w-0 flex-1 flex-col">
           {view === "create" && (
             <CreateView
+              windowId={windowId}
               prompt={prompt}
               onPromptChange={setPrompt}
               genres={genres}
@@ -110,7 +111,7 @@ export function GameStudioApp({ windowId: _windowId }: { windowId: string }) {
             />
           )}
 
-          {view === "play" && <PlayView key={active.id} template={active} />}
+          {view === "play" && <PlayView key={active.id} windowId={windowId} template={active} />}
 
           {view === "share" && <ShareView template={active} />}
         </div>
