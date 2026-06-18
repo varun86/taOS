@@ -30,9 +30,14 @@ export function BuildView() {
   const logEndRef = useRef<HTMLDivElement>(null);
   const outputChunksRef = useRef<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    return () => abortRef.current?.abort();
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -83,19 +88,23 @@ export function BuildView() {
       await streamTaosAgentChat(
         [{ role: "user", content: buildPrompt }],
         (delta) => {
+          if (!mountedRef.current) return;
           outputChunksRef.current.push(delta);
           setOutput(outputChunksRef.current.join(""));
         },
-        (message) => setError(message),
+        (message) => {
+          if (!mountedRef.current) return;
+          setError(message);
+        },
         { signal: controller.signal },
       );
     } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
+      if (!(e instanceof DOMException && e.name === "AbortError") && mountedRef.current) {
         setError(String(e));
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setStreaming(false);
+      if (mountedRef.current) setStreaming(false);
     }
   }, [prompt, streaming, model]);
 
