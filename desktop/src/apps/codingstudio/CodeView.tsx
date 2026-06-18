@@ -226,8 +226,15 @@ export function CodeView() {
   const [treeError, setTreeError] = useState<string | null>(null);
 
   const [activePath, setActivePath] = useState<string | null>(null);
+  // fileContent: initial content passed to the editor on file open (drives editor recreation)
   const [fileContent, setFileContent] = useState<string>("");
+  // savedContent: last-saved baseline for dirty tracking (NOT passed to editor after initial load)
+  const [savedContent, setSavedContent] = useState<string>("");
   const [editedContent, setEditedContent] = useState<string>("");
+  // tracks the last-requested path so stale concurrent fetch responses are ignored
+  const latestRequestedPath = useRef<string | null>(null);
+  // ref so openFile callback can always read the current dirty state without stale closure
+  const isDirtyRef = useRef(false);
   const [fileLoading, setFileLoading] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
 
@@ -301,6 +308,7 @@ export function CodeView() {
     setTree([]);
     setActivePath(null);
     setFileContent("");
+    setSavedContent("");
     setEditedContent("");
     setTreeError(null);
     setTreeLoading(true);
@@ -357,6 +365,13 @@ export function CodeView() {
   const openFile = useCallback(
     async (path: string) => {
       if (!activeWs) return;
+      if (isDirtyRef.current) {
+        const ok = window.confirm(
+          "You have unsaved changes. Discard them and open the new file?",
+        );
+        if (!ok) return;
+      }
+      latestRequestedPath.current = path;
       setActivePath(path);
       setFileLoading(true);
       setFileError(null);
@@ -368,9 +383,13 @@ export function CodeView() {
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: { path: string; content: string } = await res.json();
+        // discard response if a newer openFile call has already taken over
+        if (latestRequestedPath.current !== path) return;
         setFileContent(data.content);
+        setSavedContent(data.content);
         setEditedContent(data.content);
       } catch (err) {
+        if (latestRequestedPath.current !== path) return;
         setFileError(err instanceof Error ? err.message : "Failed to load file");
         setFileLoading(false);
         return;
@@ -394,7 +413,9 @@ export function CodeView() {
         body: JSON.stringify({ path: activePath, content: editedContent }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setFileContent(editedContent);
+      // update savedContent, not fileContent -- fileContent drives editor recreation
+      // so touching it after the initial load would destroy cursor position + undo history
+      setSavedContent(editedContent);
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2000);
     } catch (err) {
@@ -404,7 +425,8 @@ export function CodeView() {
     }
   }, [activeWs, activePath, editedContent]);
 
-  const isDirty = editedContent !== fileContent;
+  const isDirty = editedContent !== savedContent;
+  isDirtyRef.current = isDirty;
 
   /* ── render ─────────────────────────────────────────────── */
 
@@ -421,28 +443,37 @@ export function CodeView() {
         <div className="flex items-center gap-2">
           {wsLoading ? (
             <span className="text-[12px] text-shell-text-tertiary">Loading...</span>
-          ) : wsError ? (
-            <span className="flex items-center gap-1 text-[12px] text-red-400">
-              <AlertCircle size={13} />
-              {wsError}
-            </span>
           ) : (
-            <select
-              aria-label="Select workspace"
-              value={activeWs?.id ?? ""}
-              onChange={(e) => {
-                const ws = workspaces.find((w) => w.id === e.target.value) ?? null;
-                setActiveWs(ws);
-              }}
-              className="h-[28px] rounded-[9px] border border-shell-border bg-shell-surface px-2 text-[12px] text-shell-text focus:outline-none focus:ring-1 focus:ring-accent/40"
-            >
-              <option value="">-- select workspace --</option>
-              {workspaces.map((ws) => (
-                <option key={ws.id} value={ws.id}>
-                  {ws.name}
-                </option>
-              ))}
-            </select>
+            <>
+              {wsError && (
+                <span className="flex items-center gap-1 text-[12px] text-red-400">
+                  <AlertCircle size={13} />
+                  {wsError}
+                </span>
+              )}
+              <select
+                aria-label="Select workspace"
+                value={activeWs?.id ?? ""}
+                onChange={(e) => {
+                  const ws = workspaces.find((w) => w.id === e.target.value) ?? null;
+                  if (isDirty) {
+                    const ok = window.confirm(
+                      "You have unsaved changes. Discard them and switch workspace?",
+                    );
+                    if (!ok) return;
+                  }
+                  setActiveWs(ws);
+                }}
+                className="h-[28px] rounded-[9px] border border-shell-border bg-shell-surface px-2 text-[12px] text-shell-text focus:outline-none focus:ring-1 focus:ring-accent/40"
+              >
+                <option value="">-- select workspace --</option>
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>
+                    {ws.name}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
 
           <button
