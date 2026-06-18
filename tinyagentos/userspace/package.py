@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 from pathlib import Path
 
 import yaml
+
+# A `network:<origin>` permission lets a granted app's bundle connect to that
+# external origin (it is added to the sandbox CSP connect-src). The origin is
+# strictly validated so it can never inject extra CSP directives: scheme://host
+# with an optional leading "*." subdomain wildcard and an optional :port, and
+# nothing else (no spaces, semicolons, quotes, or paths).
+_NET_ORIGIN_RE = re.compile(r"^(?:wss|https)://(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?$")
 
 _ALLOWED_TYPES = {"web", "container"}
 _REQUIRED = ("id", "name", "version", "app_type")
@@ -52,6 +60,17 @@ def parse_manifest(text: str) -> dict:
     data.setdefault("entry", "index.html")
     data.setdefault("icon", "")
     data.setdefault("permissions", [])
+    if not isinstance(data["permissions"], list):
+        raise PackageError("manifest 'permissions' must be a list")
+    for perm in data["permissions"]:
+        if isinstance(perm, str) and perm.startswith("network:"):
+            origin = perm[len("network:"):]
+            if not _NET_ORIGIN_RE.match(origin):
+                raise PackageError(
+                    f"invalid network permission origin {origin!r}: must be "
+                    "wss://host or https://host with an optional *. subdomain "
+                    "wildcard and an optional :port, nothing else"
+                )
     return data
 
 

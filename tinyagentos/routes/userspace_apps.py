@@ -16,42 +16,28 @@ router = APIRouter()
 
 _SDK_PATH = Path(__file__).resolve().parent.parent / "userspace" / "sdk" / "taos-app-sdk.js"
 
-# Bundle CSP for community (untrusted) packages. The `sandbox allow-scripts`
+# Bundle CSP for sandboxed userspace packages. The `sandbox allow-scripts`
 # directive (no allow-same-origin) forces the document into an OPAQUE origin
 # even on a direct top-level navigation -- so a userspace bundle can never
 # execute on the core origin with the session cookie (defends against stored
 # XSS), while still letting the app run its own scripts inside our sandboxed
-# iframe. `default-src 'none'` plus the explicit self/inline allowances keep
-# it locked down.
-_BUNDLE_CSP = (
-    "sandbox allow-scripts allow-forms allow-popups; "
-    "default-src 'none'; "
-    "script-src 'self' 'unsafe-inline' blob:; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: blob:; "
-    "font-src 'self' data:; "
-    "connect-src 'self'; "
-    "frame-ancestors 'self'; base-uri 'none'"
-)
-
-# Relaxed CSP for first-party packages (studios). Still sandboxed -- NEVER
-# add allow-same-origin; that would collapse the opaque-origin isolation and
-# let the frame access session cookies. The relaxations over community:
-#   - style-src allows 'unsafe-inline' (community already does, kept the same)
-#   - connect-src 'self' (same as community; lets the SDK reach the broker)
-# The intent is that P4 boot-seeding and P2 signature verification are the
-# ONLY paths that write trust='first-party'; this CSP is not itself a trust
-# grant, just a consequence of trust already verified out-of-band.
-_BUNDLE_CSP_FIRST_PARTY = (
-    "sandbox allow-scripts allow-forms allow-popups; "
-    "default-src 'none'; "
-    "script-src 'self' 'unsafe-inline' blob:; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: blob:; "
-    "font-src 'self' data:; "
-    "connect-src 'self'; "
-    "frame-ancestors 'self'; base-uri 'none'"
-)
+# iframe. `default-src 'none'` plus the explicit self/inline allowances keep it
+# locked down. connect-src defaults to 'self' (the broker only); an app the
+# user has granted `network:<origin>` permissions gets exactly those origins
+# added to connect-src and nothing else (each origin is strictly validated at
+# manifest-parse time, so it cannot inject other CSP directives).
+def _bundle_csp(net_origins: list[str]) -> str:
+    connect = "connect-src 'self'" + "".join(" " + o for o in net_origins)
+    return (
+        "sandbox allow-scripts allow-forms allow-popups; "
+        "default-src 'none'; "
+        "script-src 'self' 'unsafe-inline' blob:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self' data:; "
+        f"{connect}; "
+        "frame-ancestors 'self'; base-uri 'none'"
+    )
 
 
 def _apps_root(request: Request) -> Path:
@@ -212,9 +198,11 @@ async def serve_bundle(request: Request, app_id: str, path: str):
     if not target.is_relative_to(root) or target == root or not target.is_file():
         return JSONResponse({"error": "not found"}, status_code=404)
     app = await request.app.state.userspace_apps.get(app_id)
-    csp = _BUNDLE_CSP_FIRST_PARTY if (app and app.get("trust") == "first-party") else _BUNDLE_CSP
+    granted = (app or {}).get("permissions_granted") or []
+    net_origins = [p[len("network:"):] for p in granted
+                   if isinstance(p, str) and p.startswith("network:")]
     resp = FileResponse(target)
-    resp.headers["Content-Security-Policy"] = csp
+    resp.headers["Content-Security-Policy"] = _bundle_csp(net_origins)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
 
