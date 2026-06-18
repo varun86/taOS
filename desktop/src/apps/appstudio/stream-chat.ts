@@ -55,7 +55,10 @@ export async function streamTaosAgentChat(
     buf += decoder.decode(value, { stream: true });
     const lines = buf.split("\n");
     buf = lines.pop() ?? "";
-    if (flushLines(lines)) return;
+    if (flushLines(lines)) {
+      reader.cancel();
+      return;
+    }
   }
 
   buf += decoder.decode();
