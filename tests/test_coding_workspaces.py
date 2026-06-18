@@ -122,7 +122,63 @@ async def test_read_binary_file_rejected(coding_client):
         params={"path": "blob.bin"},
     )
     assert r.status_code == 400
-    assert r.json()["error"] == "binary file"
+    assert r.json()["error"] == "binary_or_undecodable"
+
+
+@pytest.mark.asyncio
+async def test_list_root_empty_workspace(coding_client):
+    client, _app = coding_client
+    r = await client.post("/api/coding/workspaces", json={"name": "fresh-root"})
+    ws = r.json()
+
+    r = await client.get(f"/api/coding/workspaces/{ws['id']}/files")
+    assert r.status_code == 200
+    names = {e["name"] for e in r.json()}
+    assert ".git" in names
+
+    r = await client.get(f"/api/coding/workspaces/{ws['id']}/files", params={"subpath": ""})
+    assert r.status_code == 200
+
+    r = await client.get(f"/api/coding/workspaces/{ws['id']}/files", params={"subpath": "."})
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_read_oversized_file_rejected(coding_client):
+    client, app = coding_client
+    r = await client.post("/api/coding/workspaces", json={"name": "bigfile"})
+    ws = r.json()
+    workspace_dir = app.state.data_dir / "coding-workspaces" / ws["id"]
+    (workspace_dir / "huge.txt").write_bytes(b"x" * (2_000_001))
+
+    r = await client.get(
+        f"/api/coding/workspaces/{ws['id']}/file",
+        params={"path": "huge.txt"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"] == "file too large"
+
+
+@pytest.mark.asyncio
+async def test_git_init_failure_no_orphan_dir(coding_client, monkeypatch):
+    client, app = coding_client
+
+    async def _fake_git_init(self, workspace_dir):
+        raise RuntimeError("git init failed")
+
+    monkeypatch.setattr(
+        app.state.coding_workspaces.__class__, "_git_init", _fake_git_init
+    )
+
+    r = await client.post("/api/coding/workspaces", json={"name": "broken-git"})
+    assert r.status_code == 500
+
+    rows = app.state.coding_workspaces
+    listed = await rows.list()
+    assert all(row["name"] != "broken-git" for row in listed)
+
+    workspace_dirs = list((app.state.data_dir / "coding-workspaces").iterdir())
+    assert all(d.name != "broken-git" for d in workspace_dirs if d.is_dir())
 
 
 @pytest.mark.asyncio

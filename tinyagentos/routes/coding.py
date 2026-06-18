@@ -24,7 +24,7 @@ def _invalid_rel_path(rel: str) -> bool:
     return ".." in Path(rel).parts
 
 
-_MAX_READ_BYTES = 1_000_000
+_MAX_READ_BYTES = 2_000_000
 
 
 def _resolve_jailed(root: Path, rel: str, *, allow_root: bool = False) -> Path | None:
@@ -96,8 +96,8 @@ async def read_file(request: Request, workspace_id: str, path: str):
         return JSONResponse({"error": "file too large"}, status_code=400)
     try:
         content = target.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return JSONResponse({"error": "binary file"}, status_code=400)
+    except (UnicodeDecodeError, OSError):
+        return JSONResponse({"error": "binary_or_undecodable"}, status_code=400)
     return {"path": path, "content": content}
 
 
