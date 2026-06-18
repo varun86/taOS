@@ -32,7 +32,7 @@ class NotificationStore(BaseStore):
     EVENT_TYPES = [
         "worker.join", "worker.online", "worker.leave", "backend.up", "backend.down",
         "training.complete", "training.failed", "app.installed", "app.failed",
-        "disk_quota",
+        "disk_quota", "task.claimed", "task.closed",
     ]
 
     def __init__(self, *args, **kwargs):
