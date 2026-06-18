@@ -30,8 +30,8 @@ describe("OfficeSuiteApp", () => {
     const writeBtn = nav.querySelector('[aria-label="Write"]') as HTMLElement;
     expect(writeBtn).toBeTruthy();
     expect(writeBtn.getAttribute("aria-current")).toBe("page");
-    // Write view content
-    expect(screen.getByText("taOS Studios launch note")).toBeDefined();
+    expect(screen.getByLabelText("Document title")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDefined();
   });
 
   it("switches to Calc view and shows spreadsheet grid with Total row", () => {

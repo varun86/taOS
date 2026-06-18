@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from "react";
 import {
   Sparkles,
   AlignLeft,
@@ -6,6 +7,8 @@ import {
   Scissors,
   ArrowRight,
   AlignJustify,
+  Plus,
+  Save,
 } from "lucide-react";
 
 const AI_OPTIONS: { label: string; desc: string; Icon: typeof Sparkles }[] = [
@@ -15,10 +18,115 @@ const AI_OPTIONS: { label: string; desc: string; Icon: typeof Sparkles }[] = [
   { label: "Change tone", desc: "Friendly, formal, punchy", Icon: AlignJustify },
 ];
 
+type OfficeDocListItem = {
+  id: string;
+  kind: string;
+  title: string;
+  updated_at?: number;
+};
+
+type OfficeDoc = OfficeDocListItem & {
+  content: string;
+};
+
+function formatUpdated(ts?: number): string {
+  if (!ts) return "Draft";
+  const d = new Date(ts * 1000);
+  return `Updated ${d.toLocaleString()}`;
+}
+
 export function WriteView() {
+  const [docs, setDocs] = useState<OfficeDocListItem[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [title, setTitle] = useState("Untitled document");
+  const [content, setContent] = useState("");
+  const [updatedAt, setUpdatedAt] = useState<number | undefined>();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadList = useCallback(async () => {
+    const res = await fetch("/api/office/docs", { credentials: "include" });
+    if (!res.ok) throw new Error("Could not load documents");
+    const items = (await res.json()) as OfficeDocListItem[];
+    setDocs(items.filter((d) => d.kind === "write"));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadList();
+        if (!cancelled) setError(null);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadList]);
+
+  const openDoc = async (docId: string) => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/office/docs/${encodeURIComponent(docId)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Could not open document");
+      const doc = (await res.json()) as OfficeDoc;
+      setActiveId(doc.id);
+      setTitle(doc.title);
+      setContent(doc.content);
+      setUpdatedAt(doc.updated_at);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Open failed");
+    }
+  };
+
+  const newDoc = () => {
+    setActiveId(null);
+    setTitle("Untitled document");
+    setContent("");
+    setUpdatedAt(undefined);
+    setError(null);
+  };
+
+  const saveDoc = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = { kind: "write", title: title.trim() || "Untitled document", content };
+      const url = activeId
+        ? `/api/office/docs/${encodeURIComponent(activeId)}`
+        : "/api/office/docs";
+      const res = await fetch(url, {
+        method: activeId ? "PUT" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error || "Save failed");
+      }
+      const saved = (await res.json()) as OfficeDoc;
+      setActiveId(saved.id);
+      setTitle(saved.title);
+      setContent(saved.content);
+      setUpdatedAt(saved.updated_at);
+      await loadList();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* formatting toolbar */}
       <div className="flex h-[46px] flex-none items-center gap-1.5 border-b border-shell-border bg-shell-bg-deep px-4">
         <div className="flex h-8 items-center gap-2 rounded-lg border border-shell-border bg-shell-surface px-3 text-[12px] font-semibold text-shell-text-secondary">
           Sohne <span className="text-shell-text-tertiary">&#9662;</span>
@@ -60,19 +168,59 @@ export function WriteView() {
         >
           <AlignCenter size={16} />
         </button>
-        <div className="ml-auto" />
-        <button
-          type="button"
-          className="flex h-8 items-center gap-1.5 rounded-[9px] bg-gradient-to-br from-accent to-accent/70 px-3.5 text-[12px] font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-        >
-          <Sparkles size={14} />
-          Assist
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={newDoc}
+            className="flex h-8 items-center gap-1.5 rounded-[9px] border border-shell-border px-3 text-[12px] font-semibold text-shell-text-secondary hover:bg-shell-surface-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            <Plus size={14} />
+            New
+          </button>
+          <button
+            type="button"
+            onClick={saveDoc}
+            disabled={saving}
+            className="flex h-8 items-center gap-1.5 rounded-[9px] bg-gradient-to-br from-accent to-accent/70 px-3.5 text-[12px] font-bold text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            <Save size={14} />
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
       </div>
 
-      {/* document area + AI panel */}
       <div className="flex min-h-0 flex-1">
-        {/* document scroll area */}
+        <aside className="flex w-[200px] flex-none flex-col border-r border-shell-border bg-shell-bg-deep">
+          <div className="border-b border-shell-border px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-shell-text-tertiary">
+            Documents
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-2">
+            {loading && (
+              <p className="px-2 py-1 text-[12px] text-shell-text-tertiary">Loading...</p>
+            )}
+            {!loading && docs.length === 0 && (
+              <p className="px-2 py-1 text-[12px] text-shell-text-tertiary">No saved docs yet</p>
+            )}
+            {docs.map((doc) => (
+              <button
+                key={doc.id}
+                type="button"
+                onClick={() => openDoc(doc.id)}
+                className={`mb-1 w-full rounded-lg px-2 py-2 text-left text-[12px] transition-colors hover:bg-shell-surface-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                  activeId === doc.id
+                    ? "bg-shell-surface text-shell-text"
+                    : "text-shell-text-secondary"
+                }`}
+              >
+                <div className="truncate font-semibold">{doc.title}</div>
+                <div className="truncate text-[10px] text-shell-text-tertiary">
+                  {formatUpdated(doc.updated_at)}
+                </div>
+              </button>
+            ))}
+          </div>
+        </aside>
+
         <div className="flex flex-1 justify-center overflow-auto bg-shell-bg-deep px-0 py-7">
           <div
             className="min-h-[660px] w-[540px] rounded-[4px] px-14 py-[52px]"
@@ -82,46 +230,32 @@ export function WriteView() {
               color: "#23232a",
             }}
           >
-            <h1
-              className="mb-1.5 font-extrabold leading-tight tracking-tight"
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              aria-label="Document title"
+              className="mb-1.5 w-full border-0 bg-transparent font-extrabold leading-tight tracking-tight outline-none"
               style={{ fontSize: 27, letterSpacing: "-0.02em" }}
-            >
-              taOS Studios launch note
-            </h1>
+            />
             <p className="mb-5 text-[12px]" style={{ color: "#5a5a66" }}>
-              Draft &middot; updated just now
+              {formatUpdated(updatedAt)}
             </p>
-            <p className="mb-3 text-[13.5px] leading-[1.75]" style={{ color: "#33333c" }}>
-              taOS now ships a family of creative studios, each a focused workspace that runs
-              entirely on hardware you already own.{" "}
-              <span
-                className="rounded-[3px] px-0.5 py-px"
-                style={{ background: "rgba(139,146,163,0.28)" }}
-              >
-                Whether you are building a business, a hobby project, or something just for the
-                house
-              </span>
-              , there is a studio with the tools you need.
-            </p>
-            <h2
-              className="mb-2 font-bold"
-              style={{ fontSize: 16, marginTop: 18, color: "#23232a" }}
-            >
-              What is ready today
-            </h2>
-            <p className="mb-3 text-[13.5px] leading-[1.75]" style={{ color: "#33333c" }}>
-              Images Studio and Game Studio are available now. Coding Studio is rolling out, with
-              Design, Music, App, and Office studios close behind. Each one installs from the Store
-              in a single click.
-            </p>
-            <p className="mb-3 text-[13.5px] leading-[1.75]" style={{ color: "#33333c" }}>
-              Everything runs offline by default, on your cluster, with nothing leaving your network
-              unless you choose to share it.
-            </p>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              aria-label="Document body"
+              placeholder="Start writing..."
+              className="min-h-[420px] w-full resize-none border-0 bg-transparent text-[13.5px] leading-[1.75] outline-none"
+              style={{ color: "#33333c" }}
+            />
+            {error && (
+              <p className="mt-3 text-[12px] text-red-400" role="alert">
+                {error}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* AI panel */}
         <aside className="flex w-[262px] flex-none flex-col gap-3 border-l border-shell-border bg-shell-bg p-[18px]">
           <div className="flex items-center gap-2 text-[14px] font-bold">
             <Sparkles size={16} className="text-accent" />
