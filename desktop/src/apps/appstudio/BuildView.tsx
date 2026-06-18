@@ -1,4 +1,7 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Folder, Bell, Loader2, Sparkles } from "lucide-react";
+import { PROMPT_SEEDED_EVENT, takePendingPrompt } from "./build-state";
+import { streamTaosAgentChat } from "./stream-chat";
 
 /* ------------------------------------------------------------------ */
 /*  BuildView -- sandbox preview + build log + prompt bar              */
@@ -11,18 +14,113 @@ const CHORES = [
   { who: "M", task: "Water the plants", sub: "Mara · Wed", pts: 2, done: false },
 ];
 
-const STEPS = [
-  { label: "App shell + routing", sub: "taOS SDK window", done: true },
-  { label: "Chore list + points", sub: "data model + UI", done: true },
-  { label: "Family members", sub: "reading workspace contacts...", done: false },
-];
-
 const CAPS = [
   { icon: Folder, label: "Workspace files" },
   { icon: Bell, label: "Send notifications" },
 ];
 
+const DEFAULT_PROMPT = "give each person a weekly points total and a little leaderboard";
+
 export function BuildView() {
+  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [output, setOutput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [streaming, setStreaming] = useState(false);
+  const [model, setModel] = useState<string | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
+  const outputChunksRef = useRef<string[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const seeded = takePendingPrompt();
+    if (seeded) setPrompt(seeded);
+
+    const onSeeded = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (detail) setPrompt(detail);
+    };
+    window.addEventListener(PROMPT_SEEDED_EVENT, onSeeded);
+    return () => window.removeEventListener(PROMPT_SEEDED_EVENT, onSeeded);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/taos-agent/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.model !== undefined) setModel(data.model);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!streaming || error) {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [streaming, error]);
+
+  const handleBuild = useCallback(async () => {
+    if (streaming || !model) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const text = prompt.trim();
+    if (!text) return;
+
+    outputChunksRef.current = [];
+    setOutput("");
+    setError(null);
+    setStreaming(true);
+
+    const buildPrompt =
+      `Help me build a taOS SDK app in App Studio. User request: ${text}`;
+
+    try {
+      await streamTaosAgentChat(
+        [{ role: "user", content: buildPrompt }],
+        (delta) => {
+          if (!mountedRef.current) return;
+          outputChunksRef.current.push(delta);
+          setOutput(outputChunksRef.current.join(""));
+        },
+        (message) => {
+          if (!mountedRef.current) return;
+          setError(message);
+        },
+        { signal: controller.signal },
+      );
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError") && mountedRef.current) {
+        setError(String(e));
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      if (mountedRef.current) setStreaming(false);
+    }
+  }, [prompt, streaming, model]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        void handleBuild();
+      }
+    },
+    [handleBuild],
+  );
+
+  const noModel = !model;
+  const showIdleLog = !streaming && !output && !error;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* view header */}
@@ -122,39 +220,40 @@ export function BuildView() {
         {/* build log panel */}
         <div className="flex w-[300px] flex-none flex-col border-l border-shell-border">
           <div className="flex items-center gap-2 px-[18px] pb-2 pt-4 text-[13px] font-bold">
-            <CheckCircle2 size={16} className="text-accent" />
+            {streaming ? (
+              <Loader2 size={16} className="animate-spin text-accent" />
+            ) : (
+              <CheckCircle2 size={16} className="text-accent" />
+            )}
             Build log
           </div>
 
-          <div className="flex flex-col gap-0.5 px-[14px] pb-2">
-            {STEPS.map((s) => (
+          <div className="min-h-0 flex-1 overflow-auto px-[14px] pb-2">
+            {showIdleLog && (
+              <p className="px-1 py-2 text-[12px] text-shell-text-tertiary">
+                Describe your app below and press Build to stream the agent&apos;s plan and output here.
+              </p>
+            )}
+            {error && (
               <div
-                key={s.label}
-                className="flex gap-[11px] rounded-[11px] p-[8px_10px]"
+                className="mb-2 rounded-[11px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300"
+                role="alert"
               >
-                <div className="mt-[1px] flex h-5 w-5 flex-none items-center justify-center rounded-full">
-                  {s.done ? (
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full"
-                      style={{ background: "rgba(95,191,120,0.16)", color: "#5fbf78" }}
-                    >
-                      <CheckCircle2 size={12} />
-                    </span>
-                  ) : (
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full"
-                      style={{ background: "rgba(205,171,130,0.16)" }}
-                    >
-                      <Loader2 size={12} className="animate-spin" style={{ color: "#cdab82" }} />
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <div className="text-[12.5px] font-semibold">{s.label}</div>
-                  <div className="mt-0.5 text-[11px] text-shell-text-tertiary">{s.sub}</div>
-                </div>
+                {error}
               </div>
-            ))}
+            )}
+            {output && (
+              <pre className="whitespace-pre-wrap break-words rounded-[11px] bg-shell-surface p-[10px] text-[12px] leading-relaxed text-shell-text-secondary">
+                {output}
+              </pre>
+            )}
+            {streaming && !output && !error && (
+              <div className="flex items-center gap-2 px-1 py-2 text-[12px] text-shell-text-tertiary">
+                <Loader2 size={14} className="animate-spin" />
+                Building...
+              </div>
+            )}
+            <div ref={logEndRef} />
           </div>
 
           {/* capabilities */}
@@ -181,8 +280,12 @@ export function BuildView() {
                 style={{ background: "linear-gradient(135deg,#7c8ba1,#aab4c9)" }}
               />
               <div>
-                <div className="text-[12px] font-semibold">Qwen2.5-Coder 7B</div>
-                <div className="text-[10px] text-shell-text-tertiary">local &middot; fedora-gpu</div>
+                <div className="text-[12px] font-semibold">
+                  {model ?? "No model selected"}
+                </div>
+                <div className="text-[10px] text-shell-text-tertiary">
+                  {noModel ? "choose a model in taOS Assistant settings" : "taOS agent"}
+                </div>
               </div>
             </div>
           </div>
@@ -191,16 +294,24 @@ export function BuildView() {
 
       {/* prompt bar */}
       <div className="flex flex-none items-center gap-3 border-t border-shell-border bg-shell-bg-deep px-[22px] py-4">
-        <div className="flex min-h-[50px] flex-1 items-center rounded-[15px] border border-shell-border bg-shell-surface px-4 py-3 text-[13.5px] text-shell-text-secondary">
-          give each person a weekly points total and a little leaderboard
-        </div>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={handleKeyDown}
+          rows={2}
+          disabled={streaming}
+          placeholder="Describe what your app should do..."
+          className="flex min-h-[50px] flex-1 resize-none items-center rounded-[15px] border border-shell-border bg-shell-surface px-4 py-3 text-[13.5px] text-shell-text-secondary placeholder:text-shell-text-tertiary focus-visible:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20 disabled:opacity-60"
+        />
         <button
           type="button"
-          className="flex h-[50px] flex-none items-center gap-[9px] rounded-[15px] border-none px-6 text-[14px] font-bold text-white"
+          onClick={() => void handleBuild()}
+          disabled={streaming || !prompt.trim() || noModel}
+          className="flex h-[50px] flex-none items-center gap-[9px] rounded-[15px] border-none px-6 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: "linear-gradient(135deg,var(--color-accent),var(--color-accent))" }}
         >
-          <Sparkles size={18} />
-          Build
+          {streaming ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+          {streaming ? "Building..." : "Build"}
         </button>
       </div>
     </div>

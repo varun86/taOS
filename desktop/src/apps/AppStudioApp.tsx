@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { SHOW_BUILD_VIEW_EVENT } from "./appstudio/build-state";
 import { Sparkles, LayoutGrid, Share2, CircleDot } from "lucide-react";
 import { BuildView } from "./appstudio/BuildView";
 import { TemplatesView } from "./appstudio/TemplatesView";
@@ -29,6 +30,12 @@ const RAIL_BOTTOM: { id: AppStudioView; label: string; icon: typeof Sparkles }[]
 
 export function AppStudioApp({ windowId: _windowId }: { windowId: string }) {
   const [view, setView] = useState<AppStudioView>("build");
+
+  useEffect(() => {
+    const onShowBuild = () => setView("build");
+    window.addEventListener(SHOW_BUILD_VIEW_EVENT, onShowBuild);
+    return () => window.removeEventListener(SHOW_BUILD_VIEW_EVENT, onShowBuild);
+  }, []);
 
   function RailButton({ id, label, icon: Icon }: { id: AppStudioView; label: string; icon: typeof Sparkles }) {
     const on = view === id;
