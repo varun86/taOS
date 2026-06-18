@@ -171,14 +171,18 @@ async def test_git_init_failure_no_orphan_dir(coding_client, monkeypatch):
     )
 
     r = await client.post("/api/coding/workspaces", json={"name": "broken-git"})
-    assert r.status_code == 500
+    assert r.status_code == 503
 
     rows = app.state.coding_workspaces
     listed = await rows.list()
     assert all(row["name"] != "broken-git" for row in listed)
 
-    workspace_dirs = list((app.state.data_dir / "coding-workspaces").iterdir())
-    assert all(d.name != "broken-git" for d in workspace_dirs if d.is_dir())
+    # The store rmtree's the workspace dir when git init fails, so no orphan dir
+    # (named by its generated id, never "broken-git") is left behind.
+    workspace_dirs = [
+        d for d in (app.state.data_dir / "coding-workspaces").iterdir() if d.is_dir()
+    ]
+    assert workspace_dirs == []
 
 
 @pytest.mark.asyncio
