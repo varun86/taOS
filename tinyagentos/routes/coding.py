@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -56,7 +58,14 @@ async def create_workspace(request: Request, body: CreateWorkspaceBody):
     if not name:
         return JSONResponse({"error": "name is required"}, status_code=400)
     store = request.app.state.coding_workspaces
-    row = await store.create(name)
+    try:
+        row = await store.create(name)
+    except RuntimeError as exc:
+        # workspace creation (git init / id allocation) failed. Log the detail
+        # (may contain git stderr / internal paths) server-side and return a
+        # generic message so nothing internal leaks to the client.
+        logger.warning("coding workspace creation failed: %s", exc)
+        return JSONResponse({"error": "workspace creation failed"}, status_code=503)
     return row
 
 

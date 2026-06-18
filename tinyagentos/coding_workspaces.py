@@ -33,16 +33,24 @@ class CodingWorkspaceStore(BaseStore):
         self.workspaces_root = workspaces_root
 
     async def _git_init(self, workspace_dir: Path) -> None:
-        proc = await asyncio.create_subprocess_exec(
-            "git",
-            "init",
-            cwd=str(workspace_dir),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-        if proc.returncode != 0:
-            raise RuntimeError("git init failed")
+        # git init can transiently fail under parallel CI/test load. Retry once
+        # and capture stderr so a real failure is diagnosable instead of an
+        # opaque "git init failed". -q suppresses the default-branch hint.
+        last_err = ""
+        for _ in range(2):
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "init",
+                "-q",
+                cwd=str(workspace_dir),
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _out, err = await proc.communicate()
+            if proc.returncode == 0:
+                return
+            last_err = (err or b"").decode("utf-8", "replace").strip()
+        raise RuntimeError(f"git init failed: {last_err or 'unknown error'}")
 
     async def create(self, name: str) -> dict:
         self.workspaces_root.mkdir(parents=True, exist_ok=True)
