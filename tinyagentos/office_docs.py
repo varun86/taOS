@@ -90,12 +90,22 @@ class OfficeDocStore(BaseStore):
             "updated_at": row[5],
         }
 
-    async def update(self, doc_id: str, title: str, content: str) -> dict | None:
+    async def update(
+        self, doc_id: str, title: str, content: str, kind: str | None = None
+    ) -> dict | None:
         now = int(time.time())
-        await self._db.execute(
-            "UPDATE documents SET title = ?, content = ?, updated_at = ? WHERE id = ?",
-            (title, content, now, doc_id),
-        )
+        if kind is not None:
+            if kind not in VALID_KINDS:
+                raise ValueError(f"kind must be one of {', '.join(sorted(VALID_KINDS))}")
+            await self._db.execute(
+                "UPDATE documents SET kind = ?, title = ?, content = ?, updated_at = ? WHERE id = ?",
+                (kind, title, content, now, doc_id),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE documents SET title = ?, content = ?, updated_at = ? WHERE id = ?",
+                (title, content, now, doc_id),
+            )
         await self._db.commit()
         return await self.get(doc_id)
 

@@ -108,3 +108,22 @@ async def test_update_rejects_invalid_kind(client):
 async def test_delete_missing_doc_returns_404(client):
     resp = await client.delete("/api/office/docs/missing-id")
     assert resp.status_code == 404
+
+@pytest.mark.asyncio
+async def test_update_persists_valid_kind(client):
+    resp = await client.post(
+        "/api/office/docs",
+        json={"kind": "write", "title": "Doc", "content": "body"},
+    )
+    doc_id = resp.json()["id"]
+
+    resp = await client.put(
+        f"/api/office/docs/{doc_id}",
+        json={"kind": "calc", "title": "Doc", "content": "body"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["kind"] == "calc"
+
+    # The change is persisted, not just echoed.
+    resp = await client.get(f"/api/office/docs/{doc_id}")
+    assert resp.json()["kind"] == "calc"

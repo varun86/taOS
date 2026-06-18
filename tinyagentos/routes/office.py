@@ -68,6 +68,7 @@ async def update_doc(request: Request, doc_id: str):
     if existing is None:
         return JSONResponse({"error": "not found"}, status_code=404)
 
+    kind = None
     if "kind" in body:
         kind = _validate_kind(body.get("kind"))
         if kind is None:
@@ -82,7 +83,7 @@ async def update_doc(request: Request, doc_id: str):
     if not isinstance(content, str):
         return JSONResponse({"error": "content must be a string"}, status_code=400)
 
-    doc = await store.update(doc_id=doc_id, title=title, content=content)
+    doc = await store.update(doc_id=doc_id, title=title, content=content, kind=kind)
     return doc
 
 
