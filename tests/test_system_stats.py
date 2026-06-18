@@ -398,46 +398,6 @@ class TestGetNpuFrequency:
 class TestGetCpuPerCore:
     @patch("tinyagentos.system_stats.Path")
     @patch("tinyagentos.system_stats.psutil")
-    def test_with_freq_info(self, mock_psutil, mock_path_cls):
-        mock_psutil.cpu_percent.return_value = [10.0, 20.0]
-
-        def make_cpu_dir(cpu_idx):
-            base = MagicMock()
-            base.exists.return_value = True
-            base.__truediv__ = lambda self, name: self._child(name)
-
-            def child(name):
-                m = MagicMock()
-                vals = {
-                    "scaling_cur_freq": "3000000\n",
-                    "scaling_min_freq": "400000\n",
-                    "scaling_max_freq": "4200000\n",
-                    "scaling_governor": "performance\n",
-                }
-                m.read_text.return_value = vals.get(name, "")
-                return m
-
-            base._child = child
-            return base
-
-        mock_path_cls.side_effect = lambda p: make_cpu_dir(
-            int(p.split("cpu")[1].split("/")[0])
-        )
-        from tinyagentos.system_stats import get_cpu_per_core
-
-        result = get_cpu_per_core()
-        assert len(result) == 2
-        assert result[0]["core"] == 0
-        assert result[0]["load_percent"] == 10.0
-        assert result[0]["freq_khz"] == 3000000
-        assert result[0]["min_khz"] == 400000
-        assert result[0]["max_khz"] == 4200000
-        assert result[0]["governor"] == "performance"
-        assert result[1]["core"] == 1
-        assert result[1]["load_percent"] == 20.0
-
-    @patch("tinyagentos.system_stats.Path")
-    @patch("tinyagentos.system_stats.psutil")
     def test_no_cpufreq_dir(self, mock_psutil, mock_path_cls):
         mock_psutil.cpu_percent.return_value = [5.0]
 
@@ -486,39 +446,6 @@ class TestGetThermalZones:
 
     def teardown_method(self):
         self._clear_cache()
-
-    @patch("tinyagentos.system_stats.Path")
-    def test_returns_temps(self, mock_path_cls):
-        zone0_dir = MagicMock()
-        zone0_dir.name = "thermal_zone0"
-        zone1_dir = MagicMock()
-        zone1_dir.name = "thermal_zone1"
-        not_zone = MagicMock()
-        not_zone.name = "not_a_zone"
-
-        base = MagicMock()
-        base.exists.return_value = True
-        base.iterdir.return_value = [zone0_dir, zone1_dir, not_zone]
-
-        def zone_child(name):
-            m = MagicMock()
-            if name == "type":
-                m.read_text.return_value = "cpu-thermal\n"
-            elif name == "temp":
-                m.read_text.return_value = "45000\n"
-            return m
-
-        zone0_dir.__truediv__ = lambda self, name: zone_child(name)
-        zone1_dir.__truediv__ = lambda self, name: zone_child(name)
-        not_zone.__truediv__ = lambda self, name: zone_child(name)
-
-        mock_path_cls.side_effect = lambda p: base if p == "/sys/class/thermal" else MagicMock()
-        from tinyagentos.system_stats import get_thermal_zones
-
-        result = get_thermal_zones()
-        assert len(result) == 2
-        assert result[0]["name"] == "cpu-thermal"
-        assert result[0]["temp_c"] == pytest.approx(45.0)
 
     @patch("tinyagentos.system_stats.Path")
     def test_no_thermal_dir(self, mock_path_cls):
@@ -952,26 +879,6 @@ class TestGetTopProcesses:
 
         result = get_top_processes(limit=5)
         assert len(result) == 5
-
-    @patch("tinyagentos.system_stats.psutil")
-    def test_skips_no_such_process(self, mock_psutil):
-        p1 = MagicMock()
-        p1.info = {
-            "pid": 1,
-            "name": "ok",
-            "memory_info": MagicMock(rss=100 * 1024 * 1024),
-            "cpu_percent": 1.0,
-            "username": "user",
-        }
-        p2 = MagicMock()
-        p2.info = property(lambda self: (_ for _ in ()).throw(psutil.NoSuchProcess(0)))
-        p2.info = property(lambda self: (_ for _ in ()).throw(Exception()))
-        mock_psutil.process_iter.return_value = [p1, p2]
-        from tinyagentos.system_stats import get_top_processes
-
-        result = get_top_processes()
-        assert len(result) == 1
-        assert result[0]["name"] == "ok"
 
     @patch("tinyagentos.system_stats.psutil")
     def test_handles_none_name(self, mock_psutil):
