@@ -131,16 +131,24 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
 
       if (res.ok) {
         const ct = res.headers.get("content-type") ?? "";
-        if (ct.includes("application/json")) {
-          const data = await res.json();
-          if (data.filename || data.id) {
-            const id = (data.filename as string) ?? (data.id as string);
-            const url = (data.path as string) ?? `/data/workspace/images/generated/${id}`;
-            const img: GeneratedImage = { id, url, prompt: styledPrompt };
-            setMagicResults((prev) => [img, ...prev]);
-            placeOnCanvas(img);
-          } else if (data.error) {
-            setError(String(data.error));
+        if (!ct.includes("application/json")) {
+          setError("Generation returned an unexpected response format.");
+        } else {
+          try {
+            const data = await res.json();
+            if (data.filename || data.id) {
+              const id = (data.filename as string) ?? (data.id as string);
+              const url = (data.path as string) ?? `/data/workspace/images/generated/${id}`;
+              const img: GeneratedImage = { id, url, prompt: styledPrompt };
+              setMagicResults((prev) => [img, ...prev]);
+              placeOnCanvas(img);
+            } else if (data.error) {
+              setError(String(data.error));
+            } else {
+              setError("Generation succeeded but returned no image data.");
+            }
+          } catch {
+            setError("Generation returned invalid JSON.");
           }
         }
       } else {
