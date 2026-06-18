@@ -29,6 +29,11 @@ export function BuildView() {
   const [model, setModel] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const outputChunksRef = useRef<string[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     const seeded = takePendingPrompt();
@@ -59,6 +64,10 @@ export function BuildView() {
 
   const handleBuild = useCallback(async () => {
     if (streaming || !model) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const text = prompt.trim();
     if (!text) return;
 
@@ -78,10 +87,14 @@ export function BuildView() {
           setOutput(outputChunksRef.current.join(""));
         },
         (message) => setError(message),
+        { signal: controller.signal },
       );
     } catch (e) {
-      setError(String(e));
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setError(String(e));
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setStreaming(false);
     }
   }, [prompt, streaming, model]);

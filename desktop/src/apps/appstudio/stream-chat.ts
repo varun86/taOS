@@ -4,15 +4,27 @@ export async function streamTaosAgentChat(
   messages: { role: string; content: string }[],
   onDelta: (delta: string) => void,
   onError: (message: string) => void,
+  opts?: { signal?: AbortSignal },
 ): Promise<void> {
   const resp = await fetch("/api/taos-agent/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages }),
+    signal: opts?.signal,
   });
 
   if (!resp.ok || !resp.body) {
-    onError(await resp.text().catch(() => "Unknown error"));
+    const raw = await resp.text().catch(() => "");
+    let message = raw.trim();
+    if (message.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(message) as { error?: string };
+        if (parsed.error?.trim()) message = parsed.error.trim();
+      } catch {
+        // keep raw text fallback
+      }
+    }
+    onError(message || `Request failed (${resp.status})`);
     return;
   }
 
