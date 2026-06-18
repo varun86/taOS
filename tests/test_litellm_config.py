@@ -837,6 +837,14 @@ class TestDiscoverOllamaBackendsConcurrent:
 
 class TestLocalBackendModelsFromRegistry:
 
+    def _make_registry(self, installed, manifests):
+        class _Reg:
+            def list_installed(self):
+                return installed
+            def get(self, mid):
+                return manifests.get(mid)
+        return _Reg()
+
     def test_returns_empty_for_none_registry(self):
         backend = {"name": "local-foo"}
         assert _local_backend_models_from_registry(backend, None) == []
