@@ -37,7 +37,8 @@ async def music_client(music_app):
 @pytest.mark.asyncio
 class TestMusicCompose:
     async def test_compose_no_backend_returns_503(self, music_client):
-        resp = await music_client.post("/api/music/compose", json={"prompt": "lofi beat"})
+        with patch("tinyagentos.routes.music.shutil.which", return_value=None):
+            resp = await music_client.post("/api/music/compose", json={"prompt": "lofi beat"})
         assert resp.status_code == 503
         assert "error" in resp.json()
 
@@ -57,7 +58,10 @@ class TestMusicCompose:
             request=mock_request,
         )
 
-        with patch("tinyagentos.routes.music.httpx.AsyncClient") as MockClient:
+        with (
+            patch("tinyagentos.routes.music._http_backend_reachable", new=AsyncMock(return_value=True)),
+            patch("tinyagentos.routes.music.httpx.AsyncClient") as MockClient,
+        ):
             mock_instance = AsyncMock()
             mock_instance.post.return_value = mock_response
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
@@ -88,7 +92,8 @@ class TestMusicCompose:
 
     async def test_status_reports_config_backend(self, music_app, music_client):
         music_app.state.config.server["music_backend_url"] = "http://localhost:9000"
-        resp = await music_client.get("/api/music/status")
+        with patch("tinyagentos.routes.music._http_backend_reachable", new=AsyncMock(return_value=True)):
+            resp = await music_client.get("/api/music/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["available"] is True

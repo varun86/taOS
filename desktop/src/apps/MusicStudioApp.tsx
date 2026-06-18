@@ -43,6 +43,12 @@ export function MusicStudioApp({ windowId: _windowId }: { windowId: string }) {
     refreshBackendStatus();
   }, [refreshBackendStatus]);
 
+  useEffect(() => {
+    if (view === "compose") {
+      refreshBackendStatus();
+    }
+  }, [view, refreshBackendStatus]);
+
   const needsBackend = !backendAvailable;
   const canGenerate = !!composePrompt.trim() && !generating && backendAvailable;
 

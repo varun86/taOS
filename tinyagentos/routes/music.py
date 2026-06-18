@@ -9,6 +9,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Request
@@ -84,6 +85,29 @@ async def _is_service_installed(request: Request, app_id: str) -> bool:
     return False
 
 
+async def _http_backend_reachable(backend_url: str) -> bool:
+    """Return True when an HTTP music backend responds on a lightweight probe."""
+    base = backend_url.rstrip("/")
+    async with httpx.AsyncClient(timeout=3) as client:
+        for path in ("/health", "/v1/models", "/"):
+            try:
+                resp = await client.get(f"{base}{path}")
+                if resp.status_code < 500:
+                    return True
+            except httpx.TransportError:
+                continue
+    return False
+
+
+def _same_backend_host(download_url: str, backend_url: str) -> bool:
+    """Only follow backend-provided URLs that stay on the trusted backend host."""
+    dl = urlparse(download_url)
+    be = urlparse(backend_url)
+    if dl.scheme not in ("http", "https") or not dl.hostname:
+        return False
+    return dl.hostname == be.hostname
+
+
 async def _resolve_music_backend(
     request: Request,
 ) -> tuple[str | None, str | None, str]:
@@ -94,7 +118,9 @@ async def _resolve_music_backend(
     config = request.app.state.config
     override = config.server.get("music_backend_url")
     if override:
-        return "music-backend", str(override), "http"
+        url = str(override)
+        if await _http_backend_reachable(url):
+            return "music-backend", url, "http"
 
     store = getattr(request.app.state, "installed_apps", None)
     if await _store_ready(store):
@@ -105,9 +131,13 @@ async def _resolve_music_backend(
             if loc and loc.get("runtime_host") and loc.get("runtime_port"):
                 host = loc["runtime_host"]
                 port = loc["runtime_port"]
-                return app_id, f"http://{host}:{port}", "http"
+                url = f"http://{host}:{port}"
+                if await _http_backend_reachable(url):
+                    return app_id, url, "http"
             if app_id == "musicgpt":
-                return app_id, f"http://127.0.0.1:{DEFAULT_MUSICGPT_PORT}", "http"
+                url = f"http://127.0.0.1:{DEFAULT_MUSICGPT_PORT}"
+                if await _http_backend_reachable(url):
+                    return app_id, url, "http"
 
     for app_id in MUSIC_SERVICE_IDS:
         if not await _is_service_installed(request, app_id):
@@ -174,6 +204,8 @@ async def _compose_via_http(
     url = entry.get("url")
     if not url:
         raise RuntimeError("Music backend returned neither b64 data nor url")
+    if not _same_backend_host(url, backend_url):
+        raise RuntimeError("Music backend returned an untrusted download URL")
 
     async with httpx.AsyncClient(timeout=300) as client:
         dl = await client.get(url)
@@ -200,7 +232,7 @@ async def _compose_via_musicgpt_cli(
         str(output_path),
         "--no-playback",
         "--no-interactive",
-        stdout=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
     _stdout, stderr = await proc.communicate()
@@ -247,7 +279,7 @@ async def _compose_via_musicgen_cli(
         prompt,
         str(duration),
         str(output_path),
-        stdout=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
     _stdout, stderr = await proc.communicate()
@@ -343,6 +375,24 @@ async def compose_music(request: Request, body: ComposeRequest):
                 {"error": f"Backend {backend_id!r} is installed but not runnable yet."},
                 status_code=503,
             )
+
+        metadata = {
+            "prompt": prompt,
+            "duration": body.duration,
+            "backend": backend_id,
+            "filename": filename,
+        }
+        (music_dir / f"{timestamp}_{track_id}.json").write_text(
+            json.dumps(metadata, indent=2),
+        )
+
+        return {
+            "status": "generated",
+            "filename": filename,
+            "path": _music_url_path(filename),
+            "size_bytes": output_path.stat().st_size,
+            **metadata,
+        }
     except httpx.ConnectError:
         return JSONResponse(
             {"error": "Cannot connect to music backend. Is it running?"},
@@ -364,22 +414,6 @@ async def compose_music(request: Request, body: ComposeRequest):
             {"error": "Music generation failed. Check server logs for details."},
             status_code=500,
         )
-
-    metadata = {
-        "prompt": prompt,
-        "duration": body.duration,
-        "backend": backend_id,
-        "filename": filename,
-    }
-    (music_dir / f"{timestamp}_{track_id}.json").write_text(json.dumps(metadata, indent=2))
-
-    return {
-        "status": "generated",
-        "filename": filename,
-        "path": _music_url_path(filename),
-        "size_bytes": output_path.stat().st_size,
-        **metadata,
-    }
 
 
 @router.get("/api/music")
