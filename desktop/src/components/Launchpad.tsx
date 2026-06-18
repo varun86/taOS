@@ -17,6 +17,7 @@ interface Props {
 
 const CATEGORY_LABELS: Record<string, string> = {
   platform: "Platform",
+  studio: "Studio",
   os: "Utilities",
   streaming: "Streaming Apps",
   game: "Games",

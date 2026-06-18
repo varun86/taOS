@@ -4,7 +4,7 @@ export interface AppManifest {
   id: string;
   name: string;
   icon: string;
-  category: "platform" | "os" | "streaming" | "game" | "userspace";
+  category: "platform" | "os" | "streaming" | "game" | "studio" | "userspace";
   component: () => Promise<{ default: ComponentType<{ windowId: string }> }>;
   defaultSize: { w: number; h: number };
   minSize: { w: number; h: number };
@@ -42,11 +42,11 @@ const apps: AppManifest[] = [
   { id: "tasks", name: "Tasks", icon: "calendar-clock", category: "platform", component: () => import("@/apps/TasksApp").then((m) => ({ default: m.TasksApp })), defaultSize: { w: 800, h: 500 }, minSize: { w: 450, h: 350 }, singleton: true, pinned: false, launchpadOrder: 11 },
   { id: "import", name: "Import", icon: "upload", category: "platform", component: () => import("@/apps/ImportApp").then((m) => ({ default: m.ImportApp })), defaultSize: { w: 700, h: 450 }, minSize: { w: 400, h: 300 }, singleton: true, pinned: false, launchpadOrder: 12 },
   { id: "images", name: "Images", icon: "image", category: "platform", component: () => import("@/apps/ImagesApp").then((m) => ({ default: m.ImagesApp })), defaultSize: { w: 900, h: 600 }, minSize: { w: 500, h: 400 }, singleton: true, pinned: false, launchpadOrder: 13 },
-  { id: "coding-studio", name: "Coding Studio", icon: "code-2", category: "platform", component: () => import("@/apps/CodingStudioApp").then((m) => ({ default: m.CodingStudioApp })), defaultSize: { w: 1080, h: 760 }, minSize: { w: 680, h: 540 }, singleton: true, pinned: false, launchpadOrder: 13.25, optional: true },
-  { id: "design-studio", name: "Design Studio", icon: "palette", category: "platform", component: () => import("@/apps/DesignStudioApp").then((m) => ({ default: m.DesignStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.26, optional: true },
-  { id: "music-studio", name: "Music Studio", icon: "music", category: "platform", component: () => import("@/apps/MusicStudioApp").then((m) => ({ default: m.MusicStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 700, h: 540 }, singleton: true, pinned: false, launchpadOrder: 13.27, optional: true },
-  { id: "app-studio", name: "App Studio", icon: "blocks", category: "platform", component: () => import("@/apps/AppStudioApp").then((m) => ({ default: m.AppStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.28, optional: true },
-  { id: "office-suite", name: "Office Suite", icon: "file-text", category: "platform", component: () => import("@/apps/OfficeSuiteApp").then((m) => ({ default: m.OfficeSuiteApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.29, optional: true },
+  { id: "coding-studio", name: "Coding Studio", icon: "code-2", category: "studio", component: () => import("@/apps/CodingStudioApp").then((m) => ({ default: m.CodingStudioApp })), defaultSize: { w: 1080, h: 760 }, minSize: { w: 680, h: 540 }, singleton: true, pinned: false, launchpadOrder: 13.25, optional: true },
+  { id: "design-studio", name: "Design Studio", icon: "palette", category: "studio", component: () => import("@/apps/DesignStudioApp").then((m) => ({ default: m.DesignStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.26, optional: true },
+  { id: "music-studio", name: "Music Studio", icon: "music", category: "studio", component: () => import("@/apps/MusicStudioApp").then((m) => ({ default: m.MusicStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 700, h: 540 }, singleton: true, pinned: false, launchpadOrder: 13.27, optional: true },
+  { id: "app-studio", name: "App Studio", icon: "blocks", category: "studio", component: () => import("@/apps/AppStudioApp").then((m) => ({ default: m.AppStudioApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.28, optional: true },
+  { id: "office-suite", name: "Office Suite", icon: "file-text", category: "studio", component: () => import("@/apps/OfficeSuiteApp").then((m) => ({ default: m.OfficeSuiteApp })), defaultSize: { w: 1080, h: 720 }, minSize: { w: 680, h: 520 }, singleton: true, pinned: false, launchpadOrder: 13.29, optional: true },
   { id: "library", name: "Library", icon: "book-open", category: "platform", component: () => import("@/apps/LibraryApp").then((m) => ({ default: m.LibraryApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 550, h: 400 }, singleton: true, pinned: true, launchpadOrder: 13.5 },
   { id: "reddit", name: "Reddit", icon: "scroll-text", category: "platform", component: () => import("@/apps/RedditApp").then((m) => ({ default: m.RedditApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 550, h: 400 }, singleton: true, pinned: false, launchpadOrder: 14, optional: true },
   { id: "youtube-library", name: "YouTube", icon: "play-circle", category: "platform", component: () => import("@/apps/YouTubeApp").then((m) => ({ default: m.YouTubeApp })), defaultSize: { w: 1050, h: 700 }, minSize: { w: 600, h: 450 }, singleton: true, pinned: false, launchpadOrder: 14.5, optional: true },
@@ -70,7 +70,7 @@ const apps: AppManifest[] = [
   { id: "chess", name: "Chess", icon: "crown", category: "game", component: () => import("@/apps/ChessApp").then((m) => ({ default: m.ChessApp })), defaultSize: { w: 700, h: 700 }, minSize: { w: 500, h: 500 }, singleton: true, pinned: false, launchpadOrder: 40 },
   { id: "wordle", name: "Wordle", icon: "spell-check", category: "game", component: () => import("@/apps/WordleApp").then((m) => ({ default: m.WordleApp })), defaultSize: { w: 500, h: 650 }, minSize: { w: 400, h: 550 }, singleton: true, pinned: false, launchpadOrder: 41 },
   { id: "crosswords", name: "Crosswords", icon: "grid-3x3", category: "game", component: () => import("@/apps/CrosswordsApp").then((m) => ({ default: m.CrosswordsApp })), defaultSize: { w: 700, h: 600 }, minSize: { w: 500, h: 450 }, singleton: true, pinned: false, launchpadOrder: 42 },
-  { id: "game-studio", name: "Game Studio", icon: "gamepad-2", category: "game", component: () => import("@/apps/GameStudioApp").then((m) => ({ default: m.GameStudioApp })), defaultSize: { w: 1080, h: 760 }, minSize: { w: 640, h: 520 }, singleton: true, pinned: false, launchpadOrder: 42.5 },
+  { id: "game-studio", name: "Game Studio", icon: "gamepad-2", category: "studio", component: () => import("@/apps/GameStudioApp").then((m) => ({ default: m.GameStudioApp })), defaultSize: { w: 1080, h: 760 }, minSize: { w: 640, h: 520 }, singleton: true, pinned: false, launchpadOrder: 42.5 },
 ];
 
 export function getApp(id: string): AppManifest | undefined {
