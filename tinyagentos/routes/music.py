@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-MUSIC_SERVICE_IDS = ("musicgpt", "musicgen", "stable-audio-open")
+# stable-audio-open is cataloged but has no runnable compose path yet.
+MUSIC_SERVICE_IDS = ("musicgpt", "musicgen")
 DEFAULT_MUSICGPT_PORT = 30264
 
 
@@ -78,7 +79,7 @@ async def _is_service_installed(request: Request, app_id: str) -> bool:
         return True
     if app_id == "musicgpt" and shutil.which("musicgpt"):
         return True
-    if app_id in ("musicgen", "stable-audio-open") and _service_python(request, app_id):
+    if app_id == "musicgen" and _service_python(request, app_id):
         return True
     return False
 
@@ -303,7 +304,7 @@ async def compose_music(request: Request, body: ComposeRequest):
             {
                 "error": (
                     "No music generation backend installed. "
-                    "Install musicgpt, musicgen, or stable-audio-open from the Store."
+                    "Install musicgpt or musicgen from the Store."
                 ),
             },
             status_code=503,

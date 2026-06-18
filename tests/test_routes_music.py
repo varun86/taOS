@@ -94,6 +94,19 @@ class TestMusicCompose:
         assert data["available"] is True
         assert data["mode"] == "http"
 
+    async def test_status_ignores_stable_audio_venv(self, music_app, music_client, tmp_path):
+        apps_dir = tmp_path / "apps"
+        stable_dir = apps_dir / "stable-audio-open" / "venv" / "bin"
+        stable_dir.mkdir(parents=True)
+        (stable_dir / "python").write_text("")
+        music_app.state.apps_dir = str(apps_dir)
+
+        resp = await music_client.get("/api/music/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "stable-audio-open" not in data["installed"]
+        assert data["available"] is False
+
 
 @pytest.mark.asyncio
 class TestMusicList:
