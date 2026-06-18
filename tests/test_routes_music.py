@@ -106,7 +106,8 @@ class TestMusicCompose:
         (stable_dir / "python").write_text("")
         music_app.state.apps_dir = str(apps_dir)
 
-        resp = await music_client.get("/api/music/status")
+        with patch("tinyagentos.routes.music.shutil.which", return_value=None):
+            resp = await music_client.get("/api/music/status")
         assert resp.status_code == 200
         data = resp.json()
         assert "stable-audio-open" not in data["installed"]

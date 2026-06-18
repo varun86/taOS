@@ -99,13 +99,23 @@ async def _http_backend_reachable(backend_url: str) -> bool:
     return False
 
 
+def _normalized_origin(url: str) -> tuple[str, str, int] | None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return None
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
+    return (parsed.scheme.lower(), parsed.hostname.lower(), port)
+
+
 def _same_backend_host(download_url: str, backend_url: str) -> bool:
-    """Only follow backend-provided URLs that stay on the trusted backend host."""
-    dl = urlparse(download_url)
-    be = urlparse(backend_url)
-    if dl.scheme not in ("http", "https") or not dl.hostname:
+    """Only follow backend-provided URLs that match the trusted backend origin."""
+    dl_origin = _normalized_origin(download_url)
+    be_origin = _normalized_origin(backend_url)
+    if dl_origin is None or be_origin is None:
         return False
-    return dl.hostname == be.hostname
+    return dl_origin == be_origin
 
 
 async def _resolve_music_backend(
