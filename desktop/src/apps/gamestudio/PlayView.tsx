@@ -13,9 +13,10 @@ import {
   Check,
   Clock,
 } from "lucide-react";
+import { GAME_CREATED_EVENT, takeCreatedGame } from "./game-state";
 import { useGameScene } from "./useGameScene";
 import { BUILD_LOG } from "./templates";
-import type { DevicePreview, Template } from "./types";
+import type { BuildStep, DevicePreview, Template } from "./types";
 
 /* ------------------------------------------------------------------ */
 /*  PlayView — the real three.js preview stage                         */
@@ -38,16 +39,35 @@ const DEVICE_SIZES: Record<DevicePreview, { maxW: number | null; aspect: string 
 };
 
 export interface PlayViewProps {
+  windowId: string;
   template: Template;
 }
 
-export function PlayView({ template }: PlayViewProps) {
+export function PlayView({ windowId, template }: PlayViewProps) {
   const scene = useGameScene(template.scene);
   const { hostRef, playing, togglePlay, setPlaying, fps, reset, supported } = scene;
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [device, setDevice] = useState<DevicePreview>("desktop");
   const [isFs, setIsFs] = useState(false);
+  const [buildLog, setBuildLog] = useState<BuildStep[]>(BUILD_LOG);
+  const [sourcePrompt, setSourcePrompt] = useState<string | null>(null);
+
+  useEffect(() => {
+    const applySnapshot = () => {
+      const { steps, prompt } = takeCreatedGame(windowId);
+      if (steps?.length) setBuildLog(steps);
+      if (prompt) setSourcePrompt(prompt);
+    };
+    const onCreated = (e: Event) => {
+      const detail = (e as CustomEvent<{ windowId?: string }>).detail;
+      if (detail?.windowId !== windowId) return;
+      applySnapshot();
+    };
+    applySnapshot();
+    window.addEventListener(GAME_CREATED_EVENT, onCreated);
+    return () => window.removeEventListener(GAME_CREATED_EVENT, onCreated);
+  }, [template.id, windowId]);
 
   // Track native fullscreen state. The Exit pill + Esc both call exitFs.
   useEffect(() => {
@@ -95,6 +115,11 @@ export function PlayView({ template }: PlayViewProps) {
             {template.genre} · live preview · auto-saved
           </span>
         </div>
+        {sourcePrompt && (
+          <p className="max-w-3xl text-[12px] leading-relaxed text-shell-text-secondary">
+            <span className="font-semibold text-shell-text">From your prompt:</span> {sourcePrompt}
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_312px]">
           {/* ---- stage + transport ---- */}
@@ -275,10 +300,12 @@ export function PlayView({ template }: PlayViewProps) {
             <div className="flex items-center gap-2 border-b border-shell-border px-3.5 py-3">
               <ListTree size={15} className="text-accent" />
               <h3 className="text-[13px] font-bold">Build log</h3>
-              <span className="ml-auto text-[11px] text-shell-text-tertiary">preview</span>
+              <span className="ml-auto text-[11px] text-shell-text-tertiary">
+                {sourcePrompt ? "live" : "preview"}
+              </span>
             </div>
             <div className="max-h-[470px] overflow-auto p-1.5">
-              {BUILD_LOG.map((step, i) => (
+              {buildLog.map((step, i) => (
                 <div
                   key={i}
                   className={`grid grid-cols-[26px_1fr] gap-2 rounded-xl px-2.5 py-2 hover:bg-shell-surface ${
@@ -314,8 +341,9 @@ export function PlayView({ template }: PlayViewProps) {
                 </div>
               ))}
               <p className="px-2.5 pb-1 pt-2 text-[11px] leading-relaxed text-shell-text-tertiary">
-                An illustrative trace of the agent build pipeline. Live build steps arrive with
-                offline generation in a later phase.
+                {sourcePrompt
+                  ? "Steps from your latest create run. Full offline model generation arrives in a later phase."
+                  : "An illustrative trace of the agent build pipeline. Generate from Create or pick a template to load a live scene."}
               </p>
             </div>
           </aside>

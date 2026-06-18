@@ -57,13 +57,13 @@ describe("DesignStudioApp", () => {
     }
   });
 
-  it("switches to Magic view and shows prompt bar and result tiles", () => {
+  it("switches to Magic view and shows prompt bar and style chips", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Magic" }));
     expect(screen.getByRole("button", { name: "Magic" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("Describe the design you need.")).toBeDefined();
-    expect(screen.getByText("Bold, centered")).toBeDefined();
-    expect(screen.getByText("Split layout")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Generate" })).toBeDefined();
+    expect(screen.getByPlaceholderText(/launch poster/i)).toBeDefined();
     expect(screen.getAllByText("Editorial").length).toBeGreaterThan(0);
   });
 });

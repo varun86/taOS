@@ -1,5 +1,5 @@
 SINGLE SOURCE OF TRUTH for cross-agent handoff.
-Last updated: 2026-06-18 ~01:00 BST, @taOS-dev (SSRF #971 FIXED + merged via #984; dev->master promotion #979 MERGED so master is current. Autonomous build team running: grok via the dispatcher ships studio-MVP + test-coverage cards, @taOS-dev gates every PR via a 13-min sweep cron; queue ~36 deep; A2A + grok-pane monitors stopped in favour of the cron; ALL new work stays on dev for Jay to review/promote).
+Last updated: 2026-06-18 ~02:30 BST, @taOS-dev (overnight autonomous build. SHIPPED to dev: SSRF #971 (#984), promotion #979 (master current), notification-prefs API, ~6 test-coverage waves, Coding Studio workspace backend (#995), Game Studio MVP (#1001). IN FLIGHT: App #1000 / Design #1002 / Music #1003 studio MVPs each one small Kilo edge-case fix from merge (relayed as [CHANGES]). grok PAUSED -- Grok CLI quota exhausted (pay-as-you-go prompt; NOT topped up, Jay's call); resumes on quota reset, then addresses the relayed fixes + ~15 queued cards. @taOS-dev keeps gating via the 13-min cron. Follow-ups queued: coding-workspaces gitar fixes (tsk-lfkrkc). Monitors stopped in favour of crons. ALL work on dev for Jay to review/promote).
 
 ==================================================================
 STATE 2026-06-17 ~03:45 BST, @taOS (session continuous since the 06-16 Mac-mini reset).

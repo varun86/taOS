@@ -1,24 +1,28 @@
-import { useState } from "react";
-import { Play, Sparkles, Info } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Play, Sparkles, Info, Loader2 } from "lucide-react";
+import { runCreateGame } from "./create-game";
+import { seedCreatedGame } from "./game-state";
 import { TEMPLATES } from "./templates";
 import {
   GENRES,
   OFFLINE_MODELS,
   ART_STYLES,
   DIFFICULTIES,
+  type BuildStep,
   type Template,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
-/*  CreateView — prompt box + genre/template chips + template gallery  */
+/*  CreateView -- prompt box + genre/template chips + template gallery */
 /*                                                                     */
-/*  Honesty: offline generation is a later phase. "Generate game" does */
-/*  not fake a build; it surfaces a clear "offline generation is        */
-/*  coming" note and points at the templates, which load real scenes.  */
-/*  The model selector is labelled but inert (note attached).           */
+/*  "Generate with AI" matches the prompt to a real starter template,  */
+/*  runs a short local build trace, and hands off to Play. Full offline */
+/*  model generation is still a later phase; templates always load a   */
+/*  live three.js scene. Chess prompts optionally consult games.py.    */
 /* ------------------------------------------------------------------ */
 
 export interface CreateViewProps {
+  windowId: string;
   prompt: string;
   onPromptChange: (v: string) => void;
   genres: Set<string>;
@@ -30,9 +34,64 @@ export interface CreateViewProps {
 }
 
 export function CreateView(props: CreateViewProps) {
-  const { prompt, onPromptChange, genres, onToggleGenre, model, onModelChange, onUseTemplate } =
-    props;
-  const [showComing, setShowComing] = useState(false);
+  const {
+    windowId,
+    prompt,
+    onPromptChange,
+    genres,
+    onToggleGenre,
+    model,
+    onModelChange,
+    onUseTemplate,
+  } = props;
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [liveSteps, setLiveSteps] = useState<BuildStep[] | null>(null);
+
+  const handleGenerate = useCallback(async () => {
+    if (creating) return;
+    const text = prompt.trim();
+    if (!text) {
+      setCreateError("Describe your game idea first, or pick a template below.");
+      return;
+    }
+
+    setCreateError(null);
+    setCreating(true);
+    setLiveSteps(null);
+
+    try {
+      const { template, steps } = await runCreateGame(text, genres, setLiveSteps);
+      seedCreatedGame(windowId, template, text, steps);
+      onUseTemplate(template);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreating(false);
+    }
+  }, [creating, prompt, genres, onUseTemplate, windowId]);
+
+  const handleUseTemplate = useCallback(
+    (t: Template) => {
+      seedCreatedGame(windowId, t, prompt, [
+        {
+          who: "Director",
+          what: `Loaded the ${t.title} starter template.`,
+          tag: "routing",
+          state: "done",
+          director: true,
+        },
+        {
+          who: "Graphics",
+          what: `Mounted the ${t.scene} three.js scene in Play & Test.`,
+          tag: "graphics",
+          state: "done",
+        },
+      ]);
+      onUseTemplate(t);
+    },
+    [windowId, prompt, onUseTemplate],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -125,28 +184,38 @@ export function CreateView(props: CreateViewProps) {
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => setShowComing(true)}
-              className="flex h-[44px] items-center gap-2 rounded-full bg-gradient-to-br from-accent to-accent/70 px-5 text-[13px] font-bold text-white shadow-lg shadow-accent/20 transition-all hover:-translate-y-0.5 hover:brightness-105"
+              onClick={() => void handleGenerate()}
+              disabled={creating}
+              className="flex h-[44px] items-center gap-2 rounded-full bg-gradient-to-br from-accent to-accent/70 px-5 text-[13px] font-bold text-white shadow-lg shadow-accent/20 transition-all hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              <Sparkles size={17} />
-              Generate with AI
+              {creating ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
+              {creating ? "Building..." : "Generate with AI"}
             </button>
             <span className="text-[11px] text-shell-text-tertiary">
-              Offline generation arrives in a later phase. Start from a template below to play now.
+              Matches your prompt to a starter template and opens Play. Full offline model generation
+              arrives in a later phase.
             </span>
           </div>
 
-          {showComing && (
+          {createError && (
+            <div
+              role="alert"
+              className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-[12.5px] text-red-200"
+            >
+              {createError}
+            </div>
+          )}
+
+          {liveSteps && liveSteps.length > 0 && (
             <div
               role="status"
               className="mt-3 flex items-start gap-2.5 rounded-xl border border-accent/30 bg-accent-soft px-3.5 py-3"
             >
               <Info size={16} className="mt-0.5 flex-none text-accent" />
-              <div className="text-[12.5px] leading-relaxed text-shell-text-secondary">
-                <span className="font-semibold text-shell-text">Offline generation is coming.</span>{" "}
-                In a later phase a local model turns this prompt into a playable build on your taOS.
-                For now, pick a template below: it loads a real, interactive 3D scene into Play &amp;
-                Test.
+              <div className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-shell-text-secondary">
+                <span className="font-semibold text-shell-text">Building your preview.</span>{" "}
+                {liveSteps.find((s) => s.state === "run")?.what ??
+                  liveSteps[liveSteps.length - 1]?.what}
               </div>
             </div>
           )}
@@ -160,7 +229,7 @@ export function CreateView(props: CreateViewProps) {
           </p>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5">
             {TEMPLATES.map((t) => (
-              <TemplateCard key={t.id} template={t} onUse={() => onUseTemplate(t)} />
+              <TemplateCard key={t.id} template={t} onUse={() => handleUseTemplate(t)} />
             ))}
           </div>
         </section>
