@@ -31,6 +31,7 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
   const [magicResults, setMagicResults] = useState<GeneratedImage[]>([]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorNeedsModel, setErrorNeedsModel] = useState(false);
 
   const [models, setModels] = useState<ImageModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState("");
@@ -110,6 +111,7 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
 
     setGenerating(true);
     setError(null);
+    setErrorNeedsModel(false);
 
     const styledPrompt = magicStyle
       ? `${usePrompt}, ${magicStyle.toLowerCase()} style`
@@ -122,6 +124,7 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
         body: JSON.stringify({
           prompt: styledPrompt,
           model: selectedModelId,
+          variant: selectedVariantId,
           size: "512x512",
           steps: 4,
           seed: randomSeed(),
@@ -153,6 +156,7 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
         }
       } else {
         const data = await res.json().catch(() => ({}));
+        setErrorNeedsModel(res.status === 502 || res.status === 503);
         setError(
           (data as { error?: string }).error ??
             `Generation failed (${res.status})`,
@@ -168,6 +172,7 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
     magicStyle,
     selectedVariant,
     selectedModelId,
+    selectedVariantId,
     placeOnCanvas,
   ]);
 
@@ -228,6 +233,7 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
               generating={generating}
               canGenerate={canGenerate}
               error={error}
+              errorNeedsModel={errorNeedsModel}
               needsModel={needsModel}
               onGenerate={() => void runGenerate()}
               onPickModel={() => setBrowserOpen(true)}
@@ -246,6 +252,7 @@ export function DesignStudioApp({ windowId: _windowId }: { windowId: string }) {
           setSelectedModelId(modelId);
           setSelectedVariantId(variantId);
           setError(null);
+          setErrorNeedsModel(false);
         }}
       />
     </div>

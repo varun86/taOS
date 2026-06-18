@@ -10,6 +10,7 @@ export interface MagicViewProps {
   generating: boolean;
   canGenerate: boolean;
   error: string | null;
+  errorNeedsModel: boolean;
   needsModel: boolean;
   onGenerate: () => void;
   onPickModel: () => void;
@@ -25,6 +26,7 @@ export function MagicView({
   generating,
   canGenerate,
   error,
+  errorNeedsModel,
   needsModel,
   onGenerate,
   onPickModel,
@@ -91,7 +93,7 @@ export function MagicView({
         {error && (
           <div className="mb-4 w-full max-w-[640px] rounded-[12px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] text-red-200">
             {error}
-            {(error.includes("backend") || error.includes("model") || error.includes("503")) && (
+            {errorNeedsModel && (
               <button
                 type="button"
                 onClick={onPickModel}
