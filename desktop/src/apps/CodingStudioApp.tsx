@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Sparkles, Code2, Play, LayoutGrid, Settings2 } from "lucide-react";
 import { BuildView } from "./codingstudio/BuildView";
+import { CodeView } from "./codingstudio/CodeView";
 import { TemplatesView } from "./codingstudio/TemplatesView";
 import { PreviewView } from "./codingstudio/PreviewView";
 
@@ -64,7 +65,7 @@ export function CodingStudioApp({ windowId: _windowId }: { windowId: string }) {
         {/* active surface */}
         <div className="flex min-w-0 flex-1 flex-col">
           {view === "build" && <BuildView />}
-          {view === "code" && <BuildView />}
+          {view === "code" && <CodeView />}
           {view === "preview" && <PreviewView />}
           {view === "templates" && <TemplatesView />}
         </div>
