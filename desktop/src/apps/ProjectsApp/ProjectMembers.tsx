@@ -14,6 +14,20 @@ interface AgentSummary {
 interface ExternalAgentSummary {
   handle: string;
   display_name?: string;
+  framework?: string;
+}
+
+// Friendly label for the agent-type pill (the framework an agent connects with).
+function frameworkLabel(fw?: string): string {
+  if (!fw) return "";
+  const map: Record<string, string> = {
+    "claude-code": "Claude Code",
+    kilo: "Kilo",
+    opencode: "opencode",
+    hermes: "Hermes",
+    "grok-build": "Grok",
+  };
+  return map[fw] || fw;
 }
 
 function formatMemberLabel(memberId: string, byId: Map<string, AgentSummary>): {
@@ -57,6 +71,7 @@ function MemberRow({
   emoji,
   hint,
   isExternal,
+  framework,
   projectId,
   onRefresh,
   onChanged,
@@ -66,10 +81,13 @@ function MemberRow({
   emoji?: string;
   hint?: string;
   isExternal?: boolean;
+  framework?: string;
   projectId: string;
   onRefresh: () => void;
   onChanged: () => void;
 }) {
+  const typeLabel = frameworkLabel(framework);
+  const isAgent = member.member_kind === "native" || member.member_kind === "clone";
   return (
     <li
       className={
@@ -87,19 +105,26 @@ function MemberRow({
               external
             </span>
           )}
+          {typeLabel && (
+            <span
+              className="ml-1 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-zinc-700/40 text-zinc-300 border border-zinc-600/40"
+              title="Agent type"
+            >
+              {typeLabel}
+            </span>
+          )}
           {!!member.is_lead && (
             <span className="ml-1 text-xs text-yellow-400 font-medium" aria-label="Lead agent">
               ★ Lead
             </span>
           )}
         </div>
-        <div className="text-xs text-zinc-500">
-          {member.member_kind}
-          {member.member_kind === "clone" ? ` · ${member.memory_seed}` : ""}
-        </div>
+        {member.member_kind === "clone" && (
+          <div className="text-xs text-zinc-500">clone · {member.memory_seed}</div>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-2 md:flex-nowrap">
-        {!isExternal && (member.member_kind === "native" || member.member_kind === "clone") && (
+        {isAgent && (
           <label
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             title="When off, this agent can add new elements but cannot modify or delete existing ones."
@@ -116,7 +141,7 @@ function MemberRow({
             <span className="text-xs">Can edit canvas</span>
           </label>
         )}
-        {!isExternal && (member.member_kind === "native" || member.member_kind === "clone") && (
+        {isAgent && (
           <label
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             title="Lead agents see all messages in the project channel, even without being @mentioned."
@@ -203,10 +228,13 @@ export function ProjectMembers({ project, onChanged }: { project: Project; onCha
               entry.origin === "external-selfjoin" && entry.status === "active",
           );
           setExternalAgents(
-            active.map((entry: { handle?: string; display_name?: string }) => ({
-              handle: entry.handle || "",
-              display_name: entry.display_name,
-            })),
+            active.map(
+              (entry: { handle?: string; display_name?: string; framework?: string }) => ({
+                handle: entry.handle || "",
+                display_name: entry.display_name,
+                framework: entry.framework,
+              }),
+            ),
           );
         }
         setExternalRegistryLoaded(true);
@@ -290,6 +318,7 @@ export function ProjectMembers({ project, onChanged }: { project: Project; onCha
                   label={label}
                   hint={hint}
                   isExternal
+                  framework={byHandle.get(m.member_id)?.framework}
                   projectId={project.id}
                   onRefresh={refresh}
                   onChanged={onChanged}
