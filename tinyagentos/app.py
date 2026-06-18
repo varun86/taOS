@@ -88,6 +88,7 @@ from tinyagentos.user_memory import UserMemoryStore
 from tinyagentos.user_personas import UserPersonaStore
 from tinyagentos.installed_apps import InstalledAppsStore
 from tinyagentos.skills import SkillStore
+from tinyagentos.office_docs import OfficeDocStore
 from tinyagentos.knowledge_store import KnowledgeStore
 from tinyagentos.knowledge_ingest import IngestPipeline
 from tinyagentos.knowledge_categories import CategoryEngine
@@ -344,6 +345,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     from tinyagentos.userspace.data_store import UserspaceDataStore
     userspace_apps = UserspaceAppStore(data_dir / "userspace_apps.db")
     userspace_data = UserspaceDataStore(data_dir / "userspace_data.db")
+    office_docs = OfficeDocStore(data_dir / "office_docs.db")
     skills = SkillStore(data_dir / "skills.db")
     from tinyagentos.themes.store import ThemeStore
     themes = ThemeStore(data_dir / "themes.sqlite3")
@@ -424,6 +426,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.userspace_apps = userspace_apps
         await userspace_data.init()
         app.state.userspace_data = userspace_data
+        await office_docs.init()
+        app.state.office_docs = office_docs
         try:
             from tinyagentos.userspace.seed import seed_bundled_apps
             await seed_bundled_apps(userspace_apps, data_dir / "apps")
@@ -672,6 +676,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.installed_apps = installed_apps
         app.state.userspace_apps = userspace_apps
         app.state.userspace_data = userspace_data
+        app.state.office_docs = office_docs
         app.state.skills = skills
         app.state.benchmark_store = benchmark_store
         app.state.score_cache = score_cache
@@ -1126,6 +1131,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await installed_apps.close()
         await userspace_apps.close()
         await userspace_data.close()
+        await office_docs.close()
         await user_memory.close()
         await desktop_settings.close()
         await canvas_store.close()
@@ -1300,6 +1306,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.installed_apps = installed_apps
     app.state.userspace_apps = userspace_apps
     app.state.userspace_data = userspace_data
+    app.state.office_docs = office_docs
     app.state.skills = skills
     app.state.themes = themes
     app.state.knowledge_store = knowledge_store
