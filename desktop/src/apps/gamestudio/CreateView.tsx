@@ -22,6 +22,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 export interface CreateViewProps {
+  windowId: string;
   prompt: string;
   onPromptChange: (v: string) => void;
   genres: Set<string>;
@@ -33,8 +34,16 @@ export interface CreateViewProps {
 }
 
 export function CreateView(props: CreateViewProps) {
-  const { prompt, onPromptChange, genres, onToggleGenre, model, onModelChange, onUseTemplate } =
-    props;
+  const {
+    windowId,
+    prompt,
+    onPromptChange,
+    genres,
+    onToggleGenre,
+    model,
+    onModelChange,
+    onUseTemplate,
+  } = props;
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [liveSteps, setLiveSteps] = useState<BuildStep[] | null>(null);
@@ -53,18 +62,18 @@ export function CreateView(props: CreateViewProps) {
 
     try {
       const { template, steps } = await runCreateGame(text, genres, setLiveSteps);
-      seedCreatedGame(template, text, steps);
+      seedCreatedGame(windowId, template, text, steps);
       onUseTemplate(template);
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : String(e));
     } finally {
       setCreating(false);
     }
-  }, [creating, prompt, genres, onUseTemplate]);
+  }, [creating, prompt, genres, onUseTemplate, windowId]);
 
   const handleUseTemplate = useCallback(
     (t: Template) => {
-      seedCreatedGame(t, prompt, [
+      seedCreatedGame(windowId, t, prompt, [
         {
           who: "Director",
           what: `Loaded the ${t.title} starter template.`,
@@ -81,7 +90,7 @@ export function CreateView(props: CreateViewProps) {
       ]);
       onUseTemplate(t);
     },
-    [prompt, onUseTemplate],
+    [windowId, prompt, onUseTemplate],
   );
 
   return (

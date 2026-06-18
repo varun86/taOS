@@ -39,10 +39,11 @@ const DEVICE_SIZES: Record<DevicePreview, { maxW: number | null; aspect: string 
 };
 
 export interface PlayViewProps {
+  windowId: string;
   template: Template;
 }
 
-export function PlayView({ template }: PlayViewProps) {
+export function PlayView({ windowId, template }: PlayViewProps) {
   const scene = useGameScene(template.scene);
   const { hostRef, playing, togglePlay, setPlaying, fps, reset, supported } = scene;
 
@@ -54,14 +55,19 @@ export function PlayView({ template }: PlayViewProps) {
 
   useEffect(() => {
     const applySnapshot = () => {
-      const { steps, prompt } = takeCreatedGame();
+      const { steps, prompt } = takeCreatedGame(windowId);
       if (steps?.length) setBuildLog(steps);
       if (prompt) setSourcePrompt(prompt);
     };
+    const onCreated = (e: Event) => {
+      const detail = (e as CustomEvent<{ windowId?: string }>).detail;
+      if (detail?.windowId !== windowId) return;
+      applySnapshot();
+    };
     applySnapshot();
-    window.addEventListener(GAME_CREATED_EVENT, applySnapshot);
-    return () => window.removeEventListener(GAME_CREATED_EVENT, applySnapshot);
-  }, [template.id]);
+    window.addEventListener(GAME_CREATED_EVENT, onCreated);
+    return () => window.removeEventListener(GAME_CREATED_EVENT, onCreated);
+  }, [template.id, windowId]);
 
   // Track native fullscreen state. The Exit pill + Esc both call exitFs.
   useEffect(() => {
