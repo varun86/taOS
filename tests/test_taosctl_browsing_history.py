@@ -47,6 +47,13 @@ def test_browsing_history_list_with_params(monkeypatch, capsys):
     assert ("GET", "/api/browsing-history", {"source_type": "web", "limit": 10}) in fake.calls
 
 
+def test_browsing_history_list_explicit_default_limit(monkeypatch, capsys):
+    fake = _FakeClient()
+    rc = _run(monkeypatch, ["browsing_history", "list", "--limit", "50"], fake)
+    assert rc == 0
+    assert ("GET", "/api/browsing-history", {"limit": 50}) in fake.calls
+
+
 def test_browsing_history_clear_calls_endpoint(monkeypatch, capsys):
     fake = _FakeClient()
     rc = _run(monkeypatch, ["browsing_history", "clear"], fake)
