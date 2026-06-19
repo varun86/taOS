@@ -29,6 +29,7 @@ def _capture(monkeypatch):
     def fake_urlopen(req, timeout=None):
         seen["url"] = req.full_url
         seen["method"] = req.get_method()
+        seen["data"] = req.data
         return _FakeResp()
 
     monkeypatch.setattr(cli_client.urllib.request, "urlopen", fake_urlopen)
@@ -55,3 +56,28 @@ def test_get_drops_none_valued_params(monkeypatch):
     c = cli_client.TaosClient(url="http://x", token=None)
     c.get("/api/things", params={"a": "1", "b": None})
     assert seen["url"] == "http://x/api/things?a=1"
+
+
+def test_post_accepts_json_as_alias_for_body(monkeypatch):
+    # Callers habitually pass json= (the requests/httpx convention); the client
+    # treats it as the body so that habit is not a silent bug.
+    seen = _capture(monkeypatch)
+    c = cli_client.TaosClient(url="http://x", token=None)
+    c.post("/api/memory/search", json={"q": "hello"})
+    assert seen["method"] == "POST"
+    assert seen["data"] == b'{"q": "hello"}'
+
+
+def test_post_body_wins_over_json_when_both_given(monkeypatch):
+    seen = _capture(monkeypatch)
+    c = cli_client.TaosClient(url="http://x", token=None)
+    c.post("/api/x", body={"from": "body"}, json={"from": "json"})
+    assert seen["data"] == b'{"from": "body"}'
+
+
+def test_patch_accepts_json_alias(monkeypatch):
+    seen = _capture(monkeypatch)
+    c = cli_client.TaosClient(url="http://x", token=None)
+    c.patch("/api/x/1", json={"name": "n"})
+    assert seen["method"] == "PATCH"
+    assert seen["data"] == b'{"name": "n"}'

@@ -90,11 +90,15 @@ class TaosClient:
     def get(self, path: str, params: Optional[dict] = None) -> Any:
         return self.request("GET", path, params=params)
 
-    def post(self, path: str, body: Optional[Any] = None, params: Optional[dict] = None) -> Any:
-        return self.request("POST", path, params=params, body=body)
+    def post(self, path: str, body: Optional[Any] = None, params: Optional[dict] = None,
+             json: Optional[Any] = None) -> Any:
+        # `json` is accepted as an alias for `body`: it is the conventional kwarg
+        # for a JSON payload in requests/httpx, so callers reach for it by habit.
+        # `body` wins if both are given.
+        return self.request("POST", path, params=params, body=body if body is not None else json)
 
-    def patch(self, path: str, body: Optional[Any] = None) -> Any:
-        return self.request("PATCH", path, body=body)
+    def patch(self, path: str, body: Optional[Any] = None, json: Optional[Any] = None) -> Any:
+        return self.request("PATCH", path, body=body if body is not None else json)
 
     def delete(self, path: str, params: Optional[dict] = None) -> Any:
         return self.request("DELETE", path, params=params)
