@@ -1,17 +1,11 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { isIOS } from "@/lib/platform";
 
 interface Props {
   appId: string;
   appName: string;
   onClose: () => void;
-}
-
-function isIOS(): boolean {
-  return (
-    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
 }
 
 export function InstallHelperPanel({ appId, appName, onClose }: Props) {
