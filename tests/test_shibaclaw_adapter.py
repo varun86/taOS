@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 import tinyagentos.adapters.shibaclaw_adapter as sc_mod
@@ -67,12 +68,17 @@ async def test_handle_message_sends_text_to_correct_url(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_message_returns_status_text_on_non_200(monkeypatch):
+    call_count = 0
+
     async def _mock_post(url, json):
-        return MagicMock(status_code=503)
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(503, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(sc_mod, "_controller_post", _mock_post)
     result = await sc_mod.handle_message({"text": "hi"})
     assert "503" in result["content"]
+    assert call_count == 7  # with_retry(max_attempts=7) exhausts all retries
 
 
 # ---------------------------------------------------------------------------
@@ -81,24 +87,34 @@ async def test_handle_message_returns_status_text_on_non_200(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_message_returns_error_on_exception(monkeypatch):
+    call_count = 0
+
     async def _mock_post(url, json):
-        raise ConnectionError("refused")
+        nonlocal call_count
+        call_count += 1
+        raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(sc_mod, "_controller_post", _mock_post)
     result = await sc_mod.handle_message({"text": "hi"})
     assert "ShibaClaw not available" in result["content"]
     assert "refused" in result["content"]
+    assert call_count == 7  # with_retry(max_attempts=7) exhausts all retries
 
 
 @pytest.mark.asyncio
 async def test_handle_message_includes_agent_name_in_error(monkeypatch):
+    call_count = 0
+
     async def _mock_post(url, json):
-        raise ConnectionError("down")
+        nonlocal call_count
+        call_count += 1
+        raise httpx.ConnectError("down")
 
     monkeypatch.setattr(sc_mod, "_controller_post", _mock_post)
     monkeypatch.setenv("TAOS_AGENT_NAME", "my-agent")
     result = await sc_mod.handle_message({"text": "hi"})
     assert "[my-agent]" in result["content"]
+    assert call_count == 7
 
 
 # ---------------------------------------------------------------------------
