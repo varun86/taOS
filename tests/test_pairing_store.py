@@ -431,6 +431,19 @@ async def test_list_pending_ordered_by_announced_at(tmp_path):
     s = await _store(tmp_path)
     await s.announce("w1", "http://w1:8080", "linux", _hash("code1"))
     await s.announce("w2", "http://w2:8080", "macos", _hash("code2"))
+    # force distinct pending_ts so ordering is deterministic regardless of
+    # clock granularity
+    older_ts = time.time() - 10
+    newer_ts = time.time()
+    await s._db.execute(
+        "UPDATE cluster_pairings SET pending_ts = ? WHERE name = ?",
+        (older_ts, "w1"),
+    )
+    await s._db.execute(
+        "UPDATE cluster_pairings SET pending_ts = ? WHERE name = ?",
+        (newer_ts, "w2"),
+    )
+    await s._db.commit()
     pending = await s.list_pending()
     assert pending[0]["name"] == "w1"
     assert pending[1]["name"] == "w2"
