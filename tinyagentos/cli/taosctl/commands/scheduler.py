@@ -7,8 +7,6 @@ Skipped (not simple JSON body endpoints):
 """
 from __future__ import annotations
 
-from urllib.parse import quote
-
 NOUN = "scheduler"
 
 
