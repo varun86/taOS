@@ -11,6 +11,19 @@ import tinyagentos.adapters.shibaclaw_adapter as sc_mod
 from tinyagentos.adapters.shibaclaw_adapter import app
 
 
+@pytest.fixture(autouse=True)
+def _instant_retry_backoff(monkeypatch):
+    # with_retry backs off with asyncio.sleep between attempts. The retry tests
+    # exhaust all 7 attempts, so without this each would sleep ~31s of real time.
+    # Make the backoff instant; the retry COUNT is unchanged.
+    import asyncio
+
+    async def _no_sleep(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+
+
 # ---------------------------------------------------------------------------
 # health endpoint
 # ---------------------------------------------------------------------------
