@@ -269,7 +269,24 @@ function WindowImpl({ win, onDrag, onDragStop }: Props) {
           <div className="flex-1 text-center text-xs text-shell-text-secondary truncate">
             {app?.name ?? win.appId}
           </div>
-          <div className="w-12" />
+          <div className="w-12 flex items-center justify-end">
+            {app?.pwa && !isMobile && (
+              <button
+                className="flex items-center justify-center w-5 h-5 rounded opacity-50 hover:opacity-90 hover:bg-shell-surface-hover transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(`/app.html?app=${encodeURIComponent(win.appId)}`, "_blank");
+                }}
+                aria-label={`Install ${app.name} as app`}
+                title={`Install ${app.name}`}
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5.5 1v6M2.5 5l3 3 3-3" />
+                  <path d="M1 9h9" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content */}
