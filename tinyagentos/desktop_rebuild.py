@@ -8,11 +8,17 @@ regardless of platform (systemd/Pi, Docker, Mac .app, dev host).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Marker recording the package-lock.json hash of the last successful
+# `npm install`. Lives inside node_modules so it is naturally per-install
+# (wiped whenever node_modules is) and never tracked by git.
+_DEPS_MARKER = "node_modules/.taos-deps-lock"
 
 
 @dataclass(frozen=True)
@@ -48,6 +54,45 @@ def _is_bundle_stale(project_root: Path) -> bool:
         if path.is_file() and path.stat().st_mtime > bundle_mtime:
             return True
     return False
+
+
+def _lockfile_hash(desktop_dir: Path) -> str | None:
+    """SHA-256 of desktop/package-lock.json, or None if it doesn't exist."""
+    lock = desktop_dir / "package-lock.json"
+    if not lock.is_file():
+        return None
+    return hashlib.sha256(lock.read_bytes()).hexdigest()
+
+
+def _deps_install_needed(desktop_dir: Path) -> bool:
+    """True if ``npm install`` must run before a build.
+
+    Skips the install only when node_modules already exists and the
+    package-lock.json hash matches the last successful install. Any of
+    {no node_modules, no lockfile to compare, lockfile changed, marker
+    unreadable} forces the install — so the gate never trades correctness
+    for speed.
+    """
+    if not (desktop_dir / "node_modules").is_dir():
+        return True
+    current = _lockfile_hash(desktop_dir)
+    if current is None:
+        return True  # no lockfile to trust — always install
+    try:
+        return (desktop_dir / _DEPS_MARKER).read_text().strip() != current
+    except OSError:
+        return True
+
+
+def _record_deps_install(desktop_dir: Path) -> None:
+    """Record the current package-lock hash after a successful npm install."""
+    current = _lockfile_hash(desktop_dir)
+    if current is None:
+        return
+    try:
+        (desktop_dir / _DEPS_MARKER).write_text(current)
+    except OSError as exc:  # node_modules vanished mid-build, read-only fs, etc.
+        logger.warning("Could not write deps marker (%s) — next update reinstalls.", exc)
 
 
 async def rebuild_desktop_bundle_if_stale(
@@ -88,17 +133,22 @@ async def rebuild_desktop_bundle_if_stale(
     logger.info("Desktop source is ahead of bundle — rebuilding...")
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "npm", "install", "--silent",
-            cwd=str(desktop_dir),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
-        if proc.returncode != 0:
-            msg = f"npm install failed (rc={proc.returncode}): {stderr.decode(errors='replace')[-500:]}"
-            logger.error(msg)
-            return RebuildResult(rebuilt=True, success=False, message=msg)
+        if _deps_install_needed(desktop_dir):
+            logger.info("Dependencies changed or missing — running npm install...")
+            proc = await asyncio.create_subprocess_exec(
+                "npm", "install", "--silent",
+                cwd=str(desktop_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+            if proc.returncode != 0:
+                msg = f"npm install failed (rc={proc.returncode}): {stderr.decode(errors='replace')[-500:]}"
+                logger.error(msg)
+                return RebuildResult(rebuilt=True, success=False, message=msg)
+            _record_deps_install(desktop_dir)
+        else:
+            logger.info("Dependencies unchanged — skipping npm install.")
 
         proc = await asyncio.create_subprocess_exec(
             "npm", "run", "build",
