@@ -121,3 +121,21 @@ def test_render_table_unwraps_items_and_shows_rows(capsys):
     output.render({"items": [{"name": "x", "status": "ok"}]}, as_json=False)
     out = capsys.readouterr().out
     assert "NAME" in out and "x" in out and "ok" in out
+
+
+# ---- auth login writes the credential file owner-only ------------------------
+
+def test_auth_login_writes_config_owner_only(monkeypatch, tmp_path):
+    import argparse
+    import stat
+
+    from tinyagentos.cli.taosctl.commands import auth as auth_cmd
+
+    cfg = tmp_path / "sub" / "config.json"
+    monkeypatch.setattr(cli_client, "CONFIG_PATH", cfg)
+    monkeypatch.delenv("TAOS_URL", raising=False)
+    monkeypatch.delenv("TAOS_TOKEN", raising=False)
+    auth_cmd._login(argparse.Namespace(url="http://h:1", token="sekret"), None)
+    assert cfg.exists()
+    assert stat.S_IMODE(cfg.stat().st_mode) == 0o600
+    assert json.loads(cfg.read_text())["token"] == "sekret"

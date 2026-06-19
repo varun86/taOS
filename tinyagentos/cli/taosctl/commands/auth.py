@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from tinyagentos.cli.taosctl import client as _client
 
@@ -26,8 +27,13 @@ def register(subparsers) -> None:
 
 def _login(args, client):
     url, token = _client.resolve(args.url, args.token)
-    _client.CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _client.CONFIG_PATH.write_text(json.dumps({"url": url, "token": token}, indent=2))
+    _client.CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    payload = json.dumps({"url": url, "token": token}, indent=2)
+    # The config holds a credential, so create it owner-only (0o600) and
+    # atomically, never world-readable between create and a later chmod.
+    fd = os.open(str(_client.CONFIG_PATH), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(payload)
     return {"saved": str(_client.CONFIG_PATH), "url": url, "token_set": bool(token)}
 
 
