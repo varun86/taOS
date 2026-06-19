@@ -39,7 +39,7 @@ export function InstallHelperPanel({ appId, appName, onClose }: Props) {
     ta.style.opacity = "0";
     document.body.appendChild(ta);
     try {
-      if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      if (isIOS()) {
         const range = document.createRange();
         range.selectNodeContents(ta);
         const sel = window.getSelection();
