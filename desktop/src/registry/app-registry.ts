@@ -59,6 +59,7 @@ const apps: AppManifest[] = [
   { id: "github-browser", name: "GitHub", icon: "github", category: "platform", component: () => import("@/apps/GitHubApp").then((m) => ({ default: m.GitHubApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 550, h: 400 }, singleton: true, pinned: false, launchpadOrder: 15, optional: true },
   { id: "x-monitor", name: "X", icon: "at-sign", category: "platform", component: () => import("@/apps/XApp").then((m) => ({ default: m.XApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 550, h: 400 }, singleton: true, pinned: false, launchpadOrder: 15.5, optional: true },
   { id: "agent-browsers", name: "Browsers", icon: "globe", category: "platform", component: () => import("@/apps/AgentBrowsersApp").then((m) => ({ default: m.AgentBrowsersApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 550, h: 400 }, singleton: true, pinned: false, launchpadOrder: 16 },
+  { id: "feedback", name: "Feedback", icon: "flag", category: "platform", component: () => import("@/apps/FeedbackApp").then((m) => ({ default: m.FeedbackApp })), defaultSize: { w: 700, h: 560 }, minSize: { w: 420, h: 400 }, singleton: true, pinned: false, launchpadOrder: 16.5 },
 
   // OS apps
   { id: "weather", name: "Weather", icon: "cloud", category: "os", component: () => import("@/apps/WeatherApp").then((m) => ({ default: m.WeatherApp })), defaultSize: { w: 800, h: 600 }, minSize: { w: 400, h: 400 }, singleton: true, pinned: false, launchpadOrder: 19 },
