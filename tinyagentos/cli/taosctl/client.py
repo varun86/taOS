@@ -96,8 +96,8 @@ class TaosClient:
     def patch(self, path: str, body: Optional[Any] = None) -> Any:
         return self.request("PATCH", path, body=body)
 
-    def delete(self, path: str) -> Any:
-        return self.request("DELETE", path)
+    def delete(self, path: str, params: Optional[dict] = None) -> Any:
+        return self.request("DELETE", path, params=params)
 
 
 def _extract_error(raw: bytes, status: int) -> str:
