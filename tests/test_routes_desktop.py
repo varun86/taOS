@@ -57,6 +57,8 @@ def test_app_html_served_without_auth(client, monkeypatch, tmp_path):
     monkeypatch.setattr("tinyagentos.routes.desktop.SPA_DIR", fake_dir)
     r = client.get("/app.html?app=messages")
     assert r.status_code == 200
+    # The shell HTML must revalidate so an updated bundle is not served stale.
+    assert "no-cache" in r.headers.get("Cache-Control", "")
     assert "text/html" in r.headers.get("content-type", "")
 
 
