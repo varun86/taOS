@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Share } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { isIOS, isStandalone } from "@/lib/platform";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -9,20 +10,6 @@ interface BeforeInstallPromptEvent extends Event {
 
 const DISMISS_MS = 30 * 24 * 60 * 60 * 1000;
 const KEY = "taos-install-dismissed";
-
-function isIOS(): boolean {
-  return (
-    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
-}
-
-function isStandalone(): boolean {
-  return (
-    (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
-    window.matchMedia("(display-mode: standalone)").matches
-  );
-}
 
 export function InstallPromptBanner() {
   const isMobile = useIsMobile();
