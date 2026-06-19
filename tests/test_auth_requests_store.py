@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from itertools import count
 from unittest.mock import patch
 
 import pytest
@@ -79,15 +80,16 @@ async def test_list_pending_empty(tmp_path):
 
 @pytest.mark.asyncio
 async def test_list_pending_returns_only_pending_ordered_by_created_ts(tmp_path):
-    times = [
-        datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-        datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
-        datetime(2026, 1, 1, 0, 0, 2, tzinfo=timezone.utc),
-        datetime(2026, 1, 1, 0, 0, 3, tzinfo=timezone.utc),
-    ]
+    base = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    counter = count()
+
+    def _now(tz=None):
+        return base + timedelta(seconds=next(counter))
+
     with patch("tinyagentos.auth_requests_store.datetime") as mock_dt:
-        mock_dt.now.side_effect = times
+        mock_dt.now.side_effect = _now
         mock_dt.timezone = timezone
+        mock_dt.timedelta = timedelta
         s = await _store(tmp_path)
         r1 = await s.create(identity_claim="a", framework="f", requested_scopes=[])
         r2 = await s.create(identity_claim="b", framework="f", requested_scopes=[])
