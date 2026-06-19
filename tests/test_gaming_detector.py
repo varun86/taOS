@@ -4,9 +4,6 @@ GPU monitoring, and the GamingDetector state machine."""
 from __future__ import annotations
 
 import subprocess
-import time
-from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -65,7 +62,6 @@ class TestDetectGameProcesses:
             _FakeProcEntry(1, "systemd"),
             _FakeProcEntry(42, "reaper-steam", "/usr/bin/reaper steam://run/123"),
         ]
-        monkeypatch.setattr(gd.Path, "__truediv__", lambda self, n: _FakeProcFile(""))
         monkeypatch.setattr("tinyagentos.scheduling.gaming_detector.Path", lambda p: _make_proc(entries))
 
         result = gd.detect_game_processes()
