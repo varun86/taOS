@@ -78,7 +78,13 @@ def _update(args, client):
     if args.description is not None:
         body["description"] = args.description
     if args.enabled is not None:
-        body["enabled"] = args.enabled.lower() in ("true", "1", "yes")
+        v = args.enabled.strip().lower()
+        if v in ("true", "1", "yes"):
+            body["enabled"] = True
+        elif v in ("false", "0", "no"):
+            body["enabled"] = False
+        else:
+            raise SystemExit(f"--enabled expects true or false, got: {args.enabled}")
     return client.request("PUT", f"/api/tasks/{args.id}", body=body)
 
 
