@@ -31,7 +31,7 @@ describe("InstallHelperPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("Copy button writes URL to clipboard", async () => {
+  it("Copy uses the clipboard API in a secure context", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", {
       ...navigator,
@@ -39,6 +39,10 @@ describe("InstallHelperPanel", () => {
       userAgent: "Chrome",
       platform: "Win32",
       maxTouchPoints: 0,
+    });
+    Object.defineProperty(window, "isSecureContext", {
+      value: true,
+      configurable: true,
     });
 
     render(
@@ -49,6 +53,35 @@ describe("InstallHelperPanel", () => {
     expect(writeText).toHaveBeenCalledWith(
       expect.stringContaining("/app.html?app=myapp")
     );
+  });
+
+  it("Copy falls back to execCommand on a non-secure origin (HTTP)", async () => {
+    // Plain-HTTP origins (LAN / Tailscale IP) don't expose navigator.clipboard;
+    // the button must still copy via the execCommand fallback rather than throw.
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: undefined,
+      userAgent: "Chrome",
+      platform: "Win32",
+      maxTouchPoints: 0,
+    });
+    Object.defineProperty(window, "isSecureContext", {
+      value: false,
+      configurable: true,
+    });
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, "execCommand", {
+      value: execCommand,
+      configurable: true,
+      writable: true,
+    });
+
+    render(
+      <InstallHelperPanel appId="myapp" appName="My App" onClose={vi.fn()} />
+    );
+
+    fireEvent.click(screen.getByText("Copy"));
+    expect(execCommand).toHaveBeenCalledWith("copy");
   });
 
   it("onClose fires when Done button is clicked", () => {

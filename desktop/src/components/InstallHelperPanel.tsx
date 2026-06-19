@@ -27,13 +27,57 @@ export function InstallHelperPanel({ appId, appName, onClose }: Props) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  function handleCopy() {
-    navigator.clipboard.writeText(url).catch(() => {
+  function fallbackCopy(text: string): boolean {
+    // Non-secure contexts (plain HTTP on a LAN / Tailscale IP) don't expose
+    // navigator.clipboard, so fall back to a temp textarea + execCommand,
+    // with the iOS-specific selection dance Safari requires.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    try {
+      if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+        const range = document.createRange();
+        range.selectNodeContents(ta);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        ta.setSelectionRange(0, text.length);
+      } else {
+        ta.select();
+      }
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+
+  async function handleCopy() {
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) ok = fallbackCopy(url);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      // Couldn't copy programmatically — select the visible field so the
+      // user can copy it by hand.
       const el = document.getElementById("install-helper-url-input") as HTMLInputElement | null;
-      el?.select();
-    });
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+      el?.focus();
+      el?.setSelectionRange(0, url.length);
+    }
   }
 
   const platformHint = isIOS()
@@ -51,7 +95,7 @@ export function InstallHelperPanel({ appId, appName, onClose }: Props) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0,0,0,0.5)",
+        background: "rgba(0,0,0,0.6)",
         padding: "1rem",
       }}
       onClick={onClose}
@@ -63,8 +107,11 @@ export function InstallHelperPanel({ appId, appName, onClose }: Props) {
     >
       <div
         style={{
-          background: "var(--color-shell-surface, #1c1c1f)",
-          border: "1px solid rgba(255,255,255,0.1)",
+          // Must be fully opaque: --color-shell-surface is a translucent
+          // elevation overlay (rgba white 0.04) and let the page show through.
+          // --color-shell-bg is the solid shell base and is theme-aware.
+          background: "var(--color-shell-bg, #1d1d1f)",
+          border: "1px solid rgba(255,255,255,0.12)",
           borderRadius: "12px",
           boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
           width: "100%",
