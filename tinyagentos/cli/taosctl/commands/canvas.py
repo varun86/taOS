@@ -27,7 +27,9 @@ def _list(args, client):
 
 
 def _get(args, client):
-    return client.get(f"/api/canvas/{quote(args.id, safe='')}")
+    # The single-canvas read route is /api/canvas/{id}/data; the bare
+    # /api/canvas/{id} path only has a DELETE handler.
+    return client.get(f"/api/canvas/{quote(args.id, safe='')}/data")
 
 
 def _delete(args, client):

@@ -35,14 +35,14 @@ def test_canvas_get_targets_by_id(monkeypatch):
     fake = _FakeClient()
     rc = _run(monkeypatch, ["--json", "canvas", "get", "abc123"], fake)
     assert rc == 0
-    assert ("GET", "/api/canvas/abc123") in fake.calls
+    assert ("GET", "/api/canvas/abc123/data") in fake.calls
 
 
 def test_canvas_get_url_encodes_id(monkeypatch):
     fake = _FakeClient()
     rc = _run(monkeypatch, ["--json", "canvas", "get", "a/b c"], fake)
     assert rc == 0
-    assert ("GET", "/api/canvas/a%2Fb%20c") in fake.calls
+    assert ("GET", "/api/canvas/a%2Fb%20c/data") in fake.calls
 
 
 def test_canvas_delete_targets_by_id(monkeypatch):

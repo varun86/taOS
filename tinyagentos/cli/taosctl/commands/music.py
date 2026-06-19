@@ -1,8 +1,6 @@
 """taosctl music -- inspect and control music generation."""
 from __future__ import annotations
 
-from urllib.parse import quote
-
 NOUN = "music"
 
 
