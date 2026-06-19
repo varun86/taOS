@@ -14,6 +14,7 @@ import {
   Monitor,
   Users,
   Palette,
+  UserCircle,
 } from "lucide-react";
 import {
   Button,
@@ -26,12 +27,13 @@ import { ThemesPanel } from "@/apps/SettingsApp/ThemesPanel";
 import { safeFetch, ProgressBar, RestartProgressModal } from "@/apps/SettingsApp/_shared";
 import { UpdatesSection } from "@/apps/SettingsApp/UpdatesPanel";
 import { UsersSection } from "@/apps/SettingsApp/UsersPanel";
+import { AccountSection } from "@/apps/SettingsApp/AccountPanel";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-type Section = "system" | "storage" | "memory" | "backup" | "updates" | "advanced" | "shortcuts" | "accessibility" | "desktop" | "users" | "themes";
+type Section = "account" | "system" | "storage" | "memory" | "backup" | "updates" | "advanced" | "shortcuts" | "accessibility" | "desktop" | "users" | "themes";
 
 interface SectionDef {
   id: Section;
@@ -60,6 +62,7 @@ interface StorageItem {
 /* ------------------------------------------------------------------ */
 
 const SECTIONS: SectionDef[] = [
+  { id: "account", label: "Account", icon: UserCircle },
   { id: "system", label: "System Info", icon: Info },
   { id: "storage", label: "Storage", icon: HardDrive },
   { id: "memory", label: "Memory", icon: Brain },
@@ -735,6 +738,7 @@ export function SettingsApp({ windowId: _windowId, section: initialSection }: { 
   const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
 
   const content: Record<Section, ReactNode> = {
+    account: <AccountSection />,
     system: <SystemInfoSection />,
     storage: <StorageSection />,
     memory: <MemorySection />,

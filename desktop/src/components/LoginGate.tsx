@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Lock } from "lucide-react";
 import { OnboardingScreen } from "./OnboardingScreen";
+import { OffNetworkScreen } from "./OffNetworkScreen";
 import { SESSION_EXPIRED_EVENT } from "@/lib/auth-guard";
 
 interface Props {
@@ -12,6 +13,7 @@ type AuthStatus =
   | { phase: "onboarding" }
   | { phase: "invite"; username: string; inviteCode: string; multiUser: boolean }
   | { phase: "login"; legacy: boolean; multiUser: boolean }
+  | { phase: "unreachable" }
   | { phase: "ready" };
 
 export function LoginGate({ children }: Props) {
@@ -48,7 +50,10 @@ export function LoginGate({ children }: Props) {
         setStatus({ phase: "login", legacy: !data.user, multiUser: !!data.multi_user });
       }
     } catch {
-      setStatus({ phase: "ready" });
+      // A thrown fetch (network failure, not an HTTP error) means the host is
+      // unreachable -- e.g. the PWA was opened off the host's network. Offer
+      // taOSgo rather than load the shell into a broken, data-less state.
+      setStatus({ phase: "unreachable" });
     }
   }, []);
 
@@ -117,6 +122,10 @@ export function LoginGate({ children }: Props) {
         Loading...
       </div>
     );
+  }
+
+  if (status.phase === "unreachable") {
+    return <OffNetworkScreen onRetry={refreshStatus} />;
   }
 
   if (status.phase === "onboarding") {
