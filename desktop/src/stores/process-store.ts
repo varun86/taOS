@@ -28,7 +28,7 @@ interface ProcessStore {
   windows: WindowState[];
   nextZIndex: number;
 
-  openWindow: (appId: string, defaultSize: { w: number; h: number }, props?: Record<string, unknown>) => string;
+  openWindow: (appId: string, defaultSize: { w: number; h: number }, props?: Record<string, unknown>, opts?: { forceNew?: boolean }) => string;
   closeWindow: (id: string) => void;
   removeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
@@ -85,8 +85,13 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
   windows: [],
   nextZIndex: 1,
 
-  openWindow(appId, defaultSize, props) {
-    const existing = get().windows.find((w) => w.appId === appId);
+  openWindow(appId, defaultSize, props, opts) {
+    // Single-instance by default: clicking an app focuses its existing window.
+    // forceNew skips that so an app can open a second window (e.g. a different
+    // project), keyed by its own props -- the basis for multi-window apps.
+    const existing = opts?.forceNew
+      ? undefined
+      : get().windows.find((w) => w.appId === appId);
     if (existing) {
       if (props) {
         set((s) => ({

@@ -64,4 +64,28 @@ describe("process-store openWindow", () => {
     expect(win.minimized).toBe(false);
     expect(win.focused).toBe(true);
   });
+
+  it("opens a second window for the same app when forceNew is set", () => {
+    const a = useProcessStore
+      .getState()
+      .openWindow("projects", { w: 900, h: 600 }, { projectId: "p1" });
+    const b = useProcessStore
+      .getState()
+      .openWindow("projects", { w: 900, h: 600 }, { projectId: "p2" }, { forceNew: true });
+    expect(b).not.toBe(a);
+    const wins = useProcessStore.getState().windows.filter((w) => w.appId === "projects");
+    expect(wins).toHaveLength(2);
+    // Each window keeps its own props, so two projects can show side by side.
+    expect(wins.find((w) => w.id === a)!.props).toEqual({ projectId: "p1" });
+    expect(wins.find((w) => w.id === b)!.props).toEqual({ projectId: "p2" });
+  });
+
+  it("still refocuses the existing window when forceNew is not set", () => {
+    const a = useProcessStore.getState().openWindow("projects", { w: 900, h: 600 });
+    const b = useProcessStore.getState().openWindow("projects", { w: 900, h: 600 });
+    expect(b).toBe(a);
+    expect(
+      useProcessStore.getState().windows.filter((w) => w.appId === "projects"),
+    ).toHaveLength(1);
+  });
 });
