@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
 router = APIRouter()
@@ -35,7 +35,24 @@ def _base_url() -> str | None:
     return base.rstrip("/") or None
 
 
-async def _forward(request: Request, action: str) -> JSONResponse:
+def _rewrite_set_cookie(value: str, secure_ok: bool) -> str:
+    """Rescope an upstream Set-Cookie to this proxy origin so the browser
+    accepts it: drop the Domain attribute (the cookie was issued for taos.my but
+    the browser is talking to this host), and drop Secure when the proxy
+    connection is not HTTPS, since a Secure cookie is rejected over plain HTTP."""
+    kept: list[str] = []
+    for part in value.split(";"):
+        p = part.strip()
+        low = p.lower()
+        if low.startswith("domain="):
+            continue
+        if low == "secure" and not secure_ok:
+            continue
+        kept.append(p)
+    return "; ".join(kept)
+
+
+async def _forward(request: Request, action: str) -> Response:
     base = _base_url()
     if base is None:
         return JSONResponse(
@@ -61,15 +78,20 @@ async def _forward(request: Request, action: str) -> JSONResponse:
         return JSONResponse(
             {"error": "account service unreachable"}, status_code=503
         )
-    try:
-        payload = upstream.json()
-    except ValueError:
-        payload = {}
-    resp = JSONResponse(payload, status_code=upstream.status_code)
-    # Pass the upstream session cookie back to the browser (scoped to this host).
+    # Relay the upstream body + content-type verbatim (do not assume JSON), so
+    # error pages, redirects, and non-JSON bodies pass through unmangled.
+    resp = Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type"),
+    )
+    # Relay the session cookie, rescoped to this origin so the browser keeps it.
+    secure_ok = request.url.scheme == "https"
     for name, value in upstream.headers.multi_items():
         if name.lower() == "set-cookie":
-            resp.raw_headers.append((b"set-cookie", value.encode("latin-1")))
+            resp.raw_headers.append(
+                (b"set-cookie", _rewrite_set_cookie(value, secure_ok).encode("latin-1"))
+            )
     return resp
 
 
