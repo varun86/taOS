@@ -6,6 +6,8 @@ and return data for the framework to render).
 """
 from __future__ import annotations
 
+from urllib.parse import quote
+
 NOUN = "agents"
 
 
@@ -29,7 +31,7 @@ def _list(args, client):
 
 
 def _get(args, client):
-    return client.get(f"/api/agents/{args.name}")
+    return client.get(f"/api/agents/{quote(args.name, safe='')}")
 
 
 def _archived(args, client):
