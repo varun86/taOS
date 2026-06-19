@@ -27,33 +27,25 @@ export function InstallHelperPanel({ appId, appName, onClose }: Props) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  function fallbackCopy(text: string): boolean {
+  function fallbackCopy(): boolean {
     // Non-secure contexts (plain HTTP on a LAN / Tailscale IP) don't expose
-    // navigator.clipboard, so fall back to a temp textarea + execCommand,
-    // with the iOS-specific selection dance Safari requires.
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.top = "0";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
+    // navigator.clipboard. Operate on the already-visible URL input rather than
+    // a hidden textarea: iOS Safari refuses to copy from opacity:0 elements and
+    // will not select a readonly field, so toggle readonly off, select the real
+    // on-screen input, copy, then restore. The definitive fix is HTTPS (taOSgo
+    // or Tailscale Serve), where navigator.clipboard works directly.
+    const el = document.getElementById("install-helper-url-input") as HTMLInputElement | null;
+    if (!el) return false;
+    const wasReadOnly = el.readOnly;
     try {
-      if (isIOS()) {
-        const range = document.createRange();
-        range.selectNodeContents(ta);
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        ta.setSelectionRange(0, text.length);
-      } else {
-        ta.select();
-      }
+      el.readOnly = false;
+      el.focus();
+      el.setSelectionRange(0, el.value.length);
       return document.execCommand("copy");
     } catch {
       return false;
     } finally {
-      document.body.removeChild(ta);
+      el.readOnly = wasReadOnly;
     }
   }
 
@@ -67,7 +59,7 @@ export function InstallHelperPanel({ appId, appName, onClose }: Props) {
     } catch {
       ok = false;
     }
-    if (!ok) ok = fallbackCopy(url);
+    if (!ok) ok = fallbackCopy();
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
