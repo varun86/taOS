@@ -1,0 +1,168 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
+interface Props {
+  appId: string;
+  appName: string;
+  onClose: () => void;
+}
+
+function isIOS(): boolean {
+  return (
+    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+export function InstallHelperPanel({ appId, appName, onClose }: Props) {
+  const [copied, setCopied] = useState(false);
+
+  const url = `${window.location.origin}/app.html?app=${encodeURIComponent(appId)}`;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(url).catch(() => {
+      const el = document.getElementById("install-helper-url-input") as HTMLInputElement | null;
+      el?.select();
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const platformHint = isIOS()
+    ? "In Safari, tap the Share button, then Add to Home Screen."
+    : "In Chrome, open the menu and choose Install app or Add to Home screen.";
+
+  // Portal to body so the fixed overlay is not mispositioned when mounted
+  // inside a transformed ancestor (the desktop window uses CSS transforms).
+  return createPortal(
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 200,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.5)",
+        padding: "1rem",
+      }}
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="install-helper-title"
+    >
+      <div
+        style={{
+          background: "var(--color-shell-surface, #1c1c1f)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: "12px",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+          width: "100%",
+          maxWidth: "420px",
+          padding: "1.25rem 1.5rem 1.5rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="install-helper-title"
+          style={{
+            margin: 0,
+            fontSize: "0.875rem",
+            fontWeight: 600,
+            color: "var(--color-shell-text, #fff)",
+          }}
+        >
+          Install {appName}
+        </h2>
+
+        <p
+          style={{
+            margin: 0,
+            fontSize: "0.8125rem",
+            color: "var(--color-shell-text-secondary, rgba(255,255,255,0.55))",
+            lineHeight: 1.5,
+          }}
+        >
+          To use {appName} as its own app, open the link below in your browser,
+          then add it to your home screen.
+        </p>
+
+        <input
+          id="install-helper-url-input"
+          readOnly
+          value={url}
+          style={{
+            fontFamily: "ui-monospace, monospace",
+            fontSize: "0.75rem",
+            background: "rgba(0,0,0,0.25)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "6px",
+            padding: "0.5rem 0.625rem",
+            color: "var(--color-shell-text, #fff)",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+          aria-label="Install URL"
+        />
+
+        <p
+          style={{
+            margin: 0,
+            fontSize: "0.8125rem",
+            color: "var(--color-shell-text-secondary, rgba(255,255,255,0.55))",
+            lineHeight: 1.5,
+          }}
+        >
+          {platformHint}
+        </p>
+
+        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.25rem" }}>
+          <button
+            onClick={handleCopy}
+            style={{
+              fontSize: "0.8125rem",
+              padding: "0.4rem 0.875rem",
+              borderRadius: "6px",
+              border: "1px solid rgba(255,255,255,0.15)",
+              background: "rgba(255,255,255,0.07)",
+              color: "var(--color-shell-text, #fff)",
+              cursor: "pointer",
+              minWidth: "64px",
+            }}
+          >
+            {copied ? "Copied!" : "Copy"}
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              fontSize: "0.8125rem",
+              padding: "0.4rem 0.875rem",
+              borderRadius: "6px",
+              border: "none",
+              background: "rgba(255,255,255,0.15)",
+              color: "var(--color-shell-text, #fff)",
+              cursor: "pointer",
+            }}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

@@ -6,6 +6,7 @@ import { getApp } from "@/registry/app-registry";
 import { getSnapBounds } from "@/hooks/use-snap-zones";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { WindowContent } from "./WindowContent";
+import { InstallHelperPanel } from "./InstallHelperPanel";
 
 interface Props {
   win: WindowState;
@@ -30,6 +31,7 @@ function WindowImpl({ win, onDrag, onDragStop }: Props) {
   const app = getApp(win.appId);
   const preSnapRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const isMobile = useIsMobile();
+  const [installOpen, setInstallOpen] = useState(false);
   const reduceMotion = useReducedMotion();
   // GPU drag hint: only promote the inner chrome to its own layer while the
   // user is actively dragging/resizing. Permanent will-change bloats GPU
@@ -275,7 +277,7 @@ function WindowImpl({ win, onDrag, onDragStop }: Props) {
                 className="flex items-center justify-center w-5 h-5 rounded opacity-50 hover:opacity-90 hover:bg-shell-surface-hover transition-opacity"
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.open(`/app.html?app=${encodeURIComponent(win.appId)}`, "_blank");
+                  setInstallOpen(true);
                 }}
                 aria-label={`Install ${app.name} as app`}
                 title={`Install ${app.name}`}
@@ -285,6 +287,13 @@ function WindowImpl({ win, onDrag, onDragStop }: Props) {
                   <path d="M1 9h9" />
                 </svg>
               </button>
+            )}
+            {installOpen && app && (
+              <InstallHelperPanel
+                appId={win.appId}
+                appName={app.name}
+                onClose={() => setInstallOpen(false)}
+              />
             )}
           </div>
         </div>
