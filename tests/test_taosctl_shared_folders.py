@@ -14,7 +14,10 @@ class _FakeClient:
         self.calls.append(("GET", path))
         if params:
             self.last_params = params
-        return {"items": [{"id": "1", "name": "docs"}]}
+        if path == "/api/shared-folders":
+            # The list endpoint returns a bare list of folders.
+            return [{"id": "1", "name": "docs"}]
+        return {"items": []}
 
     def post(self, path, body=None, params=None):
         self.calls.append(("POST", path))
@@ -46,11 +49,12 @@ def test_shared_folders_list_with_agent_name_param(monkeypatch):
     assert fake.last_params == {"agent_name": "alpha"}
 
 
-def test_shared_folders_get_targets_by_id(monkeypatch):
+def test_shared_folders_get_filters_list_by_id(monkeypatch):
+    # No single-folder GET route exists, so get fetches the list and filters.
     fake = _FakeClient()
     rc = _run(monkeypatch, ["shared_folders", "get", "1"], fake)
     assert rc == 0
-    assert ("GET", "/api/shared-folders/1") in fake.calls
+    assert ("GET", "/api/shared-folders") in fake.calls
 
 
 def test_shared_folders_create_sends_post_with_body(monkeypatch):
