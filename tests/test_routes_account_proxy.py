@@ -18,10 +18,15 @@ def _patch_upstream(monkeypatch, handler):
     monkeypatch.setattr("httpx.AsyncClient.request", routed)
 
 
+class _FakeResp:
+    def __init__(self, content=b"{}", status=200, headers=None):
+        self.content = content
+        self.status_code = status
+        self.headers = httpx.Headers(headers or {})
+
+
 @pytest.mark.asyncio
 async def test_account_me_503_when_unconfigured(client, monkeypatch):
-    """No upstream configured -> the proxy reports unavailable so the Account
-    pane shows its 'service unavailable' state."""
     monkeypatch.delenv("TAOS_ACCOUNT_BASE_URL", raising=False)
     r = await client.get("/api/account/me")
     assert r.status_code == 503
@@ -29,32 +34,55 @@ async def test_account_me_503_when_unconfigured(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_account_me_forwards_and_relays_cookie(client, monkeypatch):
-    """When configured, /api/account/me forwards to {base}/api/auth/me and the
-    upstream Set-Cookie (the taos.my session) is relayed back to the browser."""
+async def test_account_me_forwards_body_and_relays_cookie(client, monkeypatch):
+    """/api/account/me forwards to {base}/api/auth/me; the upstream body and
+    content-type pass through verbatim and the session cookie is relayed."""
     monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my/")
     captured: dict[str, str] = {}
-
-    class FakeResp:
-        status_code = 200
-        headers = httpx.Headers({"set-cookie": "taosgo_session=abc; Path=/"})
-
-        def json(self):
-            return {"user_id": "u1", "email": "a@b.c", "taosgo": {"status": "none"}}
 
     async def handler(method, url, **kw):
         captured["method"] = method
         captured["url"] = url
-        return FakeResp()
+        return _FakeResp(
+            content=b'{"user_id":"u1","email":"a@b.c","taosgo":{"status":"none"}}',
+            headers={
+                "content-type": "application/json",
+                "set-cookie": "taosgo_session=abc; Path=/",
+            },
+        )
 
     _patch_upstream(monkeypatch, handler)
     r = await client.get("/api/account/me")
     assert r.status_code == 200
     assert r.json()["email"] == "a@b.c"
-    # Trailing slash on the base is stripped; the auth path is appended once.
     assert captured["url"] == "https://taos.my/api/auth/me"
     assert captured["method"] == "GET"
     assert "taosgo_session=abc" in r.headers.get("set-cookie", "")
+
+
+@pytest.mark.asyncio
+async def test_set_cookie_rescoped_to_proxy_origin(client, monkeypatch):
+    """A taos.my cookie carrying Domain + Secure must be rescoped to this
+    origin, or the browser rejects it: Domain is stripped, and Secure is
+    dropped because the test client speaks http. Other attrs are preserved."""
+    monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+
+    async def handler(method, url, **kw):
+        return _FakeResp(
+            content=b"{}",
+            headers={
+                "content-type": "application/json",
+                "set-cookie": "taosgo_session=abc; Path=/; Domain=taos.my; Secure; HttpOnly",
+            },
+        )
+
+    _patch_upstream(monkeypatch, handler)
+    r = await client.get("/api/account/me")
+    sc = r.headers.get("set-cookie", "")
+    assert "taosgo_session=abc" in sc
+    assert "domain=" not in sc.lower()
+    assert "secure" not in sc.lower()
+    assert "HttpOnly" in sc
 
 
 @pytest.mark.asyncio
