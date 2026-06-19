@@ -119,6 +119,17 @@ async def serve_chat_pwa_assets(rest: str = ""):
     return JSONResponse({"error": "Chat PWA not built"}, status_code=404)
 
 
+@router.get("/app.html")
+async def serve_app_pwa():
+    """Serve the generic standalone app PWA shell. It reads ?app=<id> at runtime
+    and mounts that app full-screen (assets load from the /desktop/assets base,
+    same as the chat PWA)."""
+    app_html = SPA_DIR / "app.html"
+    if app_html.exists():
+        return FileResponse(app_html, media_type="text/html")
+    return JSONResponse({"error": "App PWA shell not built"}, status_code=404)
+
+
 @router.post("/api/desktop/browser/agent-command")
 async def browser_agent_command(request: Request):
     """Execute a natural language command on the current page using browser-use."""
