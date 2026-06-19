@@ -85,12 +85,6 @@ class TestInstallProgressStore:
 
     def test_start_returns_entry_with_defaults(self, monkeypatch):
         fake_id = "abc123"
-        monkeypatch.setattr(
-            "tinyagentos.install_progress.uuid.uuid4",
-            type("F", (), {"hex": fake_id})(),
-        )
-        # uuid.uuid4() returns an object whose .hex attribute is the id;
-        # monkeypatch the call to return a simple namespace.
         import types
         monkeypatch.setattr(
             "tinyagentos.install_progress.uuid",
