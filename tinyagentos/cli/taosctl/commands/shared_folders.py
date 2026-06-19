@@ -49,7 +49,12 @@ def _list(args, client):
 
 
 def _get(args, client):
-    return client.get(f"/api/shared-folders/{quote(args.id, safe='')}")
+    # No single-folder GET route exists; fetch the list and filter by id.
+    rows = client.get("/api/shared-folders")
+    for row in rows or []:
+        if str(row.get("id")) == str(args.id):
+            return row
+    raise SystemExit(f"no shared folder with id: {args.id}")
 
 
 def _create(args, client):
