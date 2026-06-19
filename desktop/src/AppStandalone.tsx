@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useMemo } from "react";
 import { getApp } from "./registry/app-registry";
 import { InstallPromptBanner } from "./shell/InstallPromptBanner";
 import type { ComponentType } from "react";
@@ -10,13 +10,19 @@ interface Props {
 export function AppStandalone({ appId }: Props) {
   const manifest = getApp(appId);
 
-  // Guard: caller should verify pwa:true before mounting this component.
-  if (!manifest) return null;
-
-  const AppComponent = lazy(
+  // Create the lazy component ONCE per appId. Calling lazy() in the render body
+  // makes a new component type every render, which unmounts and remounts the
+  // app (losing its state) on any re-render.
+  const AppComponent = useMemo(
     () =>
-      manifest.component() as Promise<{ default: ComponentType<{ windowId: string }> }>,
+      manifest
+        ? lazy(() => manifest.component() as Promise<{ default: ComponentType<{ windowId: string }> }>)
+        : null,
+    [appId],
   );
+
+  // Guard: caller should verify pwa:true before mounting this component.
+  if (!manifest || !AppComponent) return null;
 
   return (
     <div
