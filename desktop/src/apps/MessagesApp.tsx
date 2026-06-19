@@ -2709,7 +2709,10 @@ export function MessagesApp({
           selectedId={selectedChannel ?? busSelected}
           onBack={() => { setSelectedChannel(null); setBusSelected(null); }}
           listTitle="Messages"
-          detailTitle={busSelected ?? currentChannel?.name}
+          // On mobile the in-pane channel header already shows the channel name
+          // (and its toolbar), so suppressing the nav title removes the doubled
+          // name and the dead space it took up. Desktop keeps it.
+          detailTitle={isMobile ? undefined : (busSelected ?? currentChannel?.name)}
           listWidth={240}
           list={channelListUI}
           detail={messageAreaUI}
