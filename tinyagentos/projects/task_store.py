@@ -247,6 +247,25 @@ class ProjectTaskStore(BaseStore):
                 await self._publish(existing["project_id"], "task.closed", {"id": task_id, "closed_by": closed_by})
         return changed
 
+    async def reopen_task(self, task_id: str, reopened_by: str) -> bool:
+        """Undo a close: a closed task returns to the open pool (claimer stays
+        cleared, so a free agent can pick it up again). Only acts on a closed
+        task; returns False otherwise."""
+        now = time.time()
+        cursor = await self._db.execute(
+            """UPDATE project_tasks
+               SET status = 'open', closed_by = NULL, closed_at = NULL, close_reason = NULL, updated_at = ?
+               WHERE id = ? AND status = 'closed'""",
+            (now, task_id),
+        )
+        await self._db.commit()
+        changed = cursor.rowcount == 1
+        if changed:
+            existing = await self.get_task(task_id)
+            if existing is not None:
+                await self._publish(existing["project_id"], "task.reopened", {"id": task_id, "reopened_by": reopened_by})
+        return changed
+
     async def add_relationship(
         self,
         project_id: str,
