@@ -318,6 +318,10 @@ async def client(app, tmp_data_dir):
     if office_docs._db is not None:
         await office_docs.close()
     await office_docs.init()
+    feedback_store = app.state.feedback_store
+    if feedback_store._db is not None:
+        await feedback_store.close()
+    await feedback_store.init()
     # BrowserApp v2 stores
     from tinyagentos.routes.desktop_browser.store import BrowserStore, BrowserCookieStore
     _browser_store = BrowserStore(tmp_data_dir / "browser.sqlite3")
@@ -369,6 +373,7 @@ async def client(app, tmp_data_dir):
     await notif_store.close()
     await store.close()
     await office_docs.close()
+    await feedback_store.close()
     await app.state.qmd_client.close()
     await app.state.http_client.aclose()
     await _browser_store.close()

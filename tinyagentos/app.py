@@ -85,6 +85,7 @@ from tinyagentos.chat.channel_store import ChatChannelStore
 from tinyagentos.chat.hub import ChatHub
 from tinyagentos.chat.canvas import CanvasStore
 from tinyagentos.desktop_settings import DesktopSettingsStore
+from tinyagentos.feedback_store import FeedbackStore
 from tinyagentos.user_memory import UserMemoryStore
 from tinyagentos.user_personas import UserPersonaStore
 from tinyagentos.installed_apps import InstalledAppsStore
@@ -342,6 +343,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     user_memory = UserMemoryStore(data_dir / "user_memory.db")
     user_personas = UserPersonaStore(data_dir / "user_personas.db")
     installed_apps = InstalledAppsStore(data_dir / "installed_apps.db")
+    feedback_store = FeedbackStore(data_dir / "feedback.db")
     from tinyagentos.userspace.store import UserspaceAppStore
     from tinyagentos.userspace.data_store import UserspaceDataStore
     userspace_apps = UserspaceAppStore(data_dir / "userspace_apps.db")
@@ -427,6 +429,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await desktop_settings.init()
         await user_memory.init()
         await installed_apps.init()
+        await feedback_store.init()
+        app.state.feedback_store = feedback_store
         await userspace_apps.init()
         app.state.userspace_apps = userspace_apps
         await userspace_data.init()
@@ -1137,6 +1141,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await knowledge_graph.close()
         await archive.close()
         await installed_apps.close()
+        await feedback_store.close()
         await userspace_apps.close()
         await userspace_data.close()
         await office_docs.close()
@@ -1313,6 +1318,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.user_memory = user_memory
     app.state.user_personas = user_personas
     app.state.installed_apps = installed_apps
+    app.state.feedback_store = feedback_store
     app.state.userspace_apps = userspace_apps
     app.state.userspace_data = userspace_data
     app.state.office_docs = office_docs
