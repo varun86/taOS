@@ -300,3 +300,6 @@ def register_all_routers(app):
     app.include_router(office_router)
     from tinyagentos.routes.coding import router as coding_router
     app.include_router(coding_router)
+
+    from tinyagentos.routes.manifest import router as manifest_router
+    app.include_router(manifest_router)

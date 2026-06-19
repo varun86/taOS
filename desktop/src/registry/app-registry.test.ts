@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getOrRegisterServiceApp, prefetchApp, resolveApp } from "./app-registry";
+import { getApp, getOrRegisterServiceApp, getAllApps, prefetchApp, resolveApp } from "./app-registry";
 
 describe("resolveApp (deep-navigation token resolver)", () => {
   it("resolves an exact app id", () => {
@@ -25,6 +25,19 @@ describe("resolveApp (deep-navigation token resolver)", () => {
     expect(resolveApp("does-not-exist")).toBeUndefined();
     expect(resolveApp("")).toBeUndefined();
     expect(resolveApp("   ")).toBeUndefined();
+  });
+});
+
+describe("pwa flag", () => {
+  it("messages has pwa:true", () => {
+    expect(getApp("messages")?.pwa).toBe(true);
+  });
+
+  it("pwa is absent or falsy on all other apps", () => {
+    const others = getAllApps().filter((a) => a.id !== "messages");
+    for (const app of others) {
+      expect(app.pwa, `${app.id} should not have pwa:true`).toBeFalsy();
+    }
   });
 });
 

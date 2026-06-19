@@ -18,11 +18,17 @@ export interface AppManifest {
    * persisted server-side (installed_apps, kind=frontend-app).
    */
   optional?: boolean;
+  /**
+   * Opt-in flag: only pwa:true apps are installable as standalone PWAs and
+   * get the title-bar Install button plus a dynamic manifest served by the
+   * backend. A fuller DRY source (shared with the backend) is a follow-up.
+   */
+  pwa?: boolean;
 }
 
 const apps: AppManifest[] = [
   // Platform apps
-  { id: "messages", name: "Messages", icon: "message-circle", category: "platform", component: () => import("@/apps/MessagesApp").then((m) => ({ default: m.MessagesApp })), defaultSize: { w: 900, h: 600 }, minSize: { w: 400, h: 300 }, singleton: true, pinned: true, launchpadOrder: 1 },
+  { id: "messages", name: "Messages", icon: "message-circle", category: "platform", component: () => import("@/apps/MessagesApp").then((m) => ({ default: m.MessagesApp })), defaultSize: { w: 900, h: 600 }, minSize: { w: 400, h: 300 }, singleton: true, pinned: true, launchpadOrder: 1, pwa: true },
   { id: "mail", name: "Mail", icon: "mail", category: "platform", component: () => import("@/apps/MailApp").then((m) => ({ default: m.MailApp })), defaultSize: { w: 1200, h: 800 }, minSize: { w: 720, h: 480 }, singleton: true, pinned: true, launchpadOrder: 1.25 },
   { id: "projects", name: "Projects", icon: "folder-kanban", category: "platform", component: () => import("@/apps/ProjectsApp").then((m) => ({ default: m.ProjectsApp })), defaultSize: { w: 1100, h: 720 }, minSize: { w: 700, h: 500 }, singleton: true, pinned: true, launchpadOrder: 1.5 },
   { id: "agents", name: "Agents", icon: "bot", category: "platform", component: () => import("@/apps/AgentsApp").then((m) => ({ default: m.AgentsApp })), defaultSize: { w: 1000, h: 650 }, minSize: { w: 500, h: 400 }, singleton: true, pinned: true, launchpadOrder: 2 },
