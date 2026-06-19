@@ -64,6 +64,13 @@ async def mark_all_read(request: Request):
     return {"ok": True}
 
 
+@router.post("/api/notifications/mark-all-read")
+async def mark_all_read_counted(request: Request):
+    store = request.app.state.notifications
+    count = await store.mark_all_read()
+    return {"marked": count}
+
+
 @router.get("/api/notifications/prefs")
 async def get_notification_prefs(request: Request):
     store = request.app.state.notifications
