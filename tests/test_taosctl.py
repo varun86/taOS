@@ -94,6 +94,13 @@ def test_agents_get_targets_named_agent(monkeypatch, capsys):
     assert ("GET", "/api/agents/alpha") in fake.calls
 
 
+def test_agents_get_url_encodes_the_name(monkeypatch, capsys):
+    fake = _FakeClient()
+    rc = _run(monkeypatch, ["--json", "agents", "get", "a/b c"], fake)
+    assert rc == 0
+    assert ("GET", "/api/agents/a%2Fb%20c") in fake.calls
+
+
 def test_api_error_maps_to_exit_2(monkeypatch, capsys):
     fake = _FakeClient()
     fake._raise = cli_client.ApiError(404, "no such agent")
@@ -139,3 +146,19 @@ def test_auth_login_writes_config_owner_only(monkeypatch, tmp_path):
     assert cfg.exists()
     assert stat.S_IMODE(cfg.stat().st_mode) == 0o600
     assert json.loads(cfg.read_text())["token"] == "sekret"
+
+
+def test_auth_login_does_not_persist_env_only_token(monkeypatch, tmp_path):
+    import argparse
+
+    from tinyagentos.cli.taosctl.commands import auth as auth_cmd
+
+    cfg = tmp_path / "config.json"
+    monkeypatch.setattr(cli_client, "CONFIG_PATH", cfg)
+    monkeypatch.setenv("TAOS_TOKEN", "env-secret")
+    monkeypatch.delenv("TAOS_URL", raising=False)
+    # bare `auth login` (no --token): the env token must NOT be written to disk
+    auth_cmd._login(argparse.Namespace(url="http://h:1", token=None), None)
+    saved = json.loads(cfg.read_text())
+    assert saved["token"] is None
+    assert saved["url"] == "http://h:1"

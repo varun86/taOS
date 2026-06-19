@@ -26,7 +26,12 @@ def register(subparsers) -> None:
 
 
 def _login(args, client):
-    url, token = _client.resolve(args.url, args.token)
+    # Persist only what the user explicitly passes, falling back to the existing
+    # config file (NOT env vars). resolve() would pull in TAOS_TOKEN, which would
+    # silently write an env-only token to disk on a bare `auth login`.
+    existing = _client._load_config()
+    url = args.url or existing.get("url") or _client.DEFAULT_URL
+    token = args.token if args.token is not None else existing.get("token")
     _client.CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     payload = json.dumps({"url": url, "token": token}, indent=2)
     # The config holds a credential, so create it owner-only (0o600) and
