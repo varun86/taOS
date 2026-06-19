@@ -11,7 +11,7 @@ def register(subparsers) -> None:
 
     lp = verbs.add_parser("list", help="List browsing history")
     lp.add_argument("--source-type", dest="source_type", default=None, help="Filter by source type")
-    lp.add_argument("--limit", type=int, default=50, help="Max items to return")
+    lp.add_argument("--limit", type=int, default=None, help="Max items to return")
     lp.set_defaults(func=_list)
 
     cp = verbs.add_parser("clear", help="Clear browsing history")
@@ -23,7 +23,7 @@ def _list(args, client):
     params = {}
     if args.source_type is not None:
         params["source_type"] = args.source_type
-    if args.limit != 50:
+    if args.limit is not None:
         params["limit"] = args.limit
     return client.get("/api/browsing-history", params=params or None)
 
