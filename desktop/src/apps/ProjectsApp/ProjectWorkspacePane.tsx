@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { Project } from "@/lib/projects";
 import { MessagesApp } from "@/apps/MessagesApp";
 import { CanvasView } from "./canvas/CanvasView";
+import { useIsMobile } from "../../hooks/use-is-mobile";
 import styles from "./ProjectsApp.module.css";
 
 type PreviewMode = "preview" | "code" | "canvas";
@@ -23,6 +24,7 @@ const MIN_LEFT = 360;
  * true streamed live build preview is #59 phase 2/3 (see TODO below).
  */
 export function ProjectWorkspacePane({ project }: { project: Project }) {
+  const isMobile = useIsMobile();
   const [mode, setMode] = useState<PreviewMode>("preview");
   const [rightWidth, setRightWidth] = useState(472);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,30 +52,36 @@ export function ProjectWorkspacePane({ project }: { project: Project }) {
 
   return (
     <div className={styles.ws} ref={containerRef}>
-      {/* LEFT: real project channel thread + composer */}
-      <div className={styles.wsLeft}>
-        <div className={styles.wsThread}>
-          <MessagesApp
-            key={project.id}
-            windowId={`project-workspace-messages-${project.id}`}
-            scope={{ projectId: project.id }}
+      {/* LEFT: real project channel thread + composer. Desktop only -- on mobile
+          the squeezed split made messages unreadable, so Messages is its own
+          full-page tab and the Workspace pane shows just the preview. */}
+      {!isMobile && (
+        <>
+          <div className={styles.wsLeft}>
+            <div className={styles.wsThread}>
+              <MessagesApp
+                key={project.id}
+                windowId={`project-workspace-messages-${project.id}`}
+                scope={{ projectId: project.id }}
+              />
+            </div>
+          </div>
+
+          {/* draggable resize divider */}
+          <div
+            className={styles.wsDivider}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panes"
+            onPointerDown={onDividerDown}
+            onPointerMove={onDividerMove}
+            onPointerUp={onDividerUp}
           />
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* draggable resize divider */}
-      <div
-        className={styles.wsDivider}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize panes"
-        onPointerDown={onDividerDown}
-        onPointerMove={onDividerMove}
-        onPointerUp={onDividerUp}
-      />
-
-      {/* RIGHT: preview / code / canvas */}
-      <div className={styles.wsRight} style={{ width: rightWidth }}>
+      {/* RIGHT: preview / code / canvas (full width on mobile) */}
+      <div className={styles.wsRight} style={isMobile ? { width: "100%", flex: 1 } : { width: rightWidth }}>
         <div className={styles.pvBar}>
           <div className={styles.seg} role="tablist" aria-label="Preview mode">
             {(["preview", "code", "canvas"] as PreviewMode[]).map((m) => (
