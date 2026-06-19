@@ -42,7 +42,12 @@ def _list(args, client):
 
 
 def _get(args, client):
-    return client.get(f"/api/apps/installed/{quote(args.app_id, safe='')}")
+    # No single-app backend route exists; fetch the installed list and filter.
+    rows = client.get("/api/apps/installed")
+    for row in rows or []:
+        if row.get("app_id") == args.app_id:
+            return row
+    raise SystemExit(f"no installed app with id: {args.app_id}")
 
 
 def _installed(args, client):
