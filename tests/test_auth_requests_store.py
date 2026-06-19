@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from unittest.mock import patch
+
 import pytest
 
 from tinyagentos.auth_requests_store import AuthRequestsStore
@@ -76,16 +79,25 @@ async def test_list_pending_empty(tmp_path):
 
 @pytest.mark.asyncio
 async def test_list_pending_returns_only_pending_ordered_by_created_ts(tmp_path):
-    s = await _store(tmp_path)
-    r1 = await s.create(identity_claim="a", framework="f", requested_scopes=[])
-    r2 = await s.create(identity_claim="b", framework="f", requested_scopes=[])
-    r3 = await s.create(identity_claim="c", framework="f", requested_scopes=[])
-    await s.set_decision(r2["id"], "accepted", canonical_id="cid", token="t", decided_by="admin")
-    pending = await s.list_pending()
-    ids = [r["id"] for r in pending]
-    assert ids == [r1["id"], r3["id"]]
-    assert all(r["status"] == "pending" for r in pending)
-    await s.close()
+    times = [
+        datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+        datetime(2026, 1, 1, 0, 0, 2, tzinfo=timezone.utc),
+        datetime(2026, 1, 1, 0, 0, 3, tzinfo=timezone.utc),
+    ]
+    with patch("tinyagentos.auth_requests_store.datetime") as mock_dt:
+        mock_dt.now.side_effect = times
+        mock_dt.timezone = timezone
+        s = await _store(tmp_path)
+        r1 = await s.create(identity_claim="a", framework="f", requested_scopes=[])
+        r2 = await s.create(identity_claim="b", framework="f", requested_scopes=[])
+        r3 = await s.create(identity_claim="c", framework="f", requested_scopes=[])
+        await s.set_decision(r2["id"], "accepted", canonical_id="cid", token="t", decided_by="admin")
+        pending = await s.list_pending()
+        ids = [r["id"] for r in pending]
+        assert ids == [r1["id"], r3["id"]]
+        assert all(r["status"] == "pending" for r in pending)
+        await s.close()
 
 
 @pytest.mark.asyncio
