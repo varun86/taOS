@@ -4,6 +4,8 @@
 
 # taOS
 
+**Your AI, your hardware, your data.** Self-hosted AI where your agents' memory, conversations, and files live on machines you own, fully offline when you want, cloud only when you choose.
+
 > **Beta (2026-06-02).** This is beta software meant for testers running it on their own hardware, so expect rough edges. The install script, backend, API, memory system (taOSmd), and multi-framework group chat all work; the desktop GUI is wired up for everyday use but a few flows (some agent management, worker connections, model routing) are still being smoothed out. Star or watch the repo to follow progress and catch the next release.
 >
 > **A heads-up on the catalogs:** with 100+ apps, 16 frameworks, and a large model catalog, plenty of install manifests have not been exercised on real hardware yet, so some apps, frameworks, and models will fail to install. If one does, [open an issue](https://github.com/jaylfc/tinyagentos/issues) with the name and the error you saw and I will fix the manifest as soon as I can. These reports are genuinely useful, most manifest fixes ship same-day.
@@ -29,6 +31,17 @@ A full web desktop environment with 36 bundled apps, 108 catalog apps, 47 MCP pl
 **Framework-agnostic by design.** taOS owns everything that matters: your agent's memory, files, communication channels, model access, and configuration. The agent framework is just a replaceable execution engine. Switch from SmolAgents to LangChain to OpenClaw and your agent keeps its entire history, all its Telegram/Discord/Slack connections, its trained LoRA adapters, its files, and its API keys. No migration, no data loss, no reconfiguration. This is possible because taOS manages the full agent lifecycle outside the framework.
 
 **[taOSmd](https://github.com/jaylfc/taosmd) -- Framework-agnostic AI memory system.** 97.0% **end-to-end Judge accuracy** on [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval) -- retrieve → generate → judge-with-LLM-grader, 500 questions across 50+ sessions each. For context, the most-cited open comparators -- MemPalace (96.6%) and agentmemory (95.2%) -- publish **Recall@5** retrieval scores on the same dataset, which measures only whether the correct session lands in the top-5 (no generation, no judge). The metrics aren't apples-to-apples until one of us re-runs end-to-end; ours is the stricter measurement. Per-category on our hybrid-plus-query-expansion config: knowledge-update 100%, multi-session 98.5%, single-session-user 97.1%, single-session-assistant 96.4%, temporal-reasoning 94.0%, single-session-preference 90.0%. Everything runs on a £170 Orange Pi 5 Plus with no cloud dependencies. The stack: temporal knowledge graph with validity windows + contradiction detection, hybrid semantic+keyword vector search with cross-encoder rerank and LLM-assisted query expansion (the "Librarian" layer), zero-loss append-only archive, automatic fact extraction, intent-aware retrieval routing, multi-layer context assembly. Any agent framework can read/write through the HTTP API.
+
+### Your data stays yours
+
+Most AI assistants keep your memory, conversations, and files on their servers. taOS keeps them on yours.
+
+- **Offline memory.** Your AI's long-term memory is a self-hosted knowledge graph on your own box (a £170 Orange Pi is enough), not a row in someone else's cloud database.
+- **Self-hosted agents and chat.** Your agents, their conversations, and your channels run on hardware you control.
+- **Your compute, your models.** A local model catalog and cluster inference on your own devices; cloud models are opt-in, never required.
+- **Auditable and exit-able.** Source-available, with a self-hostable binary mirror and an air-gapped install path. Nothing locks you in.
+
+Sovereignty by default, cloud by choice. Run taOS fully offline, or connect a cloud model or paid remote access (taOSgo) when you decide it is worth it. The default is that your data never leaves your hardware.
 
 ---
 
