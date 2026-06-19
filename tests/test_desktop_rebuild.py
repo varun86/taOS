@@ -204,3 +204,61 @@ async def test_rebuild_success(tmp_path, monkeypatch):
     assert result.rebuilt is True
     assert result.success is True
     assert "successfully" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# npm-install gate: only reinstall when package-lock.json changes
+# ---------------------------------------------------------------------------
+
+from tinyagentos.desktop_rebuild import (
+    _deps_install_needed,
+    _record_deps_install,
+    _lockfile_hash,
+)
+
+
+def _mk_desktop(tmp_path, *, lock="{}", node_modules=True):
+    d = tmp_path / "desktop"
+    d.mkdir(parents=True, exist_ok=True)
+    if lock is not None:
+        (d / "package-lock.json").write_text(lock)
+    if node_modules:
+        (d / "node_modules").mkdir(exist_ok=True)
+    return d
+
+
+def test_deps_needed_when_node_modules_missing(tmp_path):
+    d = _mk_desktop(tmp_path, node_modules=False)
+    assert _deps_install_needed(d) is True
+
+
+def test_deps_needed_when_no_lockfile(tmp_path):
+    d = _mk_desktop(tmp_path, lock=None)
+    assert _deps_install_needed(d) is True
+
+
+def test_deps_needed_when_no_marker(tmp_path):
+    """node_modules + lockfile but never recorded → must install."""
+    d = _mk_desktop(tmp_path)
+    assert _deps_install_needed(d) is True
+
+
+def test_deps_skipped_after_record(tmp_path):
+    d = _mk_desktop(tmp_path, lock='{"v":1}')
+    _record_deps_install(d)
+    assert _deps_install_needed(d) is False
+
+
+def test_deps_needed_again_when_lockfile_changes(tmp_path):
+    d = _mk_desktop(tmp_path, lock='{"v":1}')
+    _record_deps_install(d)
+    assert _deps_install_needed(d) is False
+    # A dependency bump rewrites package-lock.json → hash changes → reinstall.
+    (d / "package-lock.json").write_text('{"v":2}')
+    assert _deps_install_needed(d) is True
+
+
+def test_lockfile_hash_none_without_file(tmp_path):
+    d = tmp_path / "desktop"
+    d.mkdir()
+    assert _lockfile_hash(d) is None
