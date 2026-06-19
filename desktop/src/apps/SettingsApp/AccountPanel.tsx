@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type FormEvent } from "react";
+import { useState, useEffect, useCallback, useRef, type FormEvent } from "react";
 import { LogOut, AlertCircle, ShieldCheck, Plane } from "lucide-react";
 import { Button, Card, Input, Label } from "@/components/ui";
 import {
@@ -103,12 +103,15 @@ function SignedOut({ onSignedIn }: { onSignedIn: (account: Account) => void }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     const result = await (mode === "signin" ? login : register)(email.trim(), password);
+    if (!mounted.current) return;
     setBusy(false);
     if (isAuthError(result)) setError(result.message);
     else onSignedIn(result);
@@ -188,16 +191,19 @@ function SignedOut({ onSignedIn }: { onSignedIn: (account: Account) => void }) {
 
 export function AccountSection() {
   const [state, setState] = useState<AccountState>({ kind: "loading" });
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
   const load = useCallback(async () => {
-    setState(await fetchAccount());
+    const next = await fetchAccount();
+    if (mounted.current) setState(next);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const handleSignOut = async () => {
     await logout();
-    setState({ kind: "signed-out" });
+    if (mounted.current) setState({ kind: "signed-out" });
   };
 
   return (

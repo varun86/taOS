@@ -35,6 +35,21 @@ export interface AuthError {
 
 const BASE = "/api/account";
 
+/** Validate an unknown payload is a well-formed Account before the UI trusts it.
+ *  The backend is external (taos.my); a malformed /me must not crash the render. */
+function isAccount(x: unknown): x is Account {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  const t = o.taosgo as Record<string, unknown> | undefined;
+  return (
+    typeof o.user_id === "string" &&
+    typeof o.email === "string" &&
+    !!t &&
+    typeof t === "object" &&
+    typeof t.status === "string"
+  );
+}
+
 async function call(path: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE}${path}`, {
     method: body !== undefined ? "POST" : "GET",
@@ -54,7 +69,10 @@ export async function fetchAccount(): Promise<AccountState> {
   if (r.status === 401) return { kind: "signed-out" };
   if (!r.ok) return { kind: "unavailable" };
   try {
-    return { kind: "signed-in", account: (await r.json()) as Account };
+    const data: unknown = await r.json();
+    return isAccount(data)
+      ? { kind: "signed-in", account: data }
+      : { kind: "unavailable" };
   } catch {
     return { kind: "unavailable" };
   }
@@ -85,7 +103,10 @@ async function authAction(
     return { message: msg };
   }
   try {
-    return (await r.json()) as Account;
+    const data: unknown = await r.json();
+    return isAccount(data)
+      ? data
+      : { message: "Unexpected response from the account service." };
   } catch {
     return { message: "Unexpected response from the account service." };
   }
