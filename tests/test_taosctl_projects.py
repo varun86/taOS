@@ -14,13 +14,15 @@ class _FakeClient:
         self.calls.append(("GET", path))
         return {"items": [{"id": "p1", "name": "alpha"}]}
 
-    def post(self, path, json=None):
+    def post(self, path, body=None, params=None):
         self.calls.append(("POST", path))
-        return {"id": "p2", "name": (json or {}).get("name", "x")}
+        self.last_body = body
+        return {"id": "p2", "name": (body or {}).get("name", "x")}
 
-    def patch(self, path, json=None):
+    def patch(self, path, body=None):
         self.calls.append(("PATCH", path))
-        return {"id": "p1", "name": json.get("name", "x")}
+        self.last_body = body
+        return {"id": "p1", "name": (body or {}).get("name", "x")}
 
     def delete(self, path):
         self.calls.append(("DELETE", path))
@@ -51,6 +53,7 @@ def test_projects_create_sends_post_with_body(monkeypatch):
     rc = _run(monkeypatch, ["projects", "create", "alpha", "alpha-slug"], fake)
     assert rc == 0
     assert ("POST", "/api/projects") in fake.calls
+    assert fake.last_body == {"name": "alpha", "slug": "alpha-slug", "description": ""}
 
 
 def test_projects_update_sends_patch_with_fields(monkeypatch):
@@ -58,6 +61,7 @@ def test_projects_update_sends_patch_with_fields(monkeypatch):
     rc = _run(monkeypatch, ["projects", "update", "p1", "--name", "beta"], fake)
     assert rc == 0
     assert ("PATCH", "/api/projects/p1") in fake.calls
+    assert fake.last_body == {"name": "beta"}
 
 
 def test_projects_delete_hits_correct_endpoint(monkeypatch):

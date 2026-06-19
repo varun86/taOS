@@ -100,6 +100,7 @@ async def test_close_task_records_metadata(store):
 @pytest.mark.asyncio
 async def test_reopen_task_returns_closed_task_to_open_pool(store):
     t = await store.create_task(project_id="p", title="A", created_by="u")
+    await store.claim_task(t["id"], claimer_id="agent-1")
     await store.close_task(t["id"], closed_by="agent-1", reason="oops")
     assert await store.reopen_task(t["id"], reopened_by="jay") is True
     reopened = await store.get_task(t["id"])
@@ -107,6 +108,9 @@ async def test_reopen_task_returns_closed_task_to_open_pool(store):
     assert reopened["closed_by"] is None
     assert reopened["closed_at"] is None
     assert reopened["close_reason"] is None
+    # reopened task must return to the claimable pool, so the old claimer clears
+    assert reopened["claimed_by"] is None
+    assert reopened["claimed_at"] is None
 
 
 @pytest.mark.asyncio

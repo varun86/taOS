@@ -46,7 +46,7 @@ def _get(args, client):
 
 def _create(args, client):
     body = {"name": args.name, "slug": args.slug, "description": args.description}
-    return client.post("/api/projects", json=body)
+    return client.post("/api/projects", body=body)
 
 
 def _update(args, client):
@@ -55,7 +55,7 @@ def _update(args, client):
         body["name"] = args.name
     if args.description is not None:
         body["description"] = args.description
-    return client.patch(f"/api/projects/{args.id}", json=body)
+    return client.patch(f"/api/projects/{args.id}", body=body)
 
 
 def _delete(args, client):

@@ -1,6 +1,8 @@
 """Tests for the taosctl tasks command group."""
 from __future__ import annotations
 
+import pytest
+
 from tinyagentos.cli.taosctl import __main__ as cli_main
 
 
@@ -74,6 +76,14 @@ def test_tasks_update_hits_correct_endpoint(monkeypatch):
     ], fake)
     assert rc == 0
     assert ("PUT", "/api/tasks/42") in fake.calls
+
+
+def test_tasks_update_rejects_invalid_enabled(monkeypatch):
+    fake = _FakeClient()
+    with pytest.raises(SystemExit):
+        _run(monkeypatch, ["tasks", "update", "42", "--enabled", "maybe"], fake)
+    # an unrecognised value must error, not silently disable the task
+    assert ("PUT", "/api/tasks/42") not in fake.calls
 
 
 def test_tasks_delete_hits_correct_endpoint(monkeypatch):
