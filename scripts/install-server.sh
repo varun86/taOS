@@ -1159,20 +1159,60 @@ ensure_litellm_postgres() {
 ensure_litellm_postgres
 
 # --- desktop SPA bundle --------------------------------------------------
-# Build the frontend unconditionally on every install / upgrade. The bundle
-# is not committed to git (static/desktop/ is gitignored) so this is the
-# only step that produces it. Skipping or making this conditional would
-# leave new installs with no UI. ~50s on a Pi; essentially free on a laptop.
+# The bundle is not committed to git (static/desktop/ is gitignored), so it has
+# to come from somewhere on every install / upgrade. Prefer a PREBUILT bundle
+# published by CI (keyed by the git tree SHA of desktop/, so it is valid for
+# every commit that does not touch the frontend) and download it -- this skips
+# the vite build, which needs ~2-4GB and OOMs on small machines (e.g. an 8GB
+# WSL), where a failed build used to leave the install silently stuck on the
+# old UI. Fall back to a local build only when no matching prebuilt is available.
 
-if command -v npm >/dev/null 2>&1; then
-    log "building desktop SPA (cd desktop && npm install && npm run build)"
-    (cd "$INSTALL_DIR/desktop" && npm install --silent && npm run build) \
-        || die "desktop SPA build failed — see output above"
-    log "desktop bundle built into static/desktop/"
-else
-    warn "npm not found on PATH — desktop UI bundle was not built"
-    warn "  install Node.js (>=22), then run: cd desktop && npm install && npm run build"
-    warn "  see: https://nodejs.org/en/download"
+_bundle_base="https://github.com/jaylfc/taOS/releases/download/bundle-latest"
+_desktop_tree="$(git -C "$INSTALL_DIR" rev-parse HEAD:desktop 2>/dev/null || echo "")"
+_prebuilt_done=0
+if [[ -n "$_desktop_tree" ]]; then
+    _remote_tree="$(curl -fsSL --max-time 20 "$_bundle_base/desktop-tree.txt" 2>/dev/null | tr -d '[:space:]')"
+    if [[ -n "$_remote_tree" && "$_remote_tree" == "$_desktop_tree" ]]; then
+        log "fetching prebuilt desktop bundle (matches source; no local build needed)"
+        rm -rf /tmp/taos-bundle-stage && mkdir -p /tmp/taos-bundle-stage
+        # Stage + verify in /tmp first, then swap, so a failed download/extract
+        # never leaves the install with no UI.
+        if curl -fsSL --max-time 120 "$_bundle_base/desktop-bundle.tar.gz" -o /tmp/taos-desktop-bundle.tar.gz \
+           && tar -C /tmp/taos-bundle-stage -xzf /tmp/taos-desktop-bundle.tar.gz \
+           && [[ -f /tmp/taos-bundle-stage/desktop/index.html ]]; then
+            rm -rf "$INSTALL_DIR/static/desktop"
+            mkdir -p "$INSTALL_DIR/static"
+            mv /tmp/taos-bundle-stage/desktop "$INSTALL_DIR/static/desktop"
+            # Match the repo owner so a later in-app rebuild (run as that user) can
+            # still write here; only meaningful when installing as root.
+            _own="$(stat -c '%U' "$INSTALL_DIR" 2>/dev/null || stat -f '%Su' "$INSTALL_DIR" 2>/dev/null || echo "")"
+            if [[ "$(id -u)" == "0" && -n "$_own" && "$_own" != "root" ]]; then
+                chown -R "$_own":"$_own" "$INSTALL_DIR/static/desktop" 2>/dev/null || true
+            fi
+            _prebuilt_done=1
+            log "prebuilt desktop bundle installed into static/desktop/"
+        else
+            warn "prebuilt bundle download/extract failed; falling back to a local build"
+        fi
+        rm -rf /tmp/taos-bundle-stage /tmp/taos-desktop-bundle.tar.gz
+    fi
+fi
+
+if [[ "$_prebuilt_done" == "0" ]]; then
+    if command -v npm >/dev/null 2>&1; then
+        log "building desktop SPA locally (no matching prebuilt bundle for this source)"
+        if ! (cd "$INSTALL_DIR/desktop" && npm install --silent && npm run build); then
+            die "desktop SPA build failed. This almost always means the machine ran out of memory: the vite build needs roughly 2-4GB free. On WSL the Linux VM is capped at about half of Windows RAM by default, so add to C:\\Users\\<you>\\.wslconfig:
+    [wsl2]
+    memory=12GB
+then run 'wsl --shutdown' in PowerShell, reopen, and re-run this installer. IMPORTANT: your UI was NOT updated -- the previous version keeps being served until the build succeeds."
+        fi
+        log "desktop bundle built into static/desktop/"
+    else
+        warn "npm not found on PATH -- desktop UI bundle was not built"
+        warn "  install Node.js (>=22), then re-run this installer"
+        warn "  see: https://nodejs.org/en/download"
+    fi
 fi
 
 # --- migrate: remove stale user-level qmd-serve.service (April 2026 rkllama unit) ---
