@@ -206,6 +206,40 @@ async def test_rebuild_success(tmp_path, monkeypatch):
     assert "successfully" in result.message.lower()
 
 
+@pytest.mark.asyncio
+async def test_rebuild_falls_back_to_npm_install_when_ci_fails(tmp_path, monkeypatch):
+    """npm ci failure falls back to npm install, restores the lockfile, then builds."""
+    src_dir = tmp_path / "desktop" / "src"
+    src_dir.mkdir(parents=True)
+    (src_dir / "App.tsx").write_text("// stale")
+    (tmp_path / "desktop" / "package.json").write_text('{"name":"x"}')
+
+    calls = []
+
+    class Proc:
+        def __init__(self, rc):
+            self.returncode = rc
+
+        async def communicate(self):
+            return b"", b""
+
+    async def fake_exec(*args, **kwargs):
+        calls.append(args)
+        if args[0] == "npm" and args[1] == "ci":
+            return Proc(1)  # ci fails -> fallback path
+        return Proc(0)  # npm install, git checkout, npm run build all succeed
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    result = await rebuild_desktop_bundle_if_stale(tmp_path)
+    assert result.rebuilt is True
+    assert result.success is True
+    cmds = [(a[0], a[1]) for a in calls]
+    assert ("npm", "ci") in cmds
+    assert ("npm", "install") in cmds  # fallback ran
+    assert ("git", "checkout") in cmds  # lockfile restored after install
+
+
 # ---------------------------------------------------------------------------
 # npm-install gate: only reinstall when package-lock.json changes
 # ---------------------------------------------------------------------------

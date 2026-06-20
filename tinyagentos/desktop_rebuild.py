@@ -167,15 +167,26 @@ async def rebuild_desktop_bundle_if_stale(
                     msg = f"npm install failed (rc={proc.returncode}): {stderr.decode(errors='replace')[-500:]}"
                     logger.error(msg)
                     return RebuildResult(rebuilt=True, success=False, message=msg)
-                # Discard the lockfile rewrite npm install just made so the
-                # working tree is clean for the next git-pull update.
-                restore = await asyncio.create_subprocess_exec(
-                    "git", "checkout", "--", "package-lock.json",
-                    cwd=str(desktop_dir),
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                await restore.communicate()
+                # Discard the lockfile rewrite npm install just made so the tree
+                # is clean for the next git-pull update. If this restore fails we
+                # only warn: apply_update() also restores the lockfile before
+                # every pull, so a dirty lockfile is double-covered there.
+                try:
+                    restore = await asyncio.create_subprocess_exec(
+                        "git", "checkout", "--", "package-lock.json",
+                        cwd=str(desktop_dir),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, rerr = await restore.communicate()
+                    if restore.returncode != 0:
+                        logger.warning(
+                            "could not restore package-lock.json after npm install "
+                            "(rc=%s): %s",
+                            restore.returncode, rerr.decode(errors="replace")[-200:],
+                        )
+                except FileNotFoundError:
+                    logger.warning("git not found; could not restore package-lock.json")
             _record_deps_install(desktop_dir)
         else:
             logger.info("Dependencies unchanged — skipping npm install.")
