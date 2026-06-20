@@ -6,6 +6,7 @@ import { getApp } from "@/registry/app-registry";
 import { getSnapBounds } from "@/hooks/use-snap-zones";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { WindowContent } from "./WindowContent";
+import { InstallHelperPanel } from "./InstallHelperPanel";
 
 interface Props {
   win: WindowState;
@@ -30,6 +31,7 @@ function WindowImpl({ win, onDrag, onDragStop }: Props) {
   const app = getApp(win.appId);
   const preSnapRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const isMobile = useIsMobile();
+  const [installOpen, setInstallOpen] = useState(false);
   const reduceMotion = useReducedMotion();
   // GPU drag hint: only promote the inner chrome to its own layer while the
   // user is actively dragging/resizing. Permanent will-change bloats GPU
@@ -269,7 +271,31 @@ function WindowImpl({ win, onDrag, onDragStop }: Props) {
           <div className="flex-1 text-center text-xs text-shell-text-secondary truncate">
             {app?.name ?? win.appId}
           </div>
-          <div className="w-12" />
+          <div className="w-12 flex items-center justify-end">
+            {app?.pwa && !isMobile && (
+              <button
+                className="flex items-center justify-center w-5 h-5 rounded opacity-50 hover:opacity-90 hover:bg-shell-surface-hover transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInstallOpen(true);
+                }}
+                aria-label={`Install ${app.name} as app`}
+                title={`Install ${app.name}`}
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5.5 1v6M2.5 5l3 3 3-3" />
+                  <path d="M1 9h9" />
+                </svg>
+              </button>
+            )}
+            {installOpen && app && (
+              <InstallHelperPanel
+                appId={win.appId}
+                appName={app.name}
+                onClose={() => setInstallOpen(false)}
+              />
+            )}
+          </div>
         </div>
 
         {/* Content */}

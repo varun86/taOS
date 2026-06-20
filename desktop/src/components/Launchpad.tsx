@@ -17,6 +17,7 @@ interface Props {
 
 const CATEGORY_LABELS: Record<string, string> = {
   platform: "Platform",
+  studio: "Studio",
   os: "Utilities",
   streaming: "Streaming Apps",
   game: "Games",
@@ -149,7 +150,7 @@ export function Launchpad({ open, onClose, onOpenApp }: Props) {
           {filteredUserspace.length > 0 && (
             <div>
               <h3 className="text-xs font-medium text-shell-text-tertiary uppercase tracking-wide mb-4 px-1">
-                Apps
+                My Apps
               </h3>
               <div className="grid gap-2 sm:gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))" }}>
                 {filteredUserspace.map((app) => (

@@ -87,3 +87,28 @@ def test_extract_rejects_zip_bomb(tmp_path, monkeypatch):
     data = _zip(WEB_MANIFEST, {"index.html": "<h1>more than eight bytes</h1>"})
     with pytest.raises(PackageError, match="uncompressed size too large"):
         extract_package(data, apps_root=tmp_path)
+
+
+def test_network_permission_origins_validated():
+    from tinyagentos.userspace.package import parse_manifest, PackageError
+    import pytest
+    base = "id: x\nname: X\nversion: 1.0.0\napp_type: web\n"
+    ok = parse_manifest(base + "permissions:\n  - 'network:wss://irc-ws.chat.twitch.tv'\n  - 'network:https://*.pusher.com'\n  - 'network:https://youtube.googleapis.com:443'\n")
+    assert "network:wss://irc-ws.chat.twitch.tv" in ok["permissions"]
+    for bad in [
+        "network:javascript:alert(1)",
+        "network:wss://h.com; script-src 'unsafe-inline'",
+        "network:wss://h.com/path",
+        "network:ftp://h.com",
+        "network:*",
+        "network:'unsafe-inline'",
+        "network:wss://h.com\n",
+        "network:wss://h.com\n; script-src x",
+    ]:
+        with pytest.raises(PackageError):
+            parse_manifest(base + "permissions: ['" + bad + "']\n")
+    # gitar finding: `$` would match before a trailing newline; \Z must not.
+    from tinyagentos.userspace.package import _NET_ORIGIN_RE
+    assert _NET_ORIGIN_RE.match("wss://irc-ws.chat.twitch.tv")
+    assert not _NET_ORIGIN_RE.match("wss://evil.com\n")
+    assert not _NET_ORIGIN_RE.match("wss://evil.com\n; script-src 'unsafe-inline'")

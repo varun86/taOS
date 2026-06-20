@@ -385,6 +385,10 @@ class CloseIn(BaseModel):
     reason: str | None = None
 
 
+class ReopenIn(BaseModel):
+    reopened_by: str | None = None
+
+
 class AddRelIn(BaseModel):
     to_task_id: str
     kind: str
@@ -555,6 +559,9 @@ async def claim_task(
         return JSONResponse({"error": "already claimed"}, status_code=409)
     _beads_mark_dirty(request, project_id)
     await pstore.log_activity(project_id, payload.claimer_id, "task.claimed", {"task_id": task_id})
+    notifs = getattr(request.app.state, "notifications", None)
+    if notifs is not None:
+        await notifs.emit_event("task.claimed", "Task claimed", f"{task_id} claimed by {payload.claimer_id}")
     return await store.get_task(task_id)
 
 
@@ -602,6 +609,9 @@ async def close_task(
         return JSONResponse({"error": "cannot close"}, status_code=409)
     _beads_mark_dirty(request, project_id)
     await pstore.log_activity(project_id, payload.closed_by, "task.closed", {"task_id": task_id})
+    notifs = getattr(request.app.state, "notifications", None)
+    if notifs is not None:
+        await notifs.emit_event("task.closed", "Task closed", f"{task_id} closed by {payload.closed_by}")
     project = project_or_err
     task = await store.get_task(task_id)
     qmd = getattr(request.app.state, "qmd_client", None)
@@ -614,6 +624,34 @@ async def close_task(
                 project_id, payload.closed_by, "task.qmd_index_failed", {"task_id": task_id}
             )
     return task
+
+
+@router.post("/api/projects/{project_id}/tasks/{task_id}/reopen")
+async def reopen_task(
+    project_id: str,
+    task_id: str,
+    request: Request,
+    user: CurrentUser = Depends(current_user),
+    payload: ReopenIn | None = None,
+):
+    pstore = request.app.state.project_store
+    project_or_err = await _get_owned_project(pstore, project_id, user)
+    if isinstance(project_or_err, JSONResponse):
+        return project_or_err
+    store = request.app.state.project_task_store
+    existing = await store.get_task(task_id)
+    if existing is None or existing["project_id"] != project_id:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    actor = (payload.reopened_by if payload and payload.reopened_by else None) or "user"
+    ok = await store.reopen_task(task_id, reopened_by=actor)
+    if not ok:
+        return JSONResponse({"error": "task is not closed"}, status_code=409)
+    _beads_mark_dirty(request, project_id)
+    await pstore.log_activity(project_id, actor, "task.reopened", {"task_id": task_id})
+    notifs = getattr(request.app.state, "notifications", None)
+    if notifs is not None:
+        await notifs.emit_event("task.reopened", "Task reopened", f"{task_id} reopened by {actor}")
+    return await store.get_task(task_id)
 
 
 @router.post("/api/projects/{project_id}/tasks/{task_id}/relationships")

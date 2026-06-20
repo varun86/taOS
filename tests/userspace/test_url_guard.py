@@ -61,3 +61,38 @@ def test_resolve_rejects_mixed_public_and_private():
     # if ANY resolved address is non-public, reject the whole host
     with patch("socket.getaddrinfo", return_value=_gai("93.184.216.34") + _gai("10.0.0.1")):
         assert resolve_safe_public_ip("https://example.com/x") is None
+
+
+# Regression coverage for DNS-rebind and alternate-IP-encoding SSRF vectors
+# (userinfo host extraction, IPv6 literals, ULA/link-local resolution).
+
+
+def test_resolve_rejects_userinfo_urls_with_blocked_hosts():
+    # urlparse must use the host after @, not credentials in userinfo
+    assert resolve_safe_public_ip("http://user:pass@127.0.0.1/") is None
+    assert resolve_safe_public_ip("http://anything@169.254.169.254/") is None
+
+
+def test_resolve_rejects_ipv6_loopback_ula_and_link_local():
+    assert resolve_safe_public_ip("http://[::1]/") is None
+    assert resolve_safe_public_ip("http://[fc00::1]/") is None
+    assert resolve_safe_public_ip("http://[fe80::1]/") is None
+
+
+def test_resolve_allows_public_ipv6_literal():
+    assert resolve_safe_public_ip("http://[2606:4700:4700::1111]/") == "2606:4700:4700::1111"
+
+
+def _gai6(ip):
+    return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (ip, 0, 0, 0))]
+
+
+def test_resolve_rejects_hostname_resolving_to_ipv6_ula():
+    with patch("socket.getaddrinfo", return_value=_gai6("fc00::dead:beef")):
+        assert resolve_safe_public_ip("https://evil.example/x") is None
+
+
+def test_resolve_rejects_public_first_then_private_in_result_set():
+    # ordering must not matter: first public + later private still rejects
+    with patch("socket.getaddrinfo", return_value=_gai("93.184.216.34") + _gai("192.168.0.1")):
+        assert resolve_safe_public_ip("https://example.com/x") is None

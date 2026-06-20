@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Sparkles, CheckSquare, AlignLeft, Columns2, Gamepad2, MessageSquare, Image, Clock, LayoutDashboard } from "lucide-react";
+import { seedBuildPrompt } from "./build-state";
 
 /* ------------------------------------------------------------------ */
 /*  TemplatesView -- hero + template grid                              */
@@ -62,7 +64,15 @@ const TEMPLATES: TplCard[] = [
   },
 ];
 
+function templatePrompt(t: TplCard): string {
+  return `Build a ${t.label} taOS app. ${t.desc}`;
+}
+
 export function TemplatesView() {
+  const [heroPrompt, setHeroPrompt] = useState(
+    "a shared shopping list the whole house can add to from their phones...",
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* view header */}
@@ -91,11 +101,15 @@ export function TemplatesView() {
             and you can publish it to your Store or share it with family.
           </p>
           <div className="mt-[15px] flex gap-[10px]">
-            <div className="flex-1 rounded-[13px] border border-shell-border bg-shell-surface px-[15px] py-3 text-[13px] text-shell-text-tertiary">
-              a shared shopping list the whole house can add to from their phones...
-            </div>
+            <textarea
+              value={heroPrompt}
+              onChange={(e) => setHeroPrompt(e.target.value)}
+              rows={2}
+              className="flex-1 resize-none rounded-[13px] border border-shell-border bg-shell-surface px-[15px] py-3 text-[13px] text-shell-text-secondary placeholder:text-shell-text-tertiary focus-visible:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+            />
             <button
               type="button"
+              onClick={() => seedBuildPrompt(heroPrompt)}
               className="flex items-center gap-[9px] rounded-[15px] px-[22px] text-[14px] font-bold text-white"
               style={{ background: "linear-gradient(135deg,var(--color-accent),var(--color-accent))" }}
             >
@@ -103,6 +117,9 @@ export function TemplatesView() {
               Build
             </button>
           </div>
+          <p className="mt-2 text-[11px] text-shell-text-tertiary">
+            Switches to the Build tab to use your prompt.
+          </p>
         </div>
 
         {/* section label */}
@@ -118,6 +135,7 @@ export function TemplatesView() {
               <button
                 key={t.label}
                 type="button"
+                onClick={() => seedBuildPrompt(templatePrompt(t))}
                 className="flex cursor-pointer flex-col gap-[9px] rounded-[15px] border border-shell-border bg-shell-surface p-[15px] text-left transition-all hover:-translate-y-[3px] hover:border-shell-border-strong"
               >
                 <div

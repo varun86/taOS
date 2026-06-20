@@ -60,6 +60,9 @@ def register_all_routers(app):
     from tinyagentos.routes.images import router as images_router
     app.include_router(images_router)
 
+    from tinyagentos.routes.music import router as music_router
+    app.include_router(music_router)
+
     from tinyagentos.routes.images_edit import router as images_edit_router
     app.include_router(images_edit_router)
 
@@ -292,3 +295,17 @@ def register_all_routers(app):
 
     from tinyagentos.routes.userspace_apps import router as userspace_apps_router
     app.include_router(userspace_apps_router)
+
+    from tinyagentos.routes.feedback import router as feedback_router
+    app.include_router(feedback_router)
+
+    from tinyagentos.routes.account_proxy import router as account_proxy_router
+    app.include_router(account_proxy_router)
+
+    from tinyagentos.routes.office import router as office_router
+    app.include_router(office_router)
+    from tinyagentos.routes.coding import router as coding_router
+    app.include_router(coding_router)
+
+    from tinyagentos.routes.manifest import router as manifest_router
+    app.include_router(manifest_router)

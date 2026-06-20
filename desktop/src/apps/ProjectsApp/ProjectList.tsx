@@ -8,6 +8,7 @@ type Props = {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreated: () => void;
+  onOpenInNewWindow?: (id: string) => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 };
@@ -19,7 +20,7 @@ function mark(name: string): string {
   return (words[0]![0]! + words[1]![0]!).toUpperCase();
 }
 
-export function ProjectList({ projects, selectedId, onSelect, onCreated, collapsed, onToggleCollapse }: Props) {
+export function ProjectList({ projects, selectedId, onSelect, onCreated, onOpenInNewWindow, collapsed, onToggleCollapse }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   if (collapsed) {
@@ -124,7 +125,7 @@ export function ProjectList({ projects, selectedId, onSelect, onCreated, collaps
           </li>
         ) : (
           projects.map((p) => (
-            <li key={p.id}>
+            <li key={p.id} className={styles.pjRow}>
               <button
                 type="button"
                 aria-pressed={p.id === selectedId}
@@ -137,6 +138,19 @@ export function ProjectList({ projects, selectedId, onSelect, onCreated, collaps
                   <span className={styles.pjMeta}>{p.slug}</span>
                 </span>
               </button>
+              {onOpenInNewWindow && (
+                <button
+                  type="button"
+                  className={styles.pjNewWin}
+                  title="Open in new window"
+                  aria-label={`Open ${p.name} in a new window`}
+                  onClick={() => onOpenInNewWindow(p.id)}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M7 17L17 7M9 7h8v8" />
+                  </svg>
+                </button>
+              )}
             </li>
           ))
         )}

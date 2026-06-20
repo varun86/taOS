@@ -134,3 +134,30 @@ async def test_container_install_rejected_with_no_stored_state(client):
     # No app row stored.
     rows = (await client.get("/api/userspace-apps")).json()
     assert all(a["app_id"] != "ctapp" for a in rows)
+
+
+def _net_zip():
+    manifest = ("id: net\nname: Net\nversion: 1.0.0\napp_type: web\nentry: index.html\n"
+                "icon: icon.png\npermissions:\n  - 'network:wss://irc-ws.chat.twitch.tv'\n")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("manifest.yaml", manifest)
+        z.writestr("index.html", "<h1>net</h1>")
+        z.writestr("icon.png", "x")
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_bundle_csp_reflects_granted_network_permission(client):
+    await client.post("/api/userspace-apps/install",
+                      files={"package": ("net.taosapp", _net_zip(), "application/zip")})
+    # Before granting, connect-src stays locked to 'self'.
+    r = await client.get("/api/userspace-apps/net/bundle/index.html")
+    csp = r.headers["content-security-policy"]
+    assert "connect-src 'self';" in csp and "twitch" not in csp
+    # Grant the declared network permission -> the origin appears in connect-src.
+    await client.post("/api/userspace-apps/net/permissions",
+                      json={"granted": ["network:wss://irc-ws.chat.twitch.tv"]})
+    r = await client.get("/api/userspace-apps/net/bundle/index.html")
+    csp = r.headers["content-security-policy"]
+    assert "connect-src 'self' wss://irc-ws.chat.twitch.tv;" in csp

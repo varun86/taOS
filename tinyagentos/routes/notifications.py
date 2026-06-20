@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 from fastapi import APIRouter, Request
@@ -61,3 +62,35 @@ async def mark_all_read(request: Request):
     store = request.app.state.notifications
     await store.mark_all_read()
     return {"ok": True}
+
+
+@router.post("/api/notifications/mark-all-read")
+async def mark_all_read_counted(request: Request):
+    store = request.app.state.notifications
+    count = await store.mark_all_read()
+    return {"marked": count}
+
+
+@router.get("/api/notifications/prefs")
+async def get_notification_prefs(request: Request):
+    store = request.app.state.notifications
+    return await store.get_event_prefs()
+
+
+@router.put("/api/notifications/prefs/{event_type}")
+async def set_notification_pref(request: Request, event_type: str):
+    store = request.app.state.notifications
+    if event_type not in store.EVENT_TYPES:
+        return JSONResponse({"error": "unknown_event_type"}, status_code=404)
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    if not isinstance(body, dict) or "muted" not in body:
+        return JSONResponse({"error": "muted required"}, status_code=400)
+    muted_raw = body["muted"]
+    if not isinstance(muted_raw, bool):
+        return JSONResponse({"error": "muted must be a boolean"}, status_code=400)
+    muted = bool(muted_raw)
+    await store.set_event_muted(event_type, muted)
+    return {"event_type": event_type, "muted": muted}

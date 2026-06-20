@@ -70,6 +70,7 @@ tinyagentos-worker = "tinyagentos.worker.__main__:main"
 taos = "tinyagentos.app:main"
 taos-gui = "tinyagentos.app:gui"
 taos-worker-ctl = "tinyagentos.cli.worker:main"
+taosctl = "tinyagentos.cli.taosctl.__main__:main"
 
 [tool.pytest.ini_options]
 # Per-test timeout: a single hung test fails fast and named instead of

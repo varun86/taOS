@@ -22,6 +22,7 @@ export function DockIcon({ appId, isRunning, onClick }: Props) {
   const maximizeWindow = useProcessStore((s) => s.maximizeWindow);
   const recenterWindow = useProcessStore((s) => s.recenterWindow);
   const closeWindow = useProcessStore((s) => s.closeWindow);
+  const openWindow = useProcessStore((s) => s.openWindow);
   const pinned = useDockStore((s) => s.pinned);
   const pin = useDockStore((s) => s.pin);
   const unpin = useDockStore((s) => s.unpin);
@@ -42,6 +43,15 @@ export function DockIcon({ appId, isRunning, onClick }: Props) {
     .join("") as keyof typeof icons;
   const IconComponent = (icons[iconName] as icons.LucideIcon) ?? icons.HelpCircle;
 
+  // Multi-window apps (singleton: false) can spawn a second, independent
+  // window from the dock, the way macOS offers File > New Window.
+  const multiWindow = app.singleton === false;
+  const newWindowItem: MenuItem = {
+    label: "New Window",
+    icon: <icons.SquarePlus size={14} />,
+    action: () => openWindow(appId, app.defaultSize, undefined, { forceNew: true }),
+  };
+
   const items: MenuItem[] = win
     ? [
         {
@@ -49,6 +59,7 @@ export function DockIcon({ appId, isRunning, onClick }: Props) {
           icon: <icons.ArrowUpRight size={14} />,
           action: () => (win.minimized ? restoreWindow(win.id) : focusWindow(win.id)),
         },
+        ...(multiWindow ? [newWindowItem] : []),
         ...(!win.minimized
           ? [{ label: "Minimise", icon: <icons.Minus size={14} />, action: () => minimizeWindow(win.id) }]
           : []),

@@ -32,7 +32,7 @@ class NotificationStore(BaseStore):
     EVENT_TYPES = [
         "worker.join", "worker.online", "worker.leave", "backend.up", "backend.down",
         "training.complete", "training.failed", "app.installed", "app.failed",
-        "disk_quota",
+        "disk_quota", "task.claimed", "task.closed",
     ]
 
     def __init__(self, *args, **kwargs):
@@ -79,9 +79,10 @@ class NotificationStore(BaseStore):
         await self._db.execute("UPDATE notifications SET read = 1 WHERE id = ?", (notif_id,))
         await self._db.commit()
 
-    async def mark_all_read(self) -> None:
-        await self._db.execute("UPDATE notifications SET read = 1")
+    async def mark_all_read(self) -> int:
+        cursor = await self._db.execute("UPDATE notifications SET read = 1 WHERE read = 0")
         await self._db.commit()
+        return cursor.rowcount
 
     async def cleanup(self, max_age_days: int = 30) -> int:
         cutoff = int(time.time()) - (max_age_days * 86400)

@@ -1,6 +1,7 @@
-import { Suspense, lazy, useMemo } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import { X, Minus } from "lucide-react";
 import { getApp } from "@/registry/app-registry";
+import { InstallHelperPanel } from "../InstallHelperPanel";
 
 interface Props {
   appId: string;
@@ -11,6 +12,7 @@ interface Props {
 
 export function MobileAppWindow({ appId, windowId, onClose, onMinimise }: Props) {
   const app = getApp(appId);
+  const [installOpen, setInstallOpen] = useState(false);
   const LazyComponent = useMemo(() => {
     if (!app) return null;
     return lazy(app.component);
@@ -66,9 +68,44 @@ export function MobileAppWindow({ appId, windowId, onClose, onMinimise }: Props)
           {app.name}
         </div>
 
-        {/* Right spacer for visual balance */}
-        <div style={{ width: "44px" }} />
+        {/* Right — Install (for pwa:true apps), else a spacer for balance. On
+            mobile there is no desktop title bar, so this is where a PWA app is
+            installed: it opens the standalone shell where the install prompt /
+            Add to Home Screen guide lives. */}
+        {app.pwa ? (
+          <button
+            onClick={() => setInstallOpen(true)}
+            aria-label={`Install ${app.name} as app`}
+            className="flex items-center justify-center shrink-0 active:opacity-60"
+            style={{ width: "44px" }}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 15 15"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ color: "rgba(255,255,255,0.6)" }}
+            >
+              <path d="M7.5 1.5v7M4.5 6l3 3 3-3" />
+              <path d="M2.5 12.5h10" />
+            </svg>
+          </button>
+        ) : (
+          <div style={{ width: "44px" }} />
+        )}
       </div>
+
+      {installOpen && (
+        <InstallHelperPanel
+          appId={appId}
+          appName={app.name}
+          onClose={() => setInstallOpen(false)}
+        />
+      )}
 
       {/* App content. Use the theme bg token (graphite); a hardcoded
           rgba(15,15,35) here read as an indigo flash on the dark theme. */}
