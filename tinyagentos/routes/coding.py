@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -430,7 +431,22 @@ async def apply_blocks(request: Request, workspace_id: str, body: ApplyBlocksBod
     applied: list[str] = []
     for rel, target, content in resolved:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        # Defeat a TOCTOU symlink escape: an earlier block in this batch could
+        # create a symlink that a later block then writes through. Re-resolve the
+        # parent (reveals a symlinked dir pointing outside root) and refuse to
+        # follow a symlink at the final component via O_NOFOLLOW.
+        if not target.parent.resolve().is_relative_to(root):
+            return JSONResponse({"error": f"invalid path: {rel!r}"}, status_code=400)
+        try:
+            fd = os.open(
+                target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600
+            )
+        except OSError:
+            return JSONResponse({"error": f"invalid path: {rel!r}"}, status_code=400)
+        try:
+            os.write(fd, content.encode("utf-8"))
+        finally:
+            os.close(fd)
         applied.append(rel)
 
     return {"applied": applied}

@@ -109,4 +109,7 @@ async def get_submission(request: Request, submission_id: str):
     row = await store.get(submission_id)
     if row is None:
         return JSONResponse({"error": "not found"}, status_code=404)
+    # Only the owner or an admin may read a non-published submission (IDOR guard).
+    if row["status"] != "published" and row["owner_id"] != user.user_id and not user.is_admin:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
     return row

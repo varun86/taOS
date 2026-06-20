@@ -4,6 +4,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from tinyagentos.routes.auth import _require_admin
+
 router = APIRouter()
 
 
@@ -37,6 +39,9 @@ async def get_install(request: Request, entry_id: str):
 
 @router.post("/api/installs")
 async def record_install(request: Request, body: RecordInstallBody):
+    ok, err = _require_admin(request)
+    if not ok:
+        return err
     store = request.app.state.install_registry
     row = await store.record(
         item_id=body.item_id,
@@ -51,6 +56,9 @@ async def record_install(request: Request, body: RecordInstallBody):
 
 @router.patch("/api/installs/{entry_id}")
 async def set_install_version(request: Request, entry_id: str, body: SetVersionBody):
+    ok, err = _require_admin(request)
+    if not ok:
+        return err
     store = request.app.state.install_registry
     row = await store.set_version(entry_id, body.version)
     if row is None:
@@ -60,6 +68,9 @@ async def set_install_version(request: Request, entry_id: str, body: SetVersionB
 
 @router.delete("/api/installs/{entry_id}")
 async def delete_install(request: Request, entry_id: str):
+    ok, err = _require_admin(request)
+    if not ok:
+        return err
     store = request.app.state.install_registry
     removed = await store.delete(entry_id)
     if not removed:
