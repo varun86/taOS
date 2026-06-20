@@ -431,3 +431,23 @@ async def test_route_illegal_transition_via_api(client_with_store_submissions):
         json={"reason": "nope"},
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_submission_invalid_kind_returns_400(client_with_store_submissions):
+    c = client_with_store_submissions
+    r = await c.post(
+        "/api/store/submissions",
+        json={"artifact_id": "x", "artifact_kind": "not_a_kind", "title": "t", "publish_mode": "repo"},
+    )
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.asyncio
+async def test_create_submission_invalid_mode_returns_400(client_with_store_submissions):
+    c = client_with_store_submissions
+    r = await c.post(
+        "/api/store/submissions",
+        json={"artifact_id": "x", "artifact_kind": "app", "title": "t", "publish_mode": "bogus"},
+    )
+    assert r.status_code == 400, r.text

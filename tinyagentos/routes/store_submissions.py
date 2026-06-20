@@ -25,13 +25,16 @@ class RejectBody(BaseModel):
 async def create_submission(request: Request, body: CreateSubmissionBody):
     user = current_user(request)
     store = request.app.state.store_submissions
-    row = await store.create(
-        artifact_id=body.artifact_id,
-        artifact_kind=body.artifact_kind,
-        owner_id=user.user_id,
-        title=body.title,
-        publish_mode=body.publish_mode,
-    )
+    try:
+        row = await store.create(
+            artifact_id=body.artifact_id,
+            artifact_kind=body.artifact_kind,
+            owner_id=user.user_id,
+            title=body.title,
+            publish_mode=body.publish_mode,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     return row
 
 
