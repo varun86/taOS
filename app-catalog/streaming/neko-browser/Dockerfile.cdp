@@ -44,15 +44,7 @@ RUN apt-get update -qq \
 # ── 2. Patch the managed policy: re-enable DevTools ─────────────────────────
 # The stock image ships /etc/chromium/policies/managed/policies.json with
 # DeveloperToolsAvailability=2 (fully disabled). Set it to 0 (allowed).
-RUN python3 -c "
-import json, pathlib
-p = pathlib.Path('/etc/chromium/policies/managed/policies.json')
-data = json.loads(p.read_text()) if p.exists() else {}
-data['DeveloperToolsAvailability'] = 0
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(json.dumps(data, indent=2))
-print('policy patched:', data)
-"
+RUN python3 -c "import json, pathlib; p = pathlib.Path('/etc/chromium/policies/managed/policies.json'); data = json.loads(p.read_text()) if p.exists() else {}; data['DeveloperToolsAvailability'] = 0; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(json.dumps(data, indent=2)); print('policy patched:', data)"
 
 # ── 3. CDP launch flags (127.0.0.1-only binding) ────────────────────────────
 # Neko reads Chromium flags from drop-in files under /etc/chromium.d/.
