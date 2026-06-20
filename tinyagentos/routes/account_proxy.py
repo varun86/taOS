@@ -35,6 +35,27 @@ def _base_url() -> str | None:
     return base.rstrip("/") or None
 
 
+def _trust_forwarded_proto() -> bool:
+    """X-Forwarded-Proto is client-spoofable unless a trusted proxy sets it. Only
+    honor it when the deployment opts in (the taOSgo relay, which terminates TLS
+    and forwards over http, sets TAOS_TRUST_FORWARDED_PROTO=1)."""
+    return os.environ.get("TAOS_TRUST_FORWARDED_PROTO", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _append_header(resp: Response, name: str, value: str) -> None:
+    """Append a raw response header, skipping values that are not latin-1
+    encodable. HTTP/1.1 header bytes are latin-1; a non-encodable relayed value
+    would otherwise raise UnicodeEncodeError and break the whole response."""
+    try:
+        resp.raw_headers.append((name.encode("latin-1"), value.encode("latin-1")))
+    except UnicodeEncodeError:
+        pass
+
+
 def _rewrite_set_cookie(value: str, secure_ok: bool) -> str:
     """Rescope an upstream Set-Cookie to this proxy origin so the browser
     accepts it: drop the Domain attribute (the cookie was issued for taos.my but
@@ -85,9 +106,12 @@ async def _forward(request: Request, action: str) -> Response:
         status_code=upstream.status_code,
         media_type=upstream.headers.get("content-type"),
     )
-    # Honor X-Forwarded-Proto so the cookie Secure attr survives a TLS-terminating
-    # proxy (the taOSgo relay terminates HTTPS and forwards to us over http).
-    fwd = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    # Derive Secure from the real connection scheme, and from X-Forwarded-Proto
+    # only when the deployment trusts it (the TLS-terminating taOSgo relay
+    # forwards over http). Untrusted, the header is client-spoofable so ignore it.
+    fwd = ""
+    if _trust_forwarded_proto():
+        fwd = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
     secure_ok = request.url.scheme == "https" or fwd == "https"
     # Relay the session cookie (rescoped to this origin) plus a small allowlist of
     # response headers so redirects (Location) and auth challenges survive.
@@ -95,11 +119,9 @@ async def _forward(request: Request, action: str) -> Response:
     for name, value in upstream.headers.multi_items():
         low = name.lower()
         if low == "set-cookie":
-            resp.raw_headers.append(
-                (b"set-cookie", _rewrite_set_cookie(value, secure_ok).encode("latin-1"))
-            )
+            _append_header(resp, "set-cookie", _rewrite_set_cookie(value, secure_ok))
         elif low in _RELAY:
-            resp.raw_headers.append((low.encode("latin-1"), value.encode("latin-1")))
+            _append_header(resp, low, value)
     return resp
 
 

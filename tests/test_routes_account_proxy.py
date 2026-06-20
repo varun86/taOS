@@ -99,10 +99,12 @@ async def test_account_me_503_when_upstream_unreachable(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_secure_kept_when_x_forwarded_proto_https(client, monkeypatch):
+async def test_secure_kept_when_x_forwarded_proto_https_and_trusted(client, monkeypatch):
     """Behind a TLS-terminating proxy the request scheme is http but the browser
-    leg is https (X-Forwarded-Proto), so the cookie Secure attr must be kept."""
+    leg is https (X-Forwarded-Proto). When the deployment trusts that header
+    (TAOS_TRUST_FORWARDED_PROTO), the cookie Secure attr must be kept."""
     monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+    monkeypatch.setenv("TAOS_TRUST_FORWARDED_PROTO", "1")
 
     async def handler(method, url, **kw):
         return _FakeResp(
@@ -112,6 +114,23 @@ async def test_secure_kept_when_x_forwarded_proto_https(client, monkeypatch):
     _patch_upstream(monkeypatch, handler)
     r = await client.get("/api/account/me", headers={"x-forwarded-proto": "https"})
     assert "secure" in r.headers.get("set-cookie", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_x_forwarded_proto_ignored_when_untrusted(client, monkeypatch):
+    """Without the trust opt-in, X-Forwarded-Proto is client-spoofable, so it is
+    ignored and Secure is dropped over the plain-http test connection."""
+    monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+    monkeypatch.delenv("TAOS_TRUST_FORWARDED_PROTO", raising=False)
+
+    async def handler(method, url, **kw):
+        return _FakeResp(
+            headers={"content-type": "application/json", "set-cookie": "s=1; Path=/; Secure"}
+        )
+
+    _patch_upstream(monkeypatch, handler)
+    r = await client.get("/api/account/me", headers={"x-forwarded-proto": "https"})
+    assert "secure" not in r.headers.get("set-cookie", "").lower()
 
 
 @pytest.mark.asyncio
