@@ -78,6 +78,12 @@ class HardwareProfile:
     gpu: GpuInfo = field(default_factory=GpuInfo)
     disk: DiskInfo = field(default_factory=DiskInfo)
     os: OsInfo = field(default_factory=OsInfo)
+    # True when running inside WSL, where ram_mb is the WSL VM cap (50% of the
+    # Windows host by default) rather than the real machine RAM. mem_note carries
+    # a user-facing explanation + how to raise it. ram_mb is left as-is (it IS
+    # what the VM has); these only contextualize it so users are not confused.
+    wsl: bool = False
+    mem_note: str = ""
 
     @property
     def profile_id(self) -> str:
@@ -112,6 +118,8 @@ class HardwareProfile:
             gpu=GpuInfo(**data.get("gpu", {})),
             disk=DiskInfo(**data.get("disk", {})),
             os=OsInfo(**data.get("os", {})),
+            wsl=data.get("wsl", False),
+            mem_note=data.get("mem_note", ""),
         )
 
 
@@ -197,6 +205,20 @@ def _detect_ram() -> int:
     except OSError:
         pass
     return 0
+
+
+def _detect_wsl() -> bool:
+    """True when running inside WSL. The RAM seen here is the WSL VM cap (50% of
+    the Windows host by default), not the real machine, so a 16GB host shows
+    ~8GB. We surface this so the limit is explained rather than confusing."""
+    import os
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        version = Path("/proc/version").read_text().lower()
+        return "microsoft" in version or "wsl" in version
+    except OSError:
+        return False
 
 
 def _path_exists_safe(p: Path) -> bool:
@@ -590,13 +612,26 @@ def _detect_os() -> OsInfo:
 
 def detect_hardware() -> HardwareProfile:
     """Detect all hardware and return a profile."""
+    ram_mb = _detect_ram()
+    wsl = _detect_wsl()
+    mem_note = ""
+    if wsl:
+        gb = max(1, round(ram_mb / 1024))
+        mem_note = (
+            f"Running under WSL, which limits Linux to about {gb}GB "
+            "(50% of the Windows host by default). To use more, set "
+            "memory= in C:\\Users\\<you>\\.wslconfig then run "
+            "'wsl --shutdown'."
+        )
     return HardwareProfile(
         cpu=_detect_cpu(),
-        ram_mb=_detect_ram(),
+        ram_mb=ram_mb,
         npu=_detect_npu(),
         gpu=_detect_gpu(),
         disk=_detect_disk(),
         os=_detect_os(),
+        wsl=wsl,
+        mem_note=mem_note,
     )
 
 

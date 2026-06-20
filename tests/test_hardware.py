@@ -261,3 +261,25 @@ class TestHardwareRefreshEndpoint:
         assert cache_path.exists()
         saved = json.loads(cache_path.read_text())
         assert saved["ram_mb"] == fresh["ram_mb"]
+
+
+class TestWslDetection:
+    def test_detect_wsl_via_env(self, monkeypatch):
+        monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+        assert hardware_mod._detect_wsl() is True
+
+    def test_no_wsl_on_clean_host(self, monkeypatch):
+        monkeypatch.delenv("WSL_DISTRO_NAME", raising=False)
+        monkeypatch.delenv("WSL_INTEROP", raising=False)
+        # A normal Linux/mac host has no microsoft marker (or no /proc/version).
+        assert hardware_mod._detect_wsl() is False
+
+    def test_detect_hardware_explains_wsl_cap(self, monkeypatch):
+        monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+        monkeypatch.setattr(hardware_mod, "_detect_ram", lambda: 8192)
+        prof = detect_hardware()
+        assert prof.wsl is True
+        assert ".wslconfig" in prof.mem_note
+        assert "8GB" in prof.mem_note
+        # ram_mb itself is left untouched (8GB really is what the VM has)
+        assert prof.ram_mb == 8192
