@@ -29,6 +29,7 @@ import { TabOverview } from "./TabOverview";
 import { WindowChooser } from "./WindowChooser";
 import { CapabilityPromptModal } from "./CapabilityPromptModal";
 import { BookmarksBar } from "./BookmarksBar";
+import { BrowserSidebar } from "./BrowserSidebar";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Layers, ListChecks } from "lucide-react";
 import { bootstrapPushSubscription } from "../../lib/browser-push-bootstrap";
@@ -149,16 +150,25 @@ export function BrowserApp({ windowId }: BrowserAppProps) {
 
   return (
     <div className="relative flex flex-col h-full bg-shell-bg overflow-hidden">
+      {/* Top chrome: tab strip + navigation toolbar */}
       <TabStrip windowId={windowId} />
       <Chrome windowId={windowId} />
       <BookmarksBar windowId={windowId} profileId={win.profileId} />
-      <TabRenderer windowId={windowId} />
-      {findOpen && (
-        <FindInPage
-          windowId={windowId}
-          onClose={() => setFindOpen(false)}
-        />
-      )}
+
+      {/* Body: collapsible sidebar + tab content area side by side */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <BrowserSidebar windowId={windowId} />
+        <div className="relative flex flex-col flex-1 min-w-0 overflow-hidden">
+          <TabRenderer windowId={windowId} />
+          {findOpen && (
+            <FindInPage
+              windowId={windowId}
+              onClose={() => setFindOpen(false)}
+            />
+          )}
+        </div>
+      </div>
+
       {/* Listens for `taos-browser:capability-prompt` window events from
            agent-ws-bridge. Mounted at top of BrowserApp so any window's
            agents can trigger it; the modal is global per shell. */}
