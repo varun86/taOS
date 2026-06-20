@@ -31,7 +31,17 @@
 #                               dir = force directory-backed pool (no CoW, slower clones)
 set -euo pipefail
 
-INSTALL_DIR="${TAOS_INSTALL_DIR:-$HOME/tinyagentos}"
+# If taOS is already installed, default to ITS directory so a re-run updates the
+# existing install in place rather than forking a second copy (e.g. a root
+# `curl | sudo bash` landing in /root while the service runs from /opt). An
+# explicit TAOS_INSTALL_DIR always wins; otherwise prefer the running service's
+# WorkingDirectory, then a /opt install, then the invoking user's home.
+_existing_install=""
+if command -v systemctl >/dev/null 2>&1; then
+    _existing_install="$(systemctl show tinyagentos -p WorkingDirectory --value 2>/dev/null || true)"
+fi
+[[ -z "$_existing_install" && -d /opt/tinyagentos/.git ]] && _existing_install=/opt/tinyagentos
+INSTALL_DIR="${TAOS_INSTALL_DIR:-${_existing_install:-$HOME/tinyagentos}}"
 BRANCH="${TAOS_BRANCH:-master}"
 REPO="${TAOS_REPO:-https://github.com/jaylfc/tinyagentos}"
 TAOS_PORT="${TAOS_PORT:-6969}"
@@ -1174,27 +1184,38 @@ if [[ -n "$_desktop_tree" ]]; then
     _remote_tree="$(curl -fsSL --max-time 20 "$_bundle_base/desktop-tree.txt" 2>/dev/null | tr -d '[:space:]')"
     if [[ -n "$_remote_tree" && "$_remote_tree" == "$_desktop_tree" ]]; then
         log "fetching prebuilt desktop bundle (matches source; no local build needed)"
-        rm -rf /tmp/taos-bundle-stage && mkdir -p /tmp/taos-bundle-stage
-        # Stage + verify in /tmp first, then swap, so a failed download/extract
-        # never leaves the install with no UI.
-        if curl -fsSL --max-time 120 "$_bundle_base/desktop-bundle.tar.gz" -o /tmp/taos-desktop-bundle.tar.gz \
-           && tar -C /tmp/taos-bundle-stage -xzf /tmp/taos-desktop-bundle.tar.gz \
-           && [[ -f /tmp/taos-bundle-stage/desktop/index.html ]]; then
+        mkdir -p "$INSTALL_DIR/static"
+        # Stage INSIDE the install tree (private, same filesystem) rather than a
+        # fixed world-writable /tmp path: this makes the final swap an atomic
+        # rename and avoids writing through an attacker-planted symlink while
+        # running as root in the common `curl | sudo bash` invocation.
+        _stage="$(mktemp -d "$INSTALL_DIR/static/.taos-bundle.XXXXXX")"
+        _tarball="$(mktemp "$INSTALL_DIR/static/.taos-bundle.XXXXXX.tgz")"
+        # Verify the download against the CI-published SHA256 before extracting,
+        # so a corrupted or tampered tarball is rejected (we fall back to a local
+        # build). sha256sum on Linux, shasum -a 256 on macOS.
+        _exp_sha="$(curl -fsSL --max-time 20 "$_bundle_base/desktop-bundle.sha256" 2>/dev/null | tr -d '[:space:]')"
+        _sha_cmd="sha256sum"; command -v sha256sum >/dev/null 2>&1 || _sha_cmd="shasum -a 256"
+        if curl -fsSL --max-time 120 "$_bundle_base/desktop-bundle.tar.gz" -o "$_tarball" \
+           && [[ -n "$_exp_sha" && "$($_sha_cmd "$_tarball" | awk '{print $1}')" == "$_exp_sha" ]] \
+           && tar -C "$_stage" -xzf "$_tarball" \
+           && [[ -f "$_stage/desktop/index.html" ]]; then
             rm -rf "$INSTALL_DIR/static/desktop"
-            mkdir -p "$INSTALL_DIR/static"
-            mv /tmp/taos-bundle-stage/desktop "$INSTALL_DIR/static/desktop"
+            mv "$_stage/desktop" "$INSTALL_DIR/static/desktop"
             # Match the repo owner so a later in-app rebuild (run as that user) can
-            # still write here; only meaningful when installing as root.
+            # still write here; only meaningful when installing as root. Trailing
+            # colon sets the owner's primary group (do not assume a group named
+            # after the user exists).
             _own="$(stat -c '%U' "$INSTALL_DIR" 2>/dev/null || stat -f '%Su' "$INSTALL_DIR" 2>/dev/null || echo "")"
             if [[ "$(id -u)" == "0" && -n "$_own" && "$_own" != "root" ]]; then
-                chown -R "$_own":"$_own" "$INSTALL_DIR/static/desktop" 2>/dev/null || true
+                chown -R "$_own:" "$INSTALL_DIR/static/desktop" 2>/dev/null || true
             fi
             _prebuilt_done=1
             log "prebuilt desktop bundle installed into static/desktop/"
         else
             warn "prebuilt bundle download/extract failed; falling back to a local build"
         fi
-        rm -rf /tmp/taos-bundle-stage /tmp/taos-desktop-bundle.tar.gz
+        rm -rf "$_stage" "$_tarball"
     fi
 fi
 
