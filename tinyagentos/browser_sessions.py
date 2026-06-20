@@ -490,15 +490,18 @@ class BrowserSessionManager:
         return await self.create_session("user", owner_id, url, profile_name, mobile=mobile)
 
     async def start_on_host(self, session_id: str, *, profile_volume: str, runner,
-                             mobile: bool = False) -> dict:
+                             mobile: bool = False, nat1to1_ip: str | None = None) -> dict:
         """Start a Neko container in-process via BrowserContainerRunner (host-local).
 
         Mirrors start_on_worker but drives the runner directly. On failure marks
         the session 'error' and raises BrowserWorkerError.
+
+        ``nat1to1_ip`` is forwarded to the runner so the container is told to
+        advertise the single IP the client connected from for WebRTC NAT1TO1.
         """
         try:
             data = await runner.start(session_id=session_id, profile_volume=profile_volume,
-                                      mobile=mobile)
+                                      mobile=mobile, nat1to1_ip=nat1to1_ip)
         except Exception as exc:
             await self.mark_error(session_id)
             raise BrowserWorkerError(f"host browser start failed: {exc}") from exc

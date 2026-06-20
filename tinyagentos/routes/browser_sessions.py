@@ -10,6 +10,7 @@ Routes:
 """
 
 import logging
+import socket
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -73,6 +74,28 @@ def _apply_host_rewrite(session: dict, request: Request) -> dict:
     if not neko_url:
         return session
     return {**session, "neko_url": _rewrite_neko_url(neko_url, request)}
+
+
+def _connecting_host_ip(request: Request) -> str | None:
+    """Resolve the single IP the client connected with, for use as NEKO_WEBRTC_NAT1TO1.
+
+    Reads X-Forwarded-Host then Host (same precedence as _rewrite_neko_url).
+    Strips the port, then resolves the value: IP literals are returned as-is;
+    hostnames go through socket.gethostbyname.  Returns None on failure so
+    callers fall back to the node LAN IP.
+    """
+    client_host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or ""
+    )
+    hostname = client_host.split(":")[0].strip() if client_host else ""
+    if not hostname:
+        return None
+    try:
+        return socket.gethostbyname(hostname)
+    except Exception:
+        return None
 
 
 class CreateSessionBody(BaseModel):
@@ -226,7 +249,8 @@ async def get_my_session(
             if kind == "host":
                 runner = request.app.state.browser_container_runner
                 session = await mgr.start_on_host(session["id"], profile_volume=vol,
-                                                   runner=runner, mobile=mobile)
+                                                   runner=runner, mobile=mobile,
+                                                   nat1to1_ip=_connecting_host_ip(request))
             else:
                 worker = cluster.get_worker(node)
                 auth_token = getattr(request.app.state, "browser_worker_auth_token", None)

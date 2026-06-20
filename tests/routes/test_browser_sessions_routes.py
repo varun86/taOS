@@ -770,7 +770,7 @@ async def test_get_agent_session_not_in_config_returns_404(app, tmp_path):
 # Host-aware neko_url rewrite (Tailscale fix)
 # ---------------------------------------------------------------------------
 
-from tinyagentos.routes.browser_sessions import _rewrite_neko_url
+from tinyagentos.routes.browser_sessions import _rewrite_neko_url, _connecting_host_ip
 
 
 class _FakeRequest:
@@ -890,3 +890,51 @@ async def test_get_session_over_tailscale_rewrites_neko_url(app, tmp_path):
     assert ":8800" in neko_url
 
     await bs.close()
+
+# ---------------------------------------------------------------------------
+# _connecting_host_ip helper
+# ---------------------------------------------------------------------------
+
+
+def test_connecting_host_ip_from_lan_ip_header():
+    """Host header with a LAN IP resolves to that IP."""
+    req = _FakeRequest(host="192.168.1.50:6969")
+    result = _connecting_host_ip(req)
+    assert result == "192.168.1.50"
+    assert result is not None
+    assert "," not in result
+
+
+def test_connecting_host_ip_from_tailscale_ip_header():
+    """Host header with a Tailscale IP resolves to that IP."""
+    req = _FakeRequest(host="100.64.0.5:6969")
+    result = _connecting_host_ip(req)
+    assert result == "100.64.0.5"
+    assert "," not in result
+
+
+def test_connecting_host_ip_no_header_returns_none():
+    """No Host header returns None so callers fall back to the node LAN IP."""
+    req = _FakeRequest()
+    assert _connecting_host_ip(req) is None
+
+
+def test_connecting_host_ip_forwarded_host_takes_precedence():
+    """X-Forwarded-Host takes precedence over Host, same as neko_url rewrite."""
+    req = _FakeRequest(host="192.168.1.50:6969", forwarded_host="100.64.0.9")
+    result = _connecting_host_ip(req)
+    assert result == "100.64.0.9"
+    assert "," not in result
+
+
+def test_connecting_host_ip_never_contains_comma():
+    """_connecting_host_ip must never return a comma-separated value."""
+    for req in [
+        _FakeRequest(host="192.168.1.50:6969"),
+        _FakeRequest(host="100.64.0.5"),
+        _FakeRequest(forwarded_host="100.64.0.9"),
+        _FakeRequest(),
+    ]:
+        result = _connecting_host_ip(req)
+        if result is not None:
+            assert "," not in result, f"_connecting_host_ip returned comma-separated: {result!r}"
