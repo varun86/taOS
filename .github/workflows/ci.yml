@@ -115,6 +115,9 @@ jobs:
 
   spa-build:
     runs-on: ubuntu-latest
+    # Needs write access to manage the rolling 'bundle-latest' release below.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
 
@@ -139,3 +142,27 @@ jobs:
         run: |
           cd desktop
           npx vitest run
+
+      # On master, publish the freshly-built SPA as a prebuilt bundle so the
+      # installer can download it instead of running the memory-heavy vite build
+      # locally (which OOMs on small machines like an 8GB WSL and used to leave
+      # installs silently stuck on the old UI). The bundle is keyed by the git
+      # tree SHA of desktop/, so it stays valid across every commit that doesn't
+      # touch the frontend. Rolling 'bundle-latest' prerelease, assets clobbered.
+      - name: Publish prebuilt desktop bundle
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(git rev-parse HEAD:desktop)
+          tar -C static -czf desktop-bundle.tar.gz desktop
+          printf '%s\n' "$tree" > desktop-tree.txt
+          notes="Auto-built SPA bundle for the latest master, matching desktop/ tree ${tree}. The installer downloads this when the tree matches, skipping the local vite build."
+          if gh release view bundle-latest >/dev/null 2>&1; then
+            gh release upload bundle-latest desktop-bundle.tar.gz desktop-tree.txt --clobber
+            gh release edit bundle-latest --notes "$notes"
+          else
+            gh release create bundle-latest --prerelease \
+              --title "Prebuilt desktop bundle (rolling)" --notes "$notes" \
+              desktop-bundle.tar.gz desktop-tree.txt
+          fi
