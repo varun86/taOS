@@ -24,6 +24,25 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 - Security: dompurify updated to 3.4.11; cryptography and pydantic-settings advisories cleared.
 - Install: the core install no longer aborts when optional components fail, and drops to the service user without assuming sudo (WSL robustness).
 
+## [1.0.0-beta.4.1] - 2026-06-20
+
+### Changed
+- Installs and in-app updates verify the prebuilt bundle's SHA256 before extracting; a corrupted or tampered bundle is rejected and falls back to a local build.
+- Re-installs update the existing install in place instead of forking a second copy.
+
+### Fixed
+- Symlink-safe staging (no fixed /tmp paths as root), atomic-rename swap, and a fix so the bundle is no longer treated as perpetually stale.
+- README corrected (installs download a prebuilt bundle, no local build) and links rebranded to jaylfc/taOS.
+
+## [1.0.0-beta.4] - 2026-06-20
+
+### Added
+- "Reduce effects" toggle (Settings, Accessibility) for low-end devices: disables background blur, heavy shadows, and continuous animations for a smoother UI on older hardware.
+
+### Changed
+- The installer and in-app update download a prebuilt UI bundle instead of building it locally, so installs and upgrades are faster and no longer fail or silently stay on the old version on low-memory machines including WSL. A local build, when still needed, now fails with a clear message instead of half-updating.
+- CI runs on self-hosted runners and gates the desktop test suite.
+
 ## [1.0.0-beta.3] - 2026-06-16
 
 ### Added
