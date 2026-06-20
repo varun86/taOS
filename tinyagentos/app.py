@@ -52,6 +52,7 @@ from tinyagentos.metrics import MetricsStore
 from tinyagentos.notifications import NotificationStore
 from tinyagentos.coding_workspaces import CodingWorkspaceStore
 from tinyagentos.install_registry import InstallRegistryStore
+from tinyagentos.store_submissions import StoreSubmissionStore
 from tinyagentos.qmd_client import QmdClient
 from tinyagentos.backend_adapters import check_backend_health
 from tinyagentos.benchmark import BenchmarkStore
@@ -357,6 +358,9 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     install_registry_store = InstallRegistryStore(
         data_dir / "install_registry.db",
     )
+    store_submissions = StoreSubmissionStore(
+        data_dir / "store_submissions.db",
+    )
     skills = SkillStore(data_dir / "skills.db")
     from tinyagentos.themes.store import ThemeStore
     themes = ThemeStore(data_dir / "themes.sqlite3")
@@ -445,6 +449,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.coding_workspaces = coding_workspaces_store
         await install_registry_store.init()
         app.state.install_registry = install_registry_store
+        await store_submissions.init()
+        app.state.store_submissions = store_submissions
         try:
             from tinyagentos.userspace.seed import seed_bundled_apps
             await seed_bundled_apps(userspace_apps, data_dir / "apps")
@@ -696,6 +702,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.office_docs = office_docs
         app.state.coding_workspaces = coding_workspaces_store
         app.state.install_registry = install_registry_store
+        app.state.store_submissions = store_submissions
         app.state.skills = skills
         app.state.benchmark_store = benchmark_store
         app.state.score_cache = score_cache
@@ -1332,6 +1339,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.office_docs = office_docs
     app.state.coding_workspaces = coding_workspaces_store
     app.state.install_registry = install_registry_store
+    app.state.store_submissions = store_submissions
     app.state.skills = skills
     app.state.themes = themes
     app.state.knowledge_store = knowledge_store
