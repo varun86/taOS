@@ -90,12 +90,13 @@ DEFAULT_NEKO_GPU_IMAGE = "ghcr.io/m1k1o/neko/nvidia-chromium:latest"
 # Requires --shm-size=4g at container run time.
 # Built for arm64 (RK3588 primary) + amd64.
 DEFAULT_NEKO_CDP_IMAGE = "ghcr.io/jaylfc/taos-neko-cdp:latest"
-# RK3588 uses the CDP image so agent automation is available out of the box
-# on the Pi. The rkmpp HW-encode layer (#624) will extend this image once
-# the GStreamer Rockchip packages are validated; for now software encode is
-# the fallback (RK3588 hardware decode of page content still works via the
-# kernel driver even without GStreamer rkmpp).
-DEFAULT_NEKO_RK3588_IMAGE = DEFAULT_NEKO_CDP_IMAGE
+# RK3588 uses a dedicated image built on top of the CDP image (so it keeps
+# Chromium >=148 + CDP) plus the Rockchip MPP + gstreamer-rockchip mpph264enc
+# plugin for VPU H.264 encode (#624). Validated live on the Pi: mpph264enc
+# encodes 720p on the VPU when /dev/mpp_service, /dev/dri and /dev/rga are
+# passed (resolve_neko_image supplies all three). Software encode on the plain
+# CDP image remains the fallback if this image or the devices are unavailable.
+DEFAULT_NEKO_RK3588_IMAGE = "ghcr.io/jaylfc/taos-neko-rk3588:latest"
 NEKO_SCREEN = "1280x720@30"
 NEKO_SCREEN_MOBILE = "800x1600@30"
 NEKO_PROFILE_MOUNT = "/home/neko"

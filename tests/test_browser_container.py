@@ -173,9 +173,10 @@ async def test_runner_start_desktop_mock_returns_details():
 # CDP image (option C foundation)
 # ---------------------------------------------------------------------------
 
-def test_rk3588_image_is_cdp_image():
-    """RK3588 must resolve to the CDP-enabled custom image."""
-    assert DEFAULT_NEKO_RK3588_IMAGE == DEFAULT_NEKO_CDP_IMAGE
+def test_rk3588_uses_dedicated_hwencode_image():
+    """RK3588 resolves to the dedicated rkmpp HW-encode image, not the plain CDP image."""
+    assert DEFAULT_NEKO_RK3588_IMAGE == "ghcr.io/jaylfc/taos-neko-rk3588:latest"
+    assert DEFAULT_NEKO_RK3588_IMAGE != DEFAULT_NEKO_CDP_IMAGE
 
 
 @pytest.mark.asyncio
