@@ -192,7 +192,7 @@ async def test_rk3588_runner_exposes_cdp_url():
 # ---------------------------------------------------------------------------
 
 from unittest.mock import patch
-from tinyagentos.worker.browser_container import build_nat1to1, _detect_tailscale_ip
+from tinyagentos.worker.browser_container import build_nat1to1, _detect_tailscale_ip, _resolve_connecting_ip
 
 
 def test_build_nat1to1_no_tailscale_returns_lan_ip():
@@ -202,11 +202,12 @@ def test_build_nat1to1_no_tailscale_returns_lan_ip():
     assert result == "192.168.1.50"
 
 
-def test_build_nat1to1_with_tailscale_returns_both_ips():
-    """When Tailscale is present, NAT1TO1 is '<lan-ip>,<tailscale-ip>'."""
+def test_build_nat1to1_with_tailscale_ip_not_used_when_connecting_ip_given():
+    """When connecting_host_ip is provided it is used directly; Tailscale state is irrelevant."""
     with patch("tinyagentos.worker.browser_container._detect_tailscale_ip", return_value="100.64.0.1"):
-        result = build_nat1to1("192.168.1.50")
-    assert result == "192.168.1.50,100.64.0.1"
+        result = build_nat1to1("192.168.1.50", connecting_host_ip="100.64.0.1")
+    assert result == "100.64.0.1"
+    assert "," not in result
 
 
 def test_build_nat1to1_tailscale_same_as_lan_no_duplicate():
@@ -237,12 +238,14 @@ def test_detect_tailscale_ip_no_binary_no_netifaces_returns_none():
     assert result is None
 
 
-def test_neko_run_args_includes_tailscale_ip_in_nat1to1():
-    """build_neko_run_args uses build_nat1to1 so the docker -e includes the Tailscale IP."""
+def test_neko_run_args_nat1to1_uses_connecting_ip_when_given():
+    """When nat1to1_ip is given, NEKO_WEBRTC_NAT1TO1 uses that single IP (no Tailscale append)."""
     with patch("tinyagentos.worker.browser_container._detect_tailscale_ip", return_value="100.64.0.1"):
-        argv = _args(node_ip="192.168.1.50")
-    nat_entry = "NEKO_WEBRTC_NAT1TO1=192.168.1.50,100.64.0.1"
-    assert nat_entry in argv
+        argv = _args(node_ip="192.168.1.50", nat1to1_ip="100.64.0.1")
+    assert "NEKO_WEBRTC_NAT1TO1=100.64.0.1" in argv
+    for arg in argv:
+        if "NAT1TO1" in arg:
+            assert "," not in arg, f"NAT1TO1 must never contain a comma, got: {arg}"
 
 
 def test_neko_run_args_nat1to1_lan_only_when_no_tailscale():
@@ -254,3 +257,53 @@ def test_neko_run_args_nat1to1_lan_only_when_no_tailscale():
     for arg in argv:
         if "NAT1TO1" in arg:
             assert "," not in arg
+
+# ---------------------------------------------------------------------------
+# _resolve_connecting_ip
+# ---------------------------------------------------------------------------
+
+def test_resolve_connecting_ip_ip_literal():
+    """IP literals are returned directly without DNS lookup."""
+    result = _resolve_connecting_ip("192.168.1.50:6969")
+    assert result == "192.168.1.50"
+
+
+def test_resolve_connecting_ip_localhost():
+    """localhost resolves to an IP (127.0.0.1)."""
+    result = _resolve_connecting_ip("localhost:6969")
+    assert result is not None
+    assert "." in result
+    assert "," not in result
+
+
+def test_resolve_connecting_ip_empty_returns_none():
+    """Empty string returns None."""
+    assert _resolve_connecting_ip("") is None
+
+
+def test_resolve_connecting_ip_bad_hostname_returns_none():
+    """Unresolvable hostname returns None."""
+    result = _resolve_connecting_ip("does-not-exist.invalid:6969")
+    assert result is None
+
+
+def test_build_nat1to1_never_returns_comma():
+    """NAT1TO1 must never contain a comma regardless of inputs."""
+    with patch("tinyagentos.worker.browser_container._detect_tailscale_ip", return_value="100.64.0.1"):
+        for args in [
+            ("192.168.1.50", None),
+            ("192.168.1.50", "100.64.0.1"),
+            ("192.168.1.50", "192.168.1.50"),
+        ]:
+            result = build_nat1to1(*args)
+            assert "," not in result, f"build_nat1to1{args!r} returned comma-separated: {result!r}"
+
+
+def test_neko_run_args_nat1to1_never_contains_comma():
+    """NAT1TO1 env var in docker args must never be a comma-separated list."""
+    for nat1to1_ip in [None, "192.168.1.50", "100.64.0.1"]:
+        with patch("tinyagentos.worker.browser_container._detect_tailscale_ip", return_value="100.64.0.1"):
+            argv = _args(node_ip="192.168.1.50", nat1to1_ip=nat1to1_ip)
+        for arg in argv:
+            if "NAT1TO1" in arg:
+                assert "," not in arg, f"NAT1TO1 must never contain a comma, got: {arg!r}"

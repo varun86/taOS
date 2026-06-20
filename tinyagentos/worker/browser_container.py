@@ -11,6 +11,7 @@ import asyncio
 import logging
 import secrets
 import shutil
+import socket
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -50,17 +51,35 @@ def _detect_tailscale_ip() -> str | None:
     return None
 
 
-def build_nat1to1(node_ip: str) -> str:
-    """Build the NEKO_WEBRTC_NAT1TO1 value for this host.
+def _resolve_connecting_ip(host_header: str) -> str | None:
+    """Resolve the connecting host from a Host header value to an IPv4 string.
 
-    Always includes ``node_ip`` (the LAN IP).  When Tailscale is active, the
-    Tailscale IP is appended as a second comma-separated entry so WebRTC ICE
-    candidates are advertised on both LAN and Tailscale networks.  If
-    detection fails for any reason, falls back to just ``node_ip``.
+    Strips any port suffix.  If the result is already an IP literal it is
+    returned as-is.  If it is a hostname, socket.gethostbyname resolves it.
+    Returns None on any failure so callers can fall back to the LAN node_ip.
     """
-    ts_ip = _detect_tailscale_ip()
-    if ts_ip and ts_ip != node_ip:
-        return f"{node_ip},{ts_ip}"
+    hostname = host_header.split(":")[0].strip() if host_header else ""
+    if not hostname:
+        return None
+    try:
+        return socket.gethostbyname(hostname)
+    except Exception:
+        return None
+
+
+def build_nat1to1(node_ip: str, connecting_host_ip: str | None = None) -> str:
+    """Return the single IP to use for NEKO_WEBRTC_NAT1TO1.
+
+    neko/pion requires exactly ONE IP.  When ``connecting_host_ip`` is
+    provided (resolved from the client's Host/X-Forwarded-Host header at
+    session-create time) it is used directly, so WebRTC candidates match the
+    address the user actually connected from (LAN, Tailscale, etc.).
+
+    Falls back to ``node_ip`` when no connecting IP is available.
+    Never emits a comma-separated value.
+    """
+    if connecting_host_ip:
+        return connecting_host_ip
     return node_ip
 
 DEFAULT_NEKO_IMAGE = "ghcr.io/m1k1o/neko/chromium:latest"
@@ -143,6 +162,7 @@ def build_neko_run_args(
     device_args: list[str] | None = None,
     mobile: bool = False,
     shm_size: str = "4g",
+    nat1to1_ip: str | None = None,
 ) -> list[str]:
     """Return the full ``docker run`` argv (starting with 'docker') for a Neko
     Chromium session, per the validated spike recipe.
@@ -151,9 +171,13 @@ def build_neko_run_args(
     the mobile Chromium supervisord config so Chromium presents a mobile UA,
     touch events, and a 3x device scale factor.
 
-    ``shm_size`` controls ``--shm-size``. The default is ``"4g"`` — required
+    ``shm_size`` controls ``--shm-size``. The default is ``"4g"`` -- required
     by the CDP-enabled image (``DEFAULT_NEKO_CDP_IMAGE``) for stable page
     sessions; 4g is safe for all images and strictly better than the old 2g.
+
+    ``nat1to1_ip`` overrides the NEKO_WEBRTC_NAT1TO1 value.  Pass the IP the
+    connecting client used (from the Host header) so pion receives the single
+    IP it expects.  Falls back to ``node_ip`` when not provided.
     """
     if image is None:
         image = DEFAULT_NEKO_GPU_IMAGE if gpu else DEFAULT_NEKO_IMAGE
@@ -169,7 +193,7 @@ def build_neko_run_args(
         "-e", f"NEKO_MEMBER_MULTIUSER_USER_PASSWORD={user_pwd}",
         "-e", f"NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD={admin_pwd}",
         "-e", f"NEKO_WEBRTC_EPR={epr_lo}-{epr_hi}",
-        "-e", f"NEKO_WEBRTC_NAT1TO1={build_nat1to1(node_ip)}",
+        "-e", f"NEKO_WEBRTC_NAT1TO1={build_nat1to1(node_ip, nat1to1_ip)}",
         f"--shm-size={shm_size}",
         "-v", f"{profile_volume}:{NEKO_PROFILE_MOUNT}",
     ]
@@ -285,7 +309,8 @@ class BrowserContainerRunner:
             detail = stderr.decode().strip()
             raise BrowserContainerError(f"docker pull {image} failed: {detail}")
 
-    async def start(self, *, session_id: str, profile_volume: str, mobile: bool = False) -> dict:
+    async def start(self, *, session_id: str, profile_volume: str, mobile: bool = False,
+                   nat1to1_ip: str | None = None) -> dict:
         """Start a Neko container and return connection details.
 
         Returns a dict with keys: container_id, neko_url, cdp_url,
@@ -293,6 +318,10 @@ class BrowserContainerRunner:
 
         When ``mobile=True`` the container runs portrait (800x1600@30) with a
         mobile Chromium UA + touch events so sites serve mobile layouts.
+
+        ``nat1to1_ip`` is the single IP to advertise for WebRTC NAT1TO1 -- it
+        should be the IP the client connected from (resolved from the request
+        Host header).  Falls back to ``self.node_ip`` when not provided.
         """
         http_port, epr_lo, epr_hi = self._allocator.allocate()
         # Full session_id (a uuid hex) — avoids name collisions from a
@@ -334,6 +363,7 @@ class BrowserContainerRunner:
                 image=image,
                 device_args=spec.device_args,
                 mobile=mobile,
+                nat1to1_ip=nat1to1_ip,
             )
             try:
                 proc = await asyncio.create_subprocess_exec(
