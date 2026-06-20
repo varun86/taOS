@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -18,6 +19,31 @@ class CreateWorkspaceBody(BaseModel):
 class WriteFileBody(BaseModel):
     path: str
     content: str
+
+
+class PathsBody(BaseModel):
+    paths: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Git helpers
+# ---------------------------------------------------------------------------
+
+async def _git(cwd: Path, *args: str) -> tuple[int, str, str]:
+    """Run a git command in *cwd*; return (returncode, stdout, stderr)."""
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate()
+    return (
+        proc.returncode or 0,
+        out.decode("utf-8", "replace"),
+        err.decode("utf-8", "replace"),
+    )
 
 
 def _invalid_rel_path(rel: str) -> bool:
@@ -133,3 +159,189 @@ async def delete_workspace(request: Request, workspace_id: str):
     if not removed:
         return JSONResponse({"error": "workspace not found"}, status_code=404)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Diff / accept / revert
+# ---------------------------------------------------------------------------
+
+@router.get("/api/coding/workspaces/{workspace_id}/diff")
+async def workspace_diff(request: Request, workspace_id: str):
+    """Return uncommitted changes as a list of {path, status, patch} objects.
+
+    status is one of: added | modified | deleted
+    patch is unified diff text (empty string for deleted files with no tracked content).
+    """
+    root, err = await _workspace_root(request, workspace_id)
+    if err is not None:
+        return err
+
+    # Collect status of every changed entry (tracked + untracked)
+    rc, out, _e = await _git(root, "status", "--porcelain")
+    if rc != 0:
+        return JSONResponse({"error": "git status failed"}, status_code=500)
+
+    entries: list[dict] = []
+    for line in out.splitlines():
+        if len(line) < 4:
+            continue
+        xy = line[:2]
+        rel_path = line[3:].strip()
+        # Handle renames: "R old -> new" (porcelain v1 uses " -> " separator)
+        if " -> " in rel_path:
+            rel_path = rel_path.split(" -> ", 1)[1]
+
+        x, y = xy[0], xy[1]
+        untracked = xy == "??"
+
+        if untracked:
+            file_status = "added"
+        elif x == "D" or y == "D":
+            file_status = "deleted"
+        elif x == "A" or y == "A":
+            file_status = "added"
+        else:
+            file_status = "modified"
+
+        # Jail the path
+        target = _resolve_jailed(root, rel_path)
+        if target is None:
+            continue
+
+        if untracked:
+            # Diff against empty (show full content as +lines)
+            if target.is_file():
+                try:
+                    content = target.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    content = ""
+                lines = content.splitlines(keepends=True)
+                patch_lines = [f"+{l}" for l in lines]
+                patch = (
+                    f"--- /dev/null\n+++ b/{rel_path}\n@@ -0,0 +1,{len(lines)} @@\n"
+                    + "".join(patch_lines)
+                )
+            else:
+                patch = ""
+        elif file_status == "deleted":
+            rc2, patch, _ = await _git(root, "diff", "HEAD", "--", rel_path)
+            if rc2 != 0:
+                patch = ""
+        else:
+            rc2, patch, _ = await _git(root, "diff", "HEAD", "--", rel_path)
+            if rc2 != 0:
+                # May be staged but not yet committed (new index entry)
+                rc2, patch, _ = await _git(root, "diff", "--cached", "--", rel_path)
+            if rc2 != 0:
+                patch = ""
+
+        entries.append({"path": rel_path, "status": file_status, "patch": patch})
+
+    return entries
+
+
+@router.post("/api/coding/workspaces/{workspace_id}/accept")
+async def accept_changes(request: Request, workspace_id: str, body: PathsBody):
+    """Stage and commit the given paths (accept the agent's edits)."""
+    root, err = await _workspace_root(request, workspace_id)
+    if err is not None:
+        return err
+
+    safe_paths: list[str] = []
+    for p in body.paths:
+        target = _resolve_jailed(root, p)
+        if target is None:
+            return JSONResponse({"error": f"invalid path: {p}"}, status_code=400)
+        safe_paths.append(p)
+
+    if not safe_paths:
+        return JSONResponse({"error": "no paths provided"}, status_code=400)
+
+    rc, _o, se = await _git(root, "add", "--", *safe_paths)
+    if rc != 0:
+        logger.warning("git add failed: %s", se)
+        return JSONResponse({"error": "git add failed", "detail": se}, status_code=500)
+
+    rc, _o, se = await _git(
+        root, "commit", "-m", f"agent: accept changes to {len(safe_paths)} file(s)",
+        "--allow-empty"
+    )
+    if rc != 0:
+        logger.warning("git commit failed: %s", se)
+        return JSONResponse({"error": "git commit failed", "detail": se}, status_code=500)
+
+    return {"ok": True, "committed": safe_paths}
+
+
+@router.post("/api/coding/workspaces/{workspace_id}/revert")
+async def revert_changes(request: Request, workspace_id: str, body: PathsBody):
+    """Discard changes to the given paths (reject the agent's edits)."""
+    root, err = await _workspace_root(request, workspace_id)
+    if err is not None:
+        return err
+
+    safe_paths: list[str] = []
+    for p in body.paths:
+        target = _resolve_jailed(root, p)
+        if target is None:
+            return JSONResponse({"error": f"invalid path: {p}"}, status_code=400)
+        safe_paths.append(p)
+
+    if not safe_paths:
+        return JSONResponse({"error": "no paths provided"}, status_code=400)
+
+    reverted: list[str] = []
+    errors: list[str] = []
+
+    # Determine status for each path to decide how to discard
+    rc, status_out, _ = await _git(root, "status", "--porcelain", "--", *safe_paths)
+
+    untracked: set[str] = set()
+    tracked: list[str] = []
+
+    for line in status_out.splitlines():
+        if len(line) < 4:
+            continue
+        xy = line[:2]
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if xy == "??":
+            untracked.add(path)
+        else:
+            tracked.append(path)
+
+    # Tracked: restore via git checkout
+    if tracked:
+        rc, _o, se = await _git(root, "checkout", "--", *tracked)
+        if rc != 0:
+            # Try unstaging first (staged new file), then checkout
+            await _git(root, "reset", "HEAD", "--", *tracked)
+            rc2, _o, se2 = await _git(root, "checkout", "--", *tracked)
+            if rc2 != 0:
+                errors.extend(tracked)
+                logger.warning("git checkout failed for %s: %s", tracked, se2)
+            else:
+                reverted.extend(tracked)
+        else:
+            reverted.extend(tracked)
+
+    # Untracked: delete
+    for p in safe_paths:
+        if p in untracked:
+            target = _resolve_jailed(root, p)
+            if target and target.exists():
+                try:
+                    target.unlink()
+                    reverted.append(p)
+                except OSError as exc:
+                    errors.append(p)
+                    logger.warning("unlink failed for %s: %s", p, exc)
+
+    if errors:
+        return JSONResponse(
+            {"ok": False, "reverted": reverted, "failed": errors},
+            status_code=207,
+        )
+
+    return {"ok": True, "reverted": reverted}
