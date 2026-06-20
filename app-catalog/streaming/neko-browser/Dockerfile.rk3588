@@ -1,22 +1,40 @@
-# taOS Neko Chromium for RK3588 (Orange Pi 5 Plus) — HW decode + WebRTC encode via VPU.
-# Device nodes (/dev/mpp_service, /dev/dri, /dev/rga) are passed at `docker run`
-# by the host-tier resolver, not baked in. Software encode is the fallback when
-# this image/devices aren't available (see resolve_neko_image).
-# Multi-arch base (has a linux/arm64 variant — verified on the Pi). The old
-# `arm-chromium` tag does not exist.
-FROM ghcr.io/m1k1o/neko/chromium:latest
+# taOS Neko Chromium for RK3588 (Orange Pi 5 Plus) — CDP + VPU H.264 encode.
+#
+# SEPARATE, SoC-specific, arm64-only image. Built ON TOP of the taOS CDP image
+# so it inherits Chromium >=148 + the CDP DevTools enablement, then adds the
+# Rockchip MPP/RGA userspace + the GStreamer rkmpp plugin (mpph264enc) so WebRTC
+# encode runs on the VPU instead of the A76 cores. Generic arm64 and x86 nodes
+# keep using the plain CDP image (software encode); resolve_neko_image() picks
+# THIS image only when the SoC is rk3588/rk3576 and passes /dev/mpp_service,
+# /dev/dri, /dev/rga at docker run.
+#
+# Why a separate image (not one multi-arch image for every device): the Rockchip
+# MPP/RGA userspace and the mpph264enc rank boost are SoC-specific. Baking them
+# into the shared arm64 CDP image would bloat every arm64 pull (Graviton, Apple
+# Silicon, generic SBCs) and, worse, force NEKO_VIDEO_CODEC=h264 + mpph264enc
+# ranking on non-Rockchip arm64 where the VPU and device nodes do not exist,
+# breaking encode there. A separate image matches the per-SoC resolver design.
+FROM ghcr.io/jaylfc/taos-neko-cdp:latest
 
-# Rockchip MPP + RGA + Mali userspace for GStreamer rkmpp HW encode/decode.
+# Rockchip MPP + RGA + GStreamer rkmpp plugin (mpph264enc).
+# NOTE (#624): these are NOT in Debian trixie or the Armbian-trixie repos. The
+# Pi (Debian trixie) only ships the rockchip KERNEL (linux-image-current-
+# rockchip64), not the multimedia userspace, so the plugin must be built from
+# source (MPP -> RGA -> gstreamer-rockchip) in a dedicated build stage. Until
+# that build lands, this RUN is a deliberate no-op (|| true) and the image
+# behaves exactly like the CDP image (software encode). The resolver flip
+# (DEFAULT_NEKO_RK3588_IMAGE -> this image) stays gated on a live Pi validation
+# that mpph264enc actually engages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        gstreamer1.0-rockchip \
-        librockchip-mpp1 \
-        librga2 \
+        gstreamer1.0-rockchip librockchip-mpp1 librga2 \
     && rm -rf /var/lib/apt/lists/* || true
 
-LABEL taos.app.id="neko-browser" \
+LABEL taos.app.id="neko-browser-rk3588" \
       taos.streaming.encode="rkmpp" \
-      taos.hardware.soc="rk3588"
+      taos.hardware.soc="rk3588" \
+      taos.base="taos-neko-cdp"
 
-# Prefer the VPU encoder; Neko reads its pipeline from env / its own config.
+# Prefer the VPU encoder. Safe to bake here because this image only ever runs on
+# rk3588/rk3576 (the resolver guarantees it), where the VPU exists.
 ENV NEKO_VIDEO_CODEC=h264 \
     GST_PLUGIN_FEATURE_RANK="mpph264enc:512"
