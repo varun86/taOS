@@ -154,15 +154,15 @@ function SidebarTabRow({
   onClose,
 }: SidebarTabRowProps) {
   return (
-    <div
-      role="option"
-      aria-selected={isActive}
+    <button
+      type="button"
       aria-label={title}
+      aria-pressed={isActive}
       onClick={onActivate}
       title={title}
       className={[
-        "group relative flex items-center gap-2 cursor-pointer select-none",
-        "transition-colors focus-visible:outline-none",
+        "group relative flex w-full items-center gap-2 select-none",
+        "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
         collapsed ? "mx-2 my-0.5 h-[32px] w-[28px] rounded-lg justify-center" : "mx-1.5 my-0.5 h-[32px] rounded-lg px-2",
         isActive
           ? "bg-shell-surface-active text-shell-text"
@@ -202,14 +202,21 @@ function SidebarTabRow({
 
       {/* Close button — only on non-pinned rows, only when expanded */}
       {!isPinned && !collapsed && (
-        <button
-          type="button"
+        <span
+          role="button"
+          tabIndex={0}
           aria-label={`Close ${title}`}
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          tabIndex={-1}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }
+          }}
           className={[
             "flex-none flex h-[18px] w-[18px] items-center justify-center",
             "rounded-[5px] text-shell-text-tertiary",
@@ -218,8 +225,8 @@ function SidebarTabRow({
           ].join(" ")}
         >
           <X size={10} />
-        </button>
+        </span>
       )}
-    </div>
+    </button>
   );
 }

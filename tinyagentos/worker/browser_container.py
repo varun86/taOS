@@ -350,6 +350,9 @@ class BrowserContainerRunner:
         else:
             image = spec.image
             await self._ensure_image(image)
+            # nat1to1_ip is resolved at the route layer (the blocking DNS
+            # lookup is offloaded there), so build_neko_run_args is now pure
+            # string assembly and can be called directly.
             argv = build_neko_run_args(
                 container_name=container_name,
                 profile_volume=profile_volume,

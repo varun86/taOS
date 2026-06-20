@@ -17,7 +17,7 @@
  * with playing audio/video, active form input, or in-flight upload
  * are exempt regardless of idle time. PR 4 ships the basic policy.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useBrowserStore } from "@/stores/browser-store";
 import { useThemeStore } from "@/stores/theme-store";
@@ -293,16 +293,12 @@ export function TabRenderer({ windowId }: TabRendererProps) {
           // Full Neko session replaces the proxy iframe for the active tab
           if (isActive && tab.liveSession) {
             return (
-              <div
+              <LiveSessionSlot
                 key={tab.id}
-                style={{ position: "absolute", inset: 0 }}
-                data-window-tab={tab.id}
-              >
-                <LiveBrowserView
-                  nekoUrl={tab.liveSession.nekoUrl}
-                  streamToken={tab.liveSession.streamToken}
-                />
-              </div>
+                tabId={tab.id}
+                nekoUrl={tab.liveSession.nekoUrl}
+                streamToken={tab.liveSession.streamToken}
+              />
             );
           }
 
@@ -360,6 +356,78 @@ export function TabRenderer({ windowId }: TabRendererProps) {
           pinnedAgentIds={pinnedAgentIds}
         />
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LiveSessionSlot — wraps LiveBrowserView and overlays the "connecting" state
+// until the Neko iframe fires its first load event.
+// ---------------------------------------------------------------------------
+
+interface LiveSessionSlotProps {
+  tabId: string;
+  nekoUrl: string;
+  streamToken: string;
+}
+
+function LiveSessionSlot({ tabId, nekoUrl, streamToken }: LiveSessionSlotProps) {
+  const [connecting, setConnecting] = useState(true);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Hide the connecting overlay once the neko iframe fires its first load
+    // event. The iframe is rendered by LiveBrowserView inside wrapperRef, so
+    // we attach directly if it is already present or observe for it to appear.
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      setConnecting(false);
+    };
+
+    // Safety net: clear the overlay even if the load event is never observed,
+    // e.g. the iframe loaded before the listener attached, or a cross-origin
+    // neko frame never emits load. Without this the overlay could obscure a
+    // session that is actually live indefinitely.
+    const timer = window.setTimeout(settle, 15000);
+
+    let iframe: HTMLIFrameElement | null = wrapper.querySelector("iframe");
+    let observer: MutationObserver | null = null;
+
+    if (iframe) {
+      iframe.addEventListener("load", settle);
+    } else {
+      observer = new MutationObserver(() => {
+        const el = wrapper.querySelector("iframe");
+        if (el) {
+          observer?.disconnect();
+          observer = null;
+          iframe = el;
+          el.addEventListener("load", settle);
+        }
+      });
+      observer.observe(wrapper, { childList: true, subtree: true });
+    }
+
+    return () => {
+      window.clearTimeout(timer);
+      observer?.disconnect();
+      iframe?.removeEventListener("load", settle);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={wrapperRef}
+      style={{ position: "absolute", inset: 0 }}
+      data-window-tab={tabId}
+    >
+      <LiveBrowserView nekoUrl={nekoUrl} streamToken={streamToken} />
+      {connecting && <BrowserEmptyState variant="connecting" />}
     </div>
   );
 }
