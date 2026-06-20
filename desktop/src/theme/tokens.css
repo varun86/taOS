@@ -312,3 +312,40 @@
 /* MobileDock bottom padding in browser mode is handled via the isBrowserMobile
    prop passed from App.tsx — the component uses inline styles so a CSS
    selector cannot override them reliably. See MobileDock.tsx. */
+
+/* BrowserApp — collapsible sidebar (#66)
+   =======================================
+   Width transition for the collapse/expand animation. The transition runs on
+   the `width` property so content inside reflows naturally. Respects
+   prefers-reduced-motion: when reduced-motion is active (or data-perf=reduced)
+   the transition duration drops to 0ms so the collapse is instant. */
+.browser-sidebar {
+  transition: width 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-sidebar {
+    transition: none;
+  }
+}
+:root[data-perf="reduced"] .browser-sidebar {
+  transition: none;
+}
+
+/* BrowserApp — connecting / empty-state placeholder shimmer */
+@keyframes browser-stream-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+.browser-stream-pulse {
+  animation: browser-stream-pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-stream-pulse {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+:root[data-perf="reduced"] .browser-stream-pulse {
+  animation: none;
+  opacity: 0.5;
+}

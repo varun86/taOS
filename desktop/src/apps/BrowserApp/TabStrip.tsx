@@ -53,7 +53,7 @@ export function TabStrip({ windowId }: TabStripProps) {
     <div
       role="tablist"
       aria-label="Browser tabs"
-      className="flex items-end gap-1 px-3 pt-1.5 bg-shell-bg-deep border-b border-shell-border min-h-[42px]"
+      className="flex items-end gap-0.5 px-2 pt-1 bg-shell-bg-deep border-b border-shell-border min-h-[42px]"
     >
       {ordered.map((tab) => (
         <TabItem
@@ -74,7 +74,7 @@ export function TabStrip({ windowId }: TabStripProps) {
         type="button"
         aria-label="New tab"
         onClick={() => addTab(windowId)}
-        className="mb-1 ml-0.5 flex h-[30px] w-[30px] items-center justify-center rounded-lg text-shell-text-secondary transition-colors hover:bg-white/[0.06] hover:text-shell-text"
+        className="mb-1 flex h-[28px] w-[28px] items-center justify-center rounded-lg text-shell-text-secondary transition-colors hover:bg-white/[0.06] hover:text-shell-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       >
         <Plus size={15} />
       </button>
@@ -137,11 +137,11 @@ function TabItem({ windowId, tab, isActive, onActivate, onClose, onContextMenu }
       className={[
         widthClass,
         "group relative",
-        "h-[31px] px-2.5 flex items-center gap-2 rounded-t-[9px] cursor-pointer",
+        "h-[31px] px-2 flex items-center gap-1.5 rounded-t-[8px] cursor-pointer",
         "border border-b-0 transition-colors",
         isActive
-          ? "bg-shell-surface text-shell-text border-shell-border-strong"
-          : "border-transparent text-shell-text-secondary hover:bg-white/[0.06] hover:text-shell-text",
+          ? "bg-shell-surface text-shell-text border-shell-border shadow-[0_1px_0_var(--color-shell-surface)_inset]"
+          : "border-transparent text-shell-text-secondary hover:bg-white/[0.04] hover:text-shell-text",
         // Agent-owned session tab: slate accent line on the bottom edge,
         // brighter while the agent is actively driving.
         tabDriving
@@ -154,11 +154,11 @@ function TabItem({ windowId, tab, isActive, onActivate, onClose, onContextMenu }
       {/* Drag handle — Task 11 wires drag events on this child */}
       <div
         data-drag-handle
-        className="flex items-center gap-2 flex-1 min-w-0"
+        className="flex items-center gap-1.5 flex-1 min-w-0"
       >
-        <Globe size={13} className="shrink-0 opacity-50" aria-hidden="true" />
+        <Globe size={12} className="shrink-0 opacity-40" aria-hidden="true" />
         {!tab.pinned && (
-          <span className="truncate text-[12.5px] font-medium flex-1">{titleText}</span>
+          <span className="truncate text-[12px] font-medium flex-1 leading-none">{titleText}</span>
         )}
       </div>
 
@@ -171,11 +171,11 @@ function TabItem({ windowId, tab, isActive, onActivate, onClose, onContextMenu }
             onClose();
           }}
           className={[
-            "flex h-[17px] w-[17px] items-center justify-center rounded-[5px] shrink-0 text-shell-text-tertiary transition-opacity hover:bg-white/[0.08] hover:text-shell-text",
+            "flex h-[16px] w-[16px] items-center justify-center rounded-[4px] shrink-0 text-shell-text-tertiary transition-opacity hover:bg-white/[0.08] hover:text-shell-text focus-visible:outline-none",
             isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
           ].join(" ")}
         >
-          <X size={11} />
+          <X size={10} />
         </button>
       )}
     </div>
