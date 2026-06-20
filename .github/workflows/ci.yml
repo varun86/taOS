@@ -16,7 +16,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Self-hosted runners (the always-on VPS + the Fedora box, both labelled
+    # taos-ci) run the slow suite in a few minutes instead of ~16 on GitHub's
+    # shared runners, and the two share the label so the 3.12/3.13 matrix runs
+    # in parallel with redundancy if one box is offline. lint + spa-build stay
+    # on ubuntu-latest as a free, always-available fallback.
+    runs-on: [self-hosted, linux, x64, taos-ci]
     # 45 min cap accommodates the cron run that includes 3.11 (~30 min);
     # 3.12/3.13 PR runs finish in ~16 min, so this only kicks in if 3.11
     # ever drifts further.
