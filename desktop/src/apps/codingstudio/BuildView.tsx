@@ -650,7 +650,7 @@ Keep responses concise and practical.`;
               </div>
             )}
 
-            {steps.map((step, idx) => (
+            {steps.map((step) => (
               <div
                 key={streaming ? "stream-output" : step.id}
                 className="rounded-[12px] border border-shell-border bg-shell-surface px-4 py-3"
