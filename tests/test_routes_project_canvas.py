@@ -19,9 +19,11 @@ def _ensure_canvas_store(client, tmp_path_factory):
             asyncio.get_event_loop().run_until_complete(store.close())
         except Exception:
             pass
-    # Use a fresh DB per test session via tmp_path
+    # Use a fresh DB per test session via tmp_path. BaseStore reads self.db_path
+    # (a Path) in init(); the previous override set a non-existent `_db_path`
+    # string attr, so init() silently fell back to the production canvas DB.
     tmp_dir = tmp_path_factory.mktemp("canvas_test")
-    store._db_path = str(tmp_dir / "test_projects.db")
+    store.db_path = tmp_dir / "test_projects.db"
     asyncio.get_event_loop().run_until_complete(store.init())
     yield
     try:
