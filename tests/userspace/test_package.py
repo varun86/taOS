@@ -112,3 +112,57 @@ def test_network_permission_origins_validated():
     assert _NET_ORIGIN_RE.match("wss://irc-ws.chat.twitch.tv")
     assert not _NET_ORIGIN_RE.match("wss://evil.com\n")
     assert not _NET_ORIGIN_RE.match("wss://evil.com\n; script-src 'unsafe-inline'")
+
+
+def test_parse_valid_tui_manifest():
+    m = parse_manifest(
+        "id: mycli\nname: MyCLI\nversion: 1.0.0\napp_type: tui\ncommand: opencode\n"
+    )
+    assert m["id"] == "mycli"
+    assert m["app_type"] == "tui"
+    assert m["command"] == "opencode"
+    assert m["args"] == []
+    assert m["needs_project_dir"] is True
+    assert m["env"] == {}
+
+
+def test_parse_tui_manifest_with_optional_fields():
+    m = parse_manifest(
+        "id: mycli\nname: MyCLI\nversion: 1.0.0\napp_type: tui\n"
+        "command: claude\n"
+        "args: ['--verbose', '--fast']\n"
+        "needs_project_dir: false\n"
+        "env:\n  FOO: bar\n  BAZ: qux\n"
+    )
+    assert m["command"] == "claude"
+    assert m["args"] == ["--verbose", "--fast"]
+    assert m["needs_project_dir"] is False
+    assert m["env"] == {"FOO": "bar", "BAZ": "qux"}
+
+
+def test_tui_manifest_missing_command_rejected():
+    with pytest.raises(PackageError, match="command"):
+        parse_manifest(
+            "id: mycli\nname: MyCLI\nversion: 1.0.0\napp_type: tui\n"
+        )
+
+
+def test_tui_manifest_empty_command_rejected():
+    with pytest.raises(PackageError, match="command"):
+        parse_manifest(
+            "id: mycli\nname: MyCLI\nversion: 1.0.0\napp_type: tui\ncommand: ''\n"
+        )
+
+
+def test_unknown_app_type_rejected():
+    with pytest.raises(PackageError, match="not allowed"):
+        parse_manifest(
+            "id: x\nname: X\nversion: 1.0.0\napp_type: native\nentry: x\n"
+        )
+
+
+def test_web_manifest_still_parses():
+    m = parse_manifest(WEB_MANIFEST)
+    assert m["id"] == "todo"
+    assert m["app_type"] == "web"
+    assert m["permissions"] == ["app.net"]
