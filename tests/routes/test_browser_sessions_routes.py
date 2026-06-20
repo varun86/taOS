@@ -433,12 +433,20 @@ async def test_get_my_session_creates_and_starts_on_host(client_host_capable):
 
 @pytest.mark.asyncio
 async def test_get_my_session_running_with_neko_url_has_stream_token(client_host_capable):
-    """GET /mine when session is running + neko_url present includes a stream_token."""
+    """GET /mine when session is running + neko_url present includes a stream_token.
+
+    The neko_url is host-rewritten to the Host header seen in the request, so
+    we verify structure (port, path, query) rather than the exact stored value.
+    """
     resp = await client_host_capable.get("/api/browser/sessions/mine")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "running"
-    assert body.get("neko_url") == _HOST_RUNNER_BODY["neko_url"]
+    neko_url = body.get("neko_url", "")
+    assert neko_url, "neko_url must be present"
+    # Port and credentials must be preserved; hostname is rewritten to the request host.
+    assert ":8800/" in neko_url
+    assert "usr=neko" in neko_url
     assert "stream_token" in body
     assert isinstance(body["stream_token"], str)
     assert len(body["stream_token"]) > 0
@@ -754,5 +762,131 @@ async def test_get_agent_session_not_in_config_returns_404(app, tmp_path):
         resp = await c.get(f"/api/browser/sessions/{sid}")
 
     assert resp.status_code == 404
+
+    await bs.close()
+
+
+# ---------------------------------------------------------------------------
+# Host-aware neko_url rewrite (Tailscale fix)
+# ---------------------------------------------------------------------------
+
+from tinyagentos.routes.browser_sessions import _rewrite_neko_url
+
+
+class _FakeRequest:
+    """Minimal Request stand-in for testing _rewrite_neko_url."""
+
+    def __init__(self, host: str | None = None, forwarded_host: str | None = None):
+        self.headers: dict[str, str] = {}
+        if forwarded_host:
+            self.headers["x-forwarded-host"] = forwarded_host
+        if host:
+            self.headers["host"] = host
+
+
+def test_rewrite_neko_url_host_header_replaces_hostname():
+    """When Host is a Tailscale IP, the neko_url hostname is rewritten to match."""
+    req = _FakeRequest(host="100.64.0.5:6969")
+    result = _rewrite_neko_url("http://192.168.1.50:8801/?usr=neko&pwd=abc", req)
+    assert result == "http://100.64.0.5:8801/?usr=neko&pwd=abc"
+
+
+def test_rewrite_neko_url_port_preserved():
+    """The neko port from the stored URL is kept intact after rewrite."""
+    req = _FakeRequest(host="100.64.0.5")
+    result = _rewrite_neko_url("http://192.168.1.50:8802/?usr=neko&pwd=xyz", req)
+    assert ":8802" in result
+    assert "100.64.0.5" in result
+
+
+def test_rewrite_neko_url_x_forwarded_host_takes_precedence():
+    """X-Forwarded-Host overrides the Host header."""
+    req = _FakeRequest(host="192.168.1.50:6969", forwarded_host="100.64.0.9")
+    result = _rewrite_neko_url("http://192.168.1.50:8800/?usr=neko&pwd=t", req)
+    assert "100.64.0.9" in result
+    assert "192.168.1.50" not in result
+
+
+def test_rewrite_neko_url_no_host_header_returns_original():
+    """When no Host header is present the original URL is returned unchanged."""
+    req = _FakeRequest()
+    original = "http://192.168.1.50:8800/?usr=neko&pwd=t"
+    result = _rewrite_neko_url(original, req)
+    assert result == original
+
+
+def test_rewrite_neko_url_empty_string_is_passthrough():
+    """Empty neko_url is returned unchanged."""
+    req = _FakeRequest(host="100.64.0.5")
+    assert _rewrite_neko_url("", req) == ""
+
+
+def test_rewrite_neko_url_same_host_is_idempotent():
+    """If Host matches the stored hostname, the URL is effectively unchanged."""
+    req = _FakeRequest(host="192.168.1.50:6969")
+    result = _rewrite_neko_url("http://192.168.1.50:8800/?usr=neko&pwd=q", req)
+    assert result == "http://192.168.1.50:8800/?usr=neko&pwd=q"
+
+
+@pytest.mark.asyncio
+async def test_get_mine_over_tailscale_rewrites_neko_url(client_host_capable):
+    """GET /mine with a Tailscale Host header returns neko_url with the Tailscale host."""
+    # Override the stored neko_url to a LAN IP; client connects via Tailscale IP.
+    resp = await client_host_capable.get(
+        "/api/browser/sessions/mine",
+        headers={"host": "100.64.0.5:6969"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "running"
+    # The host in the returned neko_url must be the Tailscale IP, not the LAN host.
+    neko_url = body.get("neko_url", "")
+    assert "100.64.0.5" in neko_url, f"Expected Tailscale IP in neko_url, got: {neko_url}"
+    # The neko port from the stored URL must be preserved.
+    assert ":8800" in neko_url
+
+
+@pytest.mark.asyncio
+async def test_get_session_over_tailscale_rewrites_neko_url(app, tmp_path):
+    """GET /{id} with a Tailscale Host returns neko_url rewritten to the Tailscale host."""
+    bs = BrowserSessionManager(tmp_path / "bs_ts_get.db", mock=True)
+    await bs.init()
+
+    session = await bs.create_session("user", "dummy-uid", "https://example.com")
+    sid = session["id"]
+    await bs.mark_running(
+        sid, node="host", container_id="c1",
+        neko_url="http://192.168.1.50:8800/?usr=neko&pwd=pw",
+        cdp_url=None,
+    )
+
+    app.state.browser_sessions = bs
+    app.state.browser_session_signing_key = b"0" * 32
+    app.state.cluster_manager = _no_cluster()
+
+    app.state.auth.setup_user("admin", "Test Admin", "", "testpass")
+    record = app.state.auth.find_user("admin")
+    uid = record["id"] if record else ""
+
+    db = bs._assert_db()
+    await db.execute("UPDATE browser_sessions SET owner_id=? WHERE id=?", (uid, sid))
+    await db.commit()
+
+    token = app.state.auth.create_session(user_id=uid, long_lived=True)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        cookies={"taos_session": token},
+        headers={"host": "100.64.0.5:6969"},
+    ) as c:
+        resp = await c.get(f"/api/browser/sessions/{sid}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    neko_url = body.get("neko_url", "")
+    assert "100.64.0.5" in neko_url, f"Expected Tailscale IP in neko_url, got: {neko_url}"
+    assert ":8800" in neko_url
 
     await bs.close()
