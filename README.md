@@ -511,12 +511,10 @@ git pull
 # Clear stale Python bytecode after upgrades (git pull preserves source mtimes
 # which can confuse Python's .pyc cache invalidation on some setups)
 find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-# Rebuild frontend if desktop source changed (omit if you didn't pull any desktop/ changes)
-cd desktop && npm install && npm run build && cd ..
 sudo systemctl restart tinyagentos
 ```
 
-The systemd unit also runs a conditional rebuild as an `ExecStartPre` step -- if you skip the manual `npm run build`, the next service restart detects the stale bundle and rebuilds it automatically (~50s startup overhead when it fires).
+You do not build the UI on every machine. `install-server.sh` and the in-app update download a prebuilt SPA bundle published by CI, matched to your `desktop/` source by its git tree hash, so installs and upgrades are fast and never run the memory-heavy vite build (which used to OOM on small machines like an 8GB WSL). The restart above triggers the same conditional fetch via the unit's `ExecStartPre` step when the desktop source changed. A local build (`cd desktop && npm install && npm run build`) is only needed for local frontend development, or kicks in automatically as a fallback when no matching prebuilt bundle is available.
 
 **Worker:**
 
