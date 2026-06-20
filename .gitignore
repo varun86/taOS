@@ -98,6 +98,17 @@ desktop/tsconfig.tsbuildinfo
 node_modules/
 desktop/node_modules
 
+# There is no root node project: the SPA lives in desktop/. A stray root
+# package.json invites `npm install` at the repo root, which creates the
+# root node_modules that lane worktrees then sweep into commits (see #1134).
+# Lanes sometimes add these as a workaround for running vitest from root; the
+# gate runs vitest from desktop/, so they are pure cruft. Ignore them, anchored
+# to the repo root so desktop/package.json and desktop/vitest.config are kept.
+/package.json
+/package-lock.json
+/vitest.config.ts
+/vitest.config.js
+
 # Local-only operational playbook (contains LAN IP + ops detail; agents read it from the working tree)
 docs/AGENT_HANDOFF.md
 docs/audit/
