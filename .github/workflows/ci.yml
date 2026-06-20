@@ -15,12 +15,16 @@ on:
     - cron: "0 6 * * *"
 
 jobs:
-  # Pick the highest-priority available runner: the always-on VPS first, then
-  # the Fedora box, then GitHub-hosted as the never-hang fallback. Querying
-  # runner status needs a PAT with administration:read (secret RUNNER_ADMIN_PAT);
-  # without it this defaults to the self-hosted pool, which the always-on VPS
-  # services. The slow suite runs in a few minutes on a self-hosted box vs ~16
-  # on GitHub's shared runners.
+  # Route the matrix to the self-hosted POOL (VPS + Fedora, both labelled
+  # taos-ci) rather than pinning it to one box. The two boxes are ~tied per
+  # core (Fedora i5-10600 ~2.0s, VPS EPYC ~2.2s on the same microbench), so the
+  # fastest run is the two matrix legs in PARALLEL across both — pinning the
+  # whole matrix to a single runner would serialise the legs and be slower. The
+  # always-on, dedicated VPS is the anchor; Fedora joins the pool when it is up
+  # and adds a parallel lane. We only fall back to GitHub-hosted when BOTH
+  # self-hosted runners are offline, so CI never hangs. Reading runner status
+  # needs a PAT with administration:read (secret RUNNER_ADMIN_PAT); without it
+  # we stay on the pool, which the always-on VPS keeps serviceable.
   pick-runner:
     runs-on: ubuntu-latest
     outputs:
@@ -32,11 +36,10 @@ jobs:
         run: |
           on='["self-hosted","taos-ci"]'
           if [ -n "$PAT" ]; then
-            online=$(GH_TOKEN="$PAT" gh api "repos/${{ github.repository }}/actions/runners" \
-              --jq '[.runners[] | select(.status=="online") | .labels[].name]' 2>/dev/null || echo '[]')
-            if echo "$online" | grep -q '"vps"'; then on='["self-hosted","vps"]'
-            elif echo "$online" | grep -q '"fedora"'; then on='["self-hosted","fedora"]'
-            else on='"ubuntu-latest"'; fi
+            count=$(GH_TOKEN="$PAT" gh api "repos/${{ github.repository }}/actions/runners" \
+              --jq '[.runners[] | select(.status=="online") | select(any(.labels[].name; . == "taos-ci"))] | length' \
+              2>/dev/null || echo 1)
+            if [ "${count:-1}" -eq 0 ]; then on='"ubuntu-latest"'; fi
           fi
           echo "on=$on" >> "$GITHUB_OUTPUT"
 
