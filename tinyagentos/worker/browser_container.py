@@ -94,8 +94,8 @@ DEFAULT_NEKO_CDP_IMAGE = "ghcr.io/jaylfc/taos-neko-cdp:latest"
 # Chromium >=148 + CDP) plus the Rockchip MPP + gstreamer-rockchip mpph264enc
 # plugin for VPU H.264 encode (#624). Validated live on the Pi: mpph264enc
 # encodes 720p on the VPU when /dev/mpp_service, /dev/dri and /dev/rga are
-# passed (resolve_neko_image supplies all three). Software encode on the plain
-# CDP image remains the fallback if this image or the devices are unavailable.
+# passed (resolve_neko_image supplies all three). rk3588 hosts always resolve
+# to this image; there is no automatic resolver-level fallback to the CDP image.
 DEFAULT_NEKO_RK3588_IMAGE = "ghcr.io/jaylfc/taos-neko-rk3588:latest"
 NEKO_SCREEN = "1280x720@30"
 NEKO_SCREEN_MOBILE = "800x1600@30"
