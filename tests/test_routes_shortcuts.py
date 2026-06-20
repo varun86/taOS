@@ -205,8 +205,16 @@ async def test_launch_shortcut_negative_idx(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_launch_shortcut_no_worker_raises_error(client):
-    """Without a registered local worker, launch raises RuntimeError."""
+async def test_launch_shortcut_no_worker_raises_error(client, monkeypatch):
+    """Without an active ClusterManager, launch raises RuntimeError.
+
+    _active_manager is a module global in worker_registry that other tests in
+    the suite enroll; reset it to None here so this assertion is independent of
+    test ordering.
+    """
+    from tinyagentos.cluster import worker_registry
+
+    monkeypatch.setattr(worker_registry, "_active_manager", None)
     agent = _seed_agent(client)
     with pytest.raises(RuntimeError, match="No active ClusterManager"):
         await client.post(f"/api/agents/{agent['id']}/shortcuts/0/launch")
