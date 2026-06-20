@@ -17,7 +17,7 @@
  * with playing audio/video, active form input, or in-flight upload
  * are exempt regardless of idle time. PR 4 ships the basic policy.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useBrowserStore } from "@/stores/browser-store";
 import { useThemeStore } from "@/stores/theme-store";
@@ -37,6 +37,7 @@ import { ReaderMode } from "./ReaderMode";
 import { LiveBrowserView } from "./LiveBrowserView";
 import { AgentPanel } from "./AgentPanel";
 import { PageContextMenu } from "./PageContextMenu";
+import { BrowserEmptyState } from "./BrowserEmptyState";
 import type { Tab } from "./types";
 
 export const DISCARD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -292,16 +293,12 @@ export function TabRenderer({ windowId }: TabRendererProps) {
           // Full Neko session replaces the proxy iframe for the active tab
           if (isActive && tab.liveSession) {
             return (
-              <div
+              <LiveSessionSlot
                 key={tab.id}
-                style={{ position: "absolute", inset: 0 }}
-                data-window-tab={tab.id}
-              >
-                <LiveBrowserView
-                  nekoUrl={tab.liveSession.nekoUrl}
-                  streamToken={tab.liveSession.streamToken}
-                />
-              </div>
+                tabId={tab.id}
+                nekoUrl={tab.liveSession.nekoUrl}
+                streamToken={tab.liveSession.streamToken}
+              />
             );
           }
 
@@ -363,6 +360,78 @@ export function TabRenderer({ windowId }: TabRendererProps) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// LiveSessionSlot — wraps LiveBrowserView and overlays the "connecting" state
+// until the Neko iframe fires its first load event.
+// ---------------------------------------------------------------------------
+
+interface LiveSessionSlotProps {
+  tabId: string;
+  nekoUrl: string;
+  streamToken: string;
+}
+
+function LiveSessionSlot({ tabId, nekoUrl, streamToken }: LiveSessionSlotProps) {
+  const [connecting, setConnecting] = useState(true);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Hide the connecting overlay once the neko iframe fires its first load
+    // event. The iframe is rendered by LiveBrowserView inside wrapperRef, so
+    // we attach directly if it is already present or observe for it to appear.
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      setConnecting(false);
+    };
+
+    // Safety net: clear the overlay even if the load event is never observed,
+    // e.g. the iframe loaded before the listener attached, or a cross-origin
+    // neko frame never emits load. Without this the overlay could obscure a
+    // session that is actually live indefinitely.
+    const timer = window.setTimeout(settle, 15000);
+
+    let iframe: HTMLIFrameElement | null = wrapper.querySelector("iframe");
+    let observer: MutationObserver | null = null;
+
+    if (iframe) {
+      iframe.addEventListener("load", settle);
+    } else {
+      observer = new MutationObserver(() => {
+        const el = wrapper.querySelector("iframe");
+        if (el) {
+          observer?.disconnect();
+          observer = null;
+          iframe = el;
+          el.addEventListener("load", settle);
+        }
+      });
+      observer.observe(wrapper, { childList: true, subtree: true });
+    }
+
+    return () => {
+      window.clearTimeout(timer);
+      observer?.disconnect();
+      iframe?.removeEventListener("load", settle);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={wrapperRef}
+      style={{ position: "absolute", inset: 0 }}
+      data-window-tab={tabId}
+    >
+      <LiveBrowserView nekoUrl={nekoUrl} streamToken={streamToken} />
+      {connecting && <BrowserEmptyState variant="connecting" />}
+    </div>
+  );
+}
+
 interface DiscardedPlaceholderProps {
   tab: Tab;
   onReload: () => void;
@@ -370,22 +439,26 @@ interface DiscardedPlaceholderProps {
 
 function DiscardedPlaceholder({ tab, onReload }: DiscardedPlaceholderProps) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-shell-text-secondary text-sm">
-      <div className="text-xs uppercase tracking-wide opacity-70">
-        Tab snoozed
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-shell-bg-deep select-none">
+      <div className="flex flex-col items-center gap-1 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-shell-text-tertiary">
+          Tab snoozed
+        </p>
+        <p className="text-[13px] font-semibold text-shell-text mt-0.5">
+          {tab.title || tab.url || "Untitled tab"}
+        </p>
+        {tab.url && (
+          <p className="text-[11.5px] text-shell-text-tertiary max-w-[380px] truncate">
+            {tab.url}
+          </p>
+        )}
       </div>
-      <div className="font-medium">{tab.title || tab.url || "Untitled tab"}</div>
-      {tab.url && (
-        <div className="text-xs opacity-70 max-w-[400px] truncate">
-          {tab.url}
-        </div>
-      )}
       <button
         type="button"
         onClick={onReload}
-        className="mt-2 px-3 py-1 rounded bg-shell-surface border border-shell-border-subtle hover:bg-shell-hover text-xs"
+        className="mt-1 flex h-[34px] items-center gap-1.5 rounded-xl border border-shell-border bg-shell-surface px-4 text-[12px] font-semibold text-shell-text transition-colors hover:bg-white/[0.08] hover:border-shell-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       >
-        Click to reload
+        Reload tab
       </button>
     </div>
   );
@@ -472,6 +545,9 @@ function TabFrame({ profileId, url, tabId, title, zoom, visible }: TabFrameProps
     transformOrigin: "top left",
   };
 
+  // Show the new-tab placeholder when no URL is set and there’s no error.
+  const isBlankTab = !url || url === "about:blank";
+
   return (
     <>
       <iframe
@@ -495,13 +571,17 @@ function TabFrame({ profileId, url, tabId, title, zoom, visible }: TabFrameProps
         }
         style={frameStyle}
       />
+      {/* New-tab placeholder: shown instead of the blank white iframe on new tabs */}
+      {isBlankTab && visible && !error && (
+        <BrowserEmptyState variant="new-tab" />
+      )}
       {error && visible && (
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-shell-text-secondary text-sm"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-shell-bg-deep text-shell-text-secondary text-sm"
           data-tab-error={tabId}
         >
-          <div className="font-medium">Couldn’t load this page</div>
-          <div className="text-xs opacity-70 max-w-[400px] text-center">{error}</div>
+          <div className="font-semibold text-[13px] text-shell-text">Couldn’t load this page</div>
+          <div className="text-[11.5px] opacity-70 max-w-[400px] text-center">{error}</div>
         </div>
       )}
     </>

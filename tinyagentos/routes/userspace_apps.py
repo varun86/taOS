@@ -33,7 +33,7 @@ def _bundle_csp(net_origins: list[str]) -> str:
         "default-src 'none'; "
         "script-src 'self' 'unsafe-inline' blob:; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: blob:; "
+        "img-src 'self' https: data: blob:; "
         "font-src 'self' data:; "
         f"{connect}; "
         "frame-ancestors 'self'; base-uri 'none'"

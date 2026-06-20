@@ -9,8 +9,11 @@ Routes:
   POST   /api/browser/sessions/{id}/terminate  stop a session
 """
 
+import asyncio
 import logging
+import socket
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
@@ -28,6 +31,72 @@ from tinyagentos.routes.desktop_browser.session_token import mint_session_token
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _rewrite_neko_url(neko_url: str, request: Request) -> str:
+    """Rewrite the host in *neko_url* to match the host the client connected with.
+
+    The neko container binds on 0.0.0.0 so it is reachable on any IP of the
+    host (LAN, Tailscale, etc.).  The stored neko_url uses the LAN IP.
+    When the client arrives via a different address (e.g. Tailscale 100.x),
+    the iframe would try to load an unreachable LAN address.
+
+    Only the hostname is rewritten; the neko port, path, and query string are
+    preserved so the session credentials remain intact.
+
+    Honors X-Forwarded-Host when present (set by reverse proxies).  Falls
+    back to the Host header, then to the original URL unchanged.
+    """
+    if not neko_url:
+        return neko_url
+
+    client_host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or ""
+    )
+    # Strip port from the Host header -- the neko port differs from taOS port.
+    client_hostname = client_host.split(":")[0] if client_host else ""
+    if not client_hostname:
+        return neko_url
+
+    try:
+        parsed = urlparse(neko_url)
+        port_part = f":{parsed.port}" if parsed.port else ""
+        new_netloc = f"{client_hostname}{port_part}"
+        return urlunparse(parsed._replace(netloc=new_netloc))
+    except Exception:
+        return neko_url
+
+
+def _apply_host_rewrite(session: dict, request: Request) -> dict:
+    """Return a copy of *session* with neko_url rewritten for the client's host."""
+    neko_url = session.get("neko_url")
+    if not neko_url:
+        return session
+    return {**session, "neko_url": _rewrite_neko_url(neko_url, request)}
+
+
+def _connecting_host_ip(request: Request) -> str | None:
+    """Resolve the single IP the client connected with, for use as NEKO_WEBRTC_NAT1TO1.
+
+    Reads X-Forwarded-Host then Host (same precedence as _rewrite_neko_url).
+    Strips the port, then resolves the value: IP literals are returned as-is;
+    hostnames go through socket.gethostbyname.  Returns None on failure so
+    callers fall back to the node LAN IP.
+    """
+    client_host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or ""
+    )
+    hostname = client_host.split(":")[0].strip() if client_host else ""
+    if not hostname:
+        return None
+    try:
+        return socket.gethostbyname(hostname)
+    except Exception:
+        return None
 
 
 class CreateSessionBody(BaseModel):
@@ -180,8 +249,12 @@ async def get_my_session(
         try:
             if kind == "host":
                 runner = request.app.state.browser_container_runner
+                # _connecting_host_ip does a blocking DNS lookup; offload it so
+                # the event loop is not stalled while the host is resolved.
+                nat1to1_ip = await asyncio.to_thread(_connecting_host_ip, request)
                 session = await mgr.start_on_host(session["id"], profile_volume=vol,
-                                                   runner=runner, mobile=mobile)
+                                                   runner=runner, mobile=mobile,
+                                                   nat1to1_ip=nat1to1_ip)
             else:
                 worker = cluster.get_worker(node)
                 auth_token = getattr(request.app.state, "browser_worker_auth_token", None)
@@ -199,7 +272,7 @@ async def get_my_session(
     if session.get("status") == "running" and session.get("neko_url"):
         signing_key = request.app.state.browser_session_signing_key
         _, token = mint_session_token(session["id"], user_id, signing_key)
-        return JSONResponse({**session, "stream_token": token})
+        return JSONResponse({**_apply_host_rewrite(session, request), "stream_token": token})
 
     return JSONResponse(session)
 
@@ -234,7 +307,7 @@ async def get_session(
     if session["status"] == "running" and session.get("neko_url"):
         signing_key = request.app.state.browser_session_signing_key
         _, token = mint_session_token(session_id, user_id, signing_key)
-        return {**session, "stream_token": token}
+        return {**_apply_host_rewrite(session, request), "stream_token": token}
 
     return dict(session)
 
@@ -366,5 +439,5 @@ async def migrate_session(
     if refreshed.get("status") == "running" and refreshed.get("neko_url"):
         signing_key = request.app.state.browser_session_signing_key
         _, token = mint_session_token(session_id, user_id, signing_key)
-        return {**refreshed, "stream_token": token}
+        return {**_apply_host_rewrite(refreshed, request), "stream_token": token}
     return dict(refreshed)

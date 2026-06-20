@@ -118,7 +118,7 @@ export function Chrome({ windowId }: ChromeProps) {
         />
       )}
       <div
-        className="flex items-center gap-2 px-3 h-[50px] bg-shell-surface border-b border-shell-border"
+        className="flex items-center gap-1.5 px-3 h-[48px] bg-shell-surface border-b border-shell-border"
         role="toolbar"
         aria-label="Browser navigation"
       >

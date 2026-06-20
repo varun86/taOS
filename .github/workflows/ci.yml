@@ -18,38 +18,24 @@ on:
     # each release is a self-contained packaged download (see spa-build below).
     types: [published]
 
+# Cancel superseded runs of the same ref so a rapid series of pushes to a PR
+# branch does not stack up and starve the small self-hosted runner pool (this
+# bit us once: three superseded runs queued behind each other on two runners).
+# A PR push event carries ref refs/pull/<n>/merge, so successive pushes to the
+# same PR share a group and the older run is cancelled. master/dev are excluded
+# from cancellation: every promotion's CI (and its bundle publish) must finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' && github.ref != 'refs/heads/dev' }}
+
 jobs:
-  # Route the matrix to the self-hosted POOL (VPS + Fedora, both labelled
-  # taos-ci) rather than pinning it to one box. The two boxes are ~tied per
-  # core (Fedora i5-10600 ~2.0s, VPS EPYC ~2.2s on the same microbench), so the
-  # fastest run is the two matrix legs in PARALLEL across both — pinning the
-  # whole matrix to a single runner would serialise the legs and be slower. The
-  # always-on, dedicated VPS is the anchor; Fedora joins the pool when it is up
-  # and adds a parallel lane. We only fall back to GitHub-hosted when BOTH
-  # self-hosted runners are offline, so CI never hangs. Reading runner status
-  # needs a PAT with administration:read (secret RUNNER_ADMIN_PAT); without it
-  # we stay on the pool, which the always-on VPS keeps serviceable.
-  pick-runner:
-    runs-on: ubuntu-latest
-    outputs:
-      on: ${{ steps.p.outputs.on }}
-    steps:
-      - id: p
-        env:
-          PAT: ${{ secrets.RUNNER_ADMIN_PAT }}
-        run: |
-          on='["self-hosted","taos-ci"]'
-          if [ -n "$PAT" ]; then
-            count=$(GH_TOKEN="$PAT" gh api "repos/${{ github.repository }}/actions/runners" \
-              --jq '[.runners[] | select(.status=="online") | select(any(.labels[].name; . == "taos-ci"))] | length' \
-              2>/dev/null || echo 1)
-            if [ "${count:-1}" -eq 0 ]; then on='"ubuntu-latest"'; fi
-          fi
-          echo "on=$on" >> "$GITHUB_OUTPUT"
+  # The test matrix runs on GitHub-hosted runners. taOS is a public repo, so
+  # hosted Actions are free with high concurrency (~20 parallel jobs); many PRs
+  # run at once instead of queueing behind the 2 self-hosted boxes. The VPS +
+  # Fedora runners stay free for the kilo lane and GPU/bench work.
 
   test:
-    needs: pick-runner
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.on) }}
+    runs-on: ubuntu-latest
     # 45 min cap accommodates the cron run that includes 3.11 (~30 min);
     # 3.12/3.13 PR runs finish in ~16 min, so this only kicks in if 3.11
     # ever drifts further.
@@ -61,7 +47,7 @@ jobs:
         python-version: ${{ github.event_name == 'schedule' && fromJSON('["3.11", "3.12", "3.13"]') || fromJSON('["3.12", "3.13"]') }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # No actions/setup-python: it only ships prebuilt CPython for GitHub's
       # ubuntu image, so on the self-hosted Fedora runner it fails with
@@ -99,7 +85,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -123,7 +109,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Node
         uses: actions/setup-node@v4
