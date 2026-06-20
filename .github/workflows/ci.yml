@@ -130,3 +130,12 @@ jobs:
           cd desktop
           npm ci --silent
           npm run build
+
+      # Gate the desktop vitest suite (~1,900 tests, ~25s). A small set of
+      # suites that drift against in-progress redesigns (#59, #66) or are
+      # order-dependent are quarantined in vite.config.ts (test.exclude, tagged
+      # #114); un-exclude each as its owning work lands.
+      - name: Run desktop tests (vitest)
+        run: |
+          cd desktop
+          npx vitest run

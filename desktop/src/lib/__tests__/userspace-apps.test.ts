@@ -4,7 +4,9 @@ import { fetchUserspaceApps, toAppManifest, installUserspaceApp, grantUserspaceP
 describe("userspace apps", () => {
   it("maps a userspace app row to an AppManifest in the 'userspace' category", () => {
     const m = toAppManifest({ app_id: "todo", name: "Todo", icon: "", app_type: "web", version: "1", enabled: 1, permissions_requested: [], permissions_granted: [] });
-    expect(m.id).toBe("todo");
+    // Userspace app ids are namespaced with a "userspace:" prefix (see #89) so
+    // they never collide with core app ids in the launcher registry.
+    expect(m.id).toBe("userspace:todo");
     expect(m.name).toBe("Todo");
     expect(m.category).toBe("userspace");
     expect(typeof m.component).toBe("function");
@@ -39,7 +41,7 @@ describe("userspace apps", () => {
       { app_id: "b", name: "B", icon: "", app_type: "web", version: "1", enabled: 0, permissions_requested: [], permissions_granted: [] },
     ]}));
     const apps = await fetchUserspaceApps();
-    expect(apps.map(a => a.id)).toEqual(["a"]);
+    expect(apps.map(a => a.id)).toEqual(["userspace:a"]);
     vi.unstubAllGlobals();
   });
 
