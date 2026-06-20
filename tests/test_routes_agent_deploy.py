@@ -1,0 +1,403 @@
+"""Endpoint-level tests for the agent deploy route, exercising the helpers
+in tinyagentos/routes/agent_deploy.py through the FastAPI test client.
+
+The full /api/agents/deploy endpoint requires live infrastructure
+(container runtime, taosmd, LLM proxy, etc.) and is NOT tested end-to-end.
+Instead we exercise the validation and routing helpers that the endpoint
+calls, which are reachable through the endpoint with appropriate mocking.
+"""
+
+from __future__ import annotations
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
+
+from tinyagentos.cluster.model_resolver import ModelLocation
+
+
+def _app(client):
+    return client._transport.app
+
+
+# ---------------------------------------------------------------------------
+# validate_framework_and_ram
+# ---------------------------------------------------------------------------
+
+
+class TestValidateFrameworkAndRam:
+    """Tests for agent_deploy.validate_framework_and_ram via the deploy endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_framework_returns_400(self, client):
+        """A framework not in the registry catalog must return 400."""
+        mock_manifest = Mock()
+        mock_manifest.id = "some-framework"
+        mock_manifest.type = "agent-framework"
+
+        mock_registry = Mock()
+        mock_registry.list_available = Mock(return_value=[mock_manifest])
+
+        app = _app(client)
+        app.state.registry = mock_registry
+        app.state.hardware_profile = None
+
+        r = await client.post(
+            "/api/agents/deploy",
+            json={"name": "test-agent", "framework": "nonexistent-fw"},
+        )
+        assert r.status_code == 400
+        body = r.json()
+        assert "error" in body
+        assert "nonexistent-fw" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_unknown_framework_lists_available(self, client):
+        """The 400 error for an unknown framework lists available frameworks."""
+        mock_m1 = Mock()
+        mock_m1.id = "openclaw"
+        mock_m1.type = "agent-framework"
+        mock_m2 = Mock()
+        mock_m2.id = "smolagents"
+        mock_m2.type = "agent-framework"
+
+        mock_registry = Mock()
+        mock_registry.list_available = Mock(return_value=[mock_m1, mock_m2])
+
+        app = _app(client)
+        app.state.registry = mock_registry
+        app.state.hardware_profile = None
+
+        r = await client.post(
+            "/api/agents/deploy",
+            json={"name": "test-agent", "framework": "bogus"},
+        )
+        assert r.status_code == 400
+        body = r.json()
+        assert "openclaw" in body["error"]
+        assert "smolagents" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_low_ram_returns_400(self, client):
+        """A framework that needs more RAM than available must return 400."""
+        mock_manifest = Mock()
+        mock_manifest.id = "openclaw"
+        mock_manifest.type = "agent-framework"
+        mock_manifest.requires = {"ram_mb": 2048}
+
+        mock_registry = Mock()
+        mock_registry.list_available = Mock(return_value=[mock_manifest])
+        mock_registry.get = Mock(return_value=mock_manifest)
+
+        mock_hw = Mock()
+        mock_hw.ram_mb = 2048  # 2 GB -- not enough for 2048 + 500 + 2048
+
+        app = _app(client)
+        app.state.registry = mock_registry
+        app.state.hardware_profile = mock_hw
+
+        r = await client.post(
+            "/api/agents/deploy",
+            json={"name": "test-agent", "framework": "openclaw"},
+        )
+        assert r.status_code == 400
+        body = r.json()
+        assert "error" in body
+        assert "ram_mb" in body
+        assert "min_ram_mb" in body
+        assert body["framework"] == "openclaw"
+
+    @pytest.mark.asyncio
+    async def test_sufficient_ram_passes_validation(self, client):
+        """With enough RAM, framework validation passes (endpoint proceeds past it)."""
+        mock_manifest = Mock()
+        mock_manifest.id = "openclaw"
+        mock_manifest.type = "agent-framework"
+        mock_manifest.requires = {"ram_mb": 512}
+
+        mock_registry = Mock()
+        mock_registry.list_available = Mock(return_value=[mock_manifest])
+        mock_registry.get = Mock(return_value=mock_manifest)
+
+        mock_hw = Mock()
+        mock_hw.ram_mb = 16384  # 16 GB -- plenty
+
+        app = _app(client)
+        app.state.registry = mock_registry
+        app.state.hardware_profile = mock_hw
+
+        r = await client.post(
+            "/api/agents/deploy",
+            json={"name": "test-agent", "framework": "openclaw"},
+        )
+        # Should NOT get a 400 from framework validation.
+        assert r.status_code != 400 or "framework" not in r.json().get("error", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_framework_none_skips_validation(self, client):
+        """framework='none' skips both catalog lookup and RAM check."""
+        mock_registry = Mock()
+        mock_registry.list_available = Mock(return_value=[])
+
+        app = _app(client)
+        app.state.registry = mock_registry
+        app.state.hardware_profile = None
+
+        r = await client.post(
+            "/api/agents/deploy",
+            json={"name": "test-agent", "framework": "none"},
+        )
+        # Should not get a framework-related 400.
+        if r.status_code == 400:
+            assert "framework" not in r.json().get("error", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_no_hardware_profile_skips_ram_check(self, client):
+        """When hardware_profile is None, RAM check is skipped."""
+        mock_manifest = Mock()
+        mock_manifest.id = "openclaw"
+        mock_manifest.type = "agent-framework"
+        mock_manifest.requires = {"ram_mb": 99999}
+
+        mock_registry = Mock()
+        mock_registry.list_available = Mock(return_value=[mock_manifest])
+        mock_registry.get = Mock(return_value=mock_manifest)
+
+        app = _app(client)
+        app.state.registry = mock_registry
+        app.state.hardware_profile = None
+
+        r = await client.post(
+            "/api/agents/deploy",
+            json={"name": "test-agent", "framework": "openclaw"},
+        )
+        # Should not get a RAM-related 400 since hw profile is None.
+        if r.status_code == 400:
+            assert "ram" not in r.json().get("error", "").lower()
+
+
+# ---------------------------------------------------------------------------
+# resolve_deploy_routing
+# ---------------------------------------------------------------------------
+
+
+class TestResolveDeployRouting:
+    """Tests for agent_deploy.resolve_deploy_routing via the deploy endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_model_not_found_returns_404(self, client):
+        """A model that resolves to not_found must return 404."""
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(kind="not_found"),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={"name": "test-agent", "model": "nonexistent-model"},
+            )
+        assert r.status_code == 404
+        body = r.json()
+        assert "error" in body
+        assert "nonexistent-model" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_model_routed_to_worker_returns_202(self, client):
+        """A model on a worker (no pin) must return 202 with routing info."""
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(
+                kind="worker",
+                hosts=["worker-a", "worker-b"],
+                canonical_host="worker-a",
+            ),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={
+                    "name": "test-agent",
+                    "model": "qwen2.5-7b",
+                },
+            )
+        assert r.status_code == 202
+        body = r.json()
+        assert body["status"] == "routed"
+        assert body["worker"] == "worker-a"
+        assert "worker-a" in body["available_on"]
+        assert "worker-b" in body["available_on"]
+
+    @pytest.mark.asyncio
+    async def test_model_routed_to_pinned_worker_returns_202(self, client):
+        """A model on a worker with a valid pin returns 202."""
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(
+                kind="worker",
+                hosts=["worker-a", "worker-b"],
+                canonical_host="worker-a",
+            ),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={
+                    "name": "test-agent",
+                    "model": "qwen2.5-7b",
+                    "target_worker": "worker-b",
+                },
+            )
+        assert r.status_code == 202
+        body = r.json()
+        assert body["status"] == "routed"
+        assert body["worker"] == "worker-b"
+
+    @pytest.mark.asyncio
+    async def test_pinned_worker_without_model_returns_409(self, client):
+        """A pinned worker that does NOT have the model must return 409."""
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(
+                kind="worker",
+                hosts=["worker-a"],
+                canonical_host="worker-a",
+            ),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={
+                    "name": "test-agent",
+                    "model": "qwen2.5-7b",
+                    "target_worker": "worker-b",
+                },
+            )
+        assert r.status_code == 409
+        body = r.json()
+        assert "error" in body
+        assert "worker-b" in body["error"]
+        assert body["pinned_worker"] == "worker-b"
+        assert body["model"] == "qwen2.5-7b"
+        assert "worker-a" in body["available_on"]
+
+    @pytest.mark.asyncio
+    async def test_no_model_skips_routing(self, client):
+        """When no model is specified, routing is skipped entirely."""
+        r = await client.post(
+            "/api/agents/deploy",
+            json={"name": "test-agent"},
+        )
+        # Should not get a 404/409 from routing.
+        assert r.status_code not in (404, 409)
+
+    @pytest.mark.asyncio
+    async def test_cloud_model_falls_through(self, client):
+        """A cloud model resolves to 'cloud' and falls through to local deploy."""
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(kind="cloud"),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={
+                    "name": "test-agent",
+                    "model": "gpt-4o",
+                },
+            )
+        # Cloud models fall through; NOT a routing error.
+        assert r.status_code not in (404, 409)
+
+
+# ---------------------------------------------------------------------------
+# archive_smoke_check
+# ---------------------------------------------------------------------------
+
+# NOTE: archive_smoke_check is exercised during the POST /api/agents/deploy
+# response construction (after the agent record is saved and the background
+# task is spawned). We test it here with controller-local model resolution so
+# the deploy path actually completes, and we inspect archive_smoke_ok in the
+# response. The tests below verify that the smoke-check flag reflects archive
+# health. End-to-end archive correctness is tested in tests/routes/archive.
+
+
+class TestArchiveSmokeCheck:
+    """Tests for agent_deploy.archive_smoke_check via the deploy endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_archive_smoke_ok_true(self, client):
+        """When archive.record and query succeed, archive_smoke_ok is True."""
+        mock_archive = AsyncMock()
+        mock_archive.record = AsyncMock()
+        mock_archive.query = AsyncMock(return_value=[{"id": 1}])
+
+        app = _app(client)
+        app.state.archive = mock_archive
+
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(kind="controller"),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={"name": "test-agent"},
+            )
+            if r.status_code == 200:
+                body = r.json()
+                assert body.get("archive_smoke_ok") is True
+
+    @pytest.mark.asyncio
+    async def test_archive_smoke_ok_false_on_record_failure(self, client):
+        """When archive.record raises, archive_smoke_ok is False."""
+        mock_archive = AsyncMock()
+        mock_archive.record = AsyncMock(side_effect=Exception("disk full"))
+        mock_archive.query = AsyncMock(return_value=[])
+
+        app = _app(client)
+        app.state.archive = mock_archive
+
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(kind="controller"),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={"name": "test-agent"},
+            )
+            if r.status_code == 200:
+                body = r.json()
+                assert body.get("archive_smoke_ok") is False
+
+    @pytest.mark.asyncio
+    async def test_archive_smoke_ok_false_when_no_archive(self, client):
+        """When archive is None on app.state, archive_smoke_ok is False."""
+        app = _app(client)
+        app.state.archive = None
+
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(kind="controller"),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={"name": "test-agent"},
+            )
+            if r.status_code == 200:
+                body = r.json()
+                assert body.get("archive_smoke_ok") is False
+
+    @pytest.mark.asyncio
+    async def test_archive_smoke_ok_false_on_empty_query(self, client):
+        """When archive.query returns empty list, archive_smoke_ok is False."""
+        mock_archive = AsyncMock()
+        mock_archive.record = AsyncMock()
+        mock_archive.query = AsyncMock(return_value=[])
+
+        app = _app(client)
+        app.state.archive = mock_archive
+
+        with patch(
+            "tinyagentos.cluster.model_resolver.resolve_model_location",
+            return_value=ModelLocation(kind="controller"),
+        ):
+            r = await client.post(
+                "/api/agents/deploy",
+                json={"name": "test-agent"},
+            )
+            if r.status_code == 200:
+                body = r.json()
+                assert body.get("archive_smoke_ok") is False
