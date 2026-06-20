@@ -93,7 +93,9 @@ data/browser_cookie_key.hex
 # (a tracked copy dirties the tree and blocks the in-app git-pull update).
 desktop/tsconfig.tsbuildinfo
 
-# never track installed deps
+# never track installed deps (root-level node_modules can appear when a tool is
+# run from the repo root; ignore it everywhere so it is never swept into a commit)
+node_modules/
 desktop/node_modules
 
 # Local-only operational playbook (contains LAN IP + ops detail; agents read it from the working tree)
