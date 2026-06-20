@@ -13,10 +13,43 @@ on:
     # slow test), so a kernel-level interpreter perf issue rather than
     # something we can fix in our suite.
     - cron: "0 6 * * *"
+  release:
+    # Publishing a version release attaches its own prebuilt desktop bundle, so
+    # each release is a self-contained packaged download (see spa-build below).
+    types: [published]
 
 jobs:
-  test:
+  # Route the matrix to the self-hosted POOL (VPS + Fedora, both labelled
+  # taos-ci) rather than pinning it to one box. The two boxes are ~tied per
+  # core (Fedora i5-10600 ~2.0s, VPS EPYC ~2.2s on the same microbench), so the
+  # fastest run is the two matrix legs in PARALLEL across both — pinning the
+  # whole matrix to a single runner would serialise the legs and be slower. The
+  # always-on, dedicated VPS is the anchor; Fedora joins the pool when it is up
+  # and adds a parallel lane. We only fall back to GitHub-hosted when BOTH
+  # self-hosted runners are offline, so CI never hangs. Reading runner status
+  # needs a PAT with administration:read (secret RUNNER_ADMIN_PAT); without it
+  # we stay on the pool, which the always-on VPS keeps serviceable.
+  pick-runner:
     runs-on: ubuntu-latest
+    outputs:
+      on: ${{ steps.p.outputs.on }}
+    steps:
+      - id: p
+        env:
+          PAT: ${{ secrets.RUNNER_ADMIN_PAT }}
+        run: |
+          on='["self-hosted","taos-ci"]'
+          if [ -n "$PAT" ]; then
+            count=$(GH_TOKEN="$PAT" gh api "repos/${{ github.repository }}/actions/runners" \
+              --jq '[.runners[] | select(.status=="online") | select(any(.labels[].name; . == "taos-ci"))] | length' \
+              2>/dev/null || echo 1)
+            if [ "${count:-1}" -eq 0 ]; then on='"ubuntu-latest"'; fi
+          fi
+          echo "on=$on" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.on) }}
     # 45 min cap accommodates the cron run that includes 3.11 (~30 min);
     # 3.12/3.13 PR runs finish in ~16 min, so this only kicks in if 3.11
     # ever drifts further.
@@ -30,15 +63,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
+      # No actions/setup-python: it only ships prebuilt CPython for GitHub's
+      # ubuntu image, so on the self-hosted Fedora runner it fails with
+      # "version X not found for Fedora". uv provisions Python itself from
+      # distro-agnostic standalone builds, which works on Fedora, the Ubuntu
+      # VPS, and GitHub-hosted runners alike.
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+
+      - name: Provision Python via uv
+        run: uv python install ${{ matrix.python-version }}
 
       # Install the exact versions recorded in uv.lock (--frozen errors out
       # if the lock is stale rather than silently re-resolving). This is the
@@ -83,6 +119,9 @@ jobs:
 
   spa-build:
     runs-on: ubuntu-latest
+    # Needs write access to manage the rolling 'bundle-latest' release below.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
 
@@ -98,3 +137,44 @@ jobs:
           cd desktop
           npm ci --silent
           npm run build
+
+      # Gate the desktop vitest suite (~1,900 tests, ~25s). A small set of
+      # suites that drift against in-progress redesigns (#59, #66) or are
+      # order-dependent are quarantined in vite.config.ts (test.exclude, tagged
+      # #114); un-exclude each as its owning work lands.
+      - name: Run desktop tests (vitest)
+        run: |
+          cd desktop
+          npx vitest run
+
+      # On master, publish the freshly-built SPA as a prebuilt bundle so the
+      # installer can download it instead of running the memory-heavy vite build
+      # locally (which OOMs on small machines like an 8GB WSL and used to leave
+      # installs silently stuck on the old UI). The bundle is keyed by the git
+      # tree SHA of desktop/, so it stays valid across every commit that doesn't
+      # touch the frontend. Rolling 'bundle-latest' prerelease, assets clobbered.
+      - name: Publish prebuilt desktop bundle
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/master') || github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(git rev-parse HEAD:desktop)
+          tar -C static -czf desktop-bundle.tar.gz desktop
+          printf '%s\n' "$tree" > desktop-tree.txt
+          notes="Auto-built SPA bundle, matching desktop/ tree ${tree}. The installer downloads this when the tree matches, skipping the local vite build."
+          # Always keep the rolling 'bundle-latest' current (this is what the
+          # installer fetches by default).
+          if gh release view bundle-latest >/dev/null 2>&1; then
+            gh release upload bundle-latest desktop-bundle.tar.gz desktop-tree.txt --clobber
+            gh release edit bundle-latest --notes "$notes"
+          else
+            gh release create bundle-latest --prerelease \
+              --title "Prebuilt desktop bundle (rolling)" --notes "$notes" \
+              desktop-bundle.tar.gz desktop-tree.txt
+          fi
+          # On a version release, also attach the bundle to that release tag so
+          # each published version is a self-contained packaged download.
+          if [ "${{ github.event_name }}" = "release" ]; then
+            gh release upload "${{ github.event.release.tag_name }}" \
+              desktop-bundle.tar.gz desktop-tree.txt --clobber
+          fi

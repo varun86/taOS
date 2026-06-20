@@ -136,6 +136,7 @@ export function App() {
   const wallpaperComponent = useThemeStore((s) => s.wallpaperComponent);
   const wallpaperOverlayText = useThemeStore((s) => s.wallpaperOverlayText);
   const showOverlayText = useThemeStore((s) => s.showOverlayText);
+  const reduceEffects = useThemeStore((s) => s.reduceEffects);
   const isAnimatedWallpaper = wallpaperKind === "animated";
   const useLightWallpaper = scheme === "light" && !!wallpaperLightImage;
   const effWallpaperImage = useLightWallpaper ? wallpaperLightImage : wallpaperImage;
@@ -202,6 +203,15 @@ export function App() {
     // again (switching back into taOS); re-composite them on return.
     installWebkitRepaintGuards();
   }, []);
+
+  // Apply reduce-effects / performance mode (#58) as a root attribute so the CSS
+  // in tokens.css can strip blur, big shadows and continuous animations on
+  // low-end devices. Reactive so the Settings toggle takes effect immediately.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (reduceEffects) root.setAttribute("data-perf", "reduced");
+    else root.removeAttribute("data-perf");
+  }, [reduceEffects]);
 
   // Welcome notification — shown once per install, gated on a
   // localStorage flag so reload / refresh / re-mount don't replay it.

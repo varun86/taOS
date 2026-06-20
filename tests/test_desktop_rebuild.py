@@ -153,25 +153,23 @@ async def test_rebuild_returns_true_on_npm_build_failure(tmp_path, monkeypatch):
     (src_dir / "App.tsx").write_text("// stale")
     (tmp_path / "desktop" / "package.json").write_text('{"name":"x"}')
 
-    call_count = [0]
-
-    class InstallProc:
-        returncode = 0
-
-        async def communicate(self):
-            return b"", b""
-
-    class BuildProc:
-        returncode = 1
+    class Proc:
+        def __init__(self, rc, err=b""):
+            self.returncode = rc
+            self._err = err
 
         async def communicate(self):
-            return b"", b"build error"
+            return b"", self._err
 
     async def fake_exec(*args, **kwargs):
-        call_count[0] += 1
-        if call_count[0] == 1:
-            return InstallProc()
-        return BuildProc()
+        # The prebuilt-bundle check probes `git rev-parse HEAD:desktop` first;
+        # return an empty SHA so it skips straight to the local npm build.
+        if args[0] == "git":
+            return Proc(0, b"")
+        # npm ci / npm install succeed; npm run build fails.
+        if args[0] == "npm" and args[1] == "run":
+            return Proc(1, b"build error")
+        return Proc(0)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
 
@@ -296,3 +294,75 @@ def test_lockfile_hash_none_without_file(tmp_path):
     d = tmp_path / "desktop"
     d.mkdir()
     assert _lockfile_hash(d) is None
+
+
+# ---------------------------------------------------------------------------
+# prebuilt bundle: download instead of building locally when the source matches
+# ---------------------------------------------------------------------------
+
+from tinyagentos.desktop_rebuild import _try_prebuilt_desktop_bundle
+
+
+def _git_proc(sha: str):
+    class GitProc:
+        returncode = 0
+
+        async def communicate(self):
+            return (sha + "\n").encode(), b""
+
+    async def fake_exec(*args, **kwargs):
+        return GitProc()
+
+    return fake_exec
+
+
+@pytest.mark.asyncio
+async def test_prebuilt_bundle_installed_on_tree_match(tmp_path, monkeypatch):
+    """Matching tree SHA -> bundle is downloaded + swapped into static/desktop/."""
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _git_proc("SHA123"))
+
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        payload = b"<html>ok</html>"
+        info = tarfile.TarInfo("desktop/index.html")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    tarball = buf.getvalue()
+
+    async def fake_to_thread(_fn, url, **_kwargs):
+        return "SHA123" if url.endswith("desktop-tree.txt") else tarball
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
+
+    assert await _try_prebuilt_desktop_bundle(tmp_path) is True
+    assert (tmp_path / "static" / "desktop" / "index.html").read_text() == "<html>ok</html>"
+
+
+@pytest.mark.asyncio
+async def test_prebuilt_bundle_skipped_on_tree_mismatch(tmp_path, monkeypatch):
+    """Mismatched tree SHA -> returns False and never downloads the bundle."""
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _git_proc("LOCAL"))
+
+    calls = []
+
+    async def fake_to_thread(_fn, url, **_kwargs):
+        calls.append(url)
+        return "REMOTE_DIFFERENT"
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
+
+    assert await _try_prebuilt_desktop_bundle(tmp_path) is False
+    assert calls and all(c.endswith("desktop-tree.txt") for c in calls)
+
+
+@pytest.mark.asyncio
+async def test_prebuilt_bundle_skipped_when_git_missing(tmp_path, monkeypatch):
+    """No git on PATH -> returns False (falls back to a local build)."""
+    async def fake_exec(*args, **kwargs):
+        raise FileNotFoundError("git not found")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    assert await _try_prebuilt_desktop_bundle(tmp_path) is False

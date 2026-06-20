@@ -135,6 +135,37 @@
   backdrop-filter: none !important;
 }
 
+/* Reduce-effects / performance mode (#58)
+   =======================================
+   Toggled in Settings (and, later, auto-enabled on low-end GPUs). On weak
+   hardware the GPU-heavy compositing -- pervasive backdrop blur (~90 frosted
+   surfaces), large soft shadows, and continuous animations -- tanks the
+   framerate. data-perf="reduced" on :root strips those while leaving layout,
+   colour and contrast intact, so the desktop stays legible but cheap to paint. */
+:root[data-perf="reduced"] * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-perf="reduced"] {
+  /* Surfaces that leaned on the blur to be legible get an opaque glass bg. */
+  --color-shell-bg-glass: rgb(22, 22, 24);
+  /* Flatten the big, blur-radius-heavy shadows to cheap 1px ones. */
+  --shadow-window: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-window-unfocused: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-dock: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+:root[data-scheme="light"][data-perf="reduced"] {
+  --color-shell-bg-glass: rgb(245, 245, 247);
+}
+/* Stop the continuously-running animations (the per-frame GPU drain). */
+:root[data-perf="reduced"] .taos-status-pulse,
+:root[data-perf="reduced"] .taos-shimmer,
+:root[data-perf="reduced"] .taos-card-enter {
+  animation: none !important;
+}
+
 /* Wallpaper sizing
    ----------------
    Desktop fills the viewport (cover crops edges if aspect mismatches).

@@ -95,6 +95,84 @@ def _record_deps_install(desktop_dir: Path) -> None:
         logger.warning("Could not write deps marker (%s) — next update reinstalls.", exc)
 
 
+_BUNDLE_BASE = "https://github.com/jaylfc/taOS/releases/download/bundle-latest"
+
+
+async def _try_prebuilt_desktop_bundle(project_root: Path) -> bool:
+    """Install the CI-published prebuilt SPA bundle when it matches this source.
+
+    The bundle is keyed by ``git rev-parse HEAD:desktop`` (the content hash of
+    the frontend tree), so it is valid for every commit that does not touch
+    desktop/. On a match we download + stage + swap it into static/desktop/ and
+    return True, letting the caller skip the memory-heavy vite build that OOMs
+    on small machines. Returns False -- fall back to a local build -- on any
+    mismatch, missing git, or network/extract failure. The artifact is our own
+    CI output, extracted with the path-safe ``data`` tar filter.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", str(project_root), "rev-parse", "HEAD:desktop",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
+    except FileNotFoundError:
+        return False  # git not on PATH
+    local_tree = out.decode(errors="replace").strip()
+    if proc.returncode != 0 or not local_tree:
+        return False
+
+    def _get(url: str, *, binary: bool):
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            data = resp.read()
+        return data if binary else data.decode(errors="replace").strip()
+
+    # Only download the (larger) bundle if the published tree matches ours.
+    try:
+        remote_tree = await asyncio.to_thread(_get, f"{_BUNDLE_BASE}/desktop-tree.txt", binary=False)
+    except Exception:
+        return False
+    if remote_tree != local_tree:
+        return False
+
+    logger.info("Downloading prebuilt desktop bundle (matches source; skipping local build).")
+    try:
+        blob = await asyncio.to_thread(_get, f"{_BUNDLE_BASE}/desktop-bundle.tar.gz", binary=True)
+    except Exception as exc:
+        logger.warning("Prebuilt bundle download failed (%s); building locally.", exc)
+        return False
+
+    import io
+    import shutil
+    import tarfile
+    import tempfile
+
+    stage = Path(tempfile.mkdtemp(prefix="taos-bundle-"))
+    try:
+        with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
+            try:
+                tar.extractall(stage, filter="data")  # py>=3.12 path-safe filter
+            except TypeError:
+                tar.extractall(stage)  # older python lacks the filter kwarg
+        staged = stage / "desktop"
+        if not (staged / "index.html").is_file():
+            logger.warning("Prebuilt bundle missing index.html; building locally.")
+            return False
+        static_dir = project_root / "static"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        target = static_dir / "desktop"
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.move(str(staged), str(target))
+        logger.info("Prebuilt desktop bundle installed into static/desktop/.")
+        return True
+    except Exception as exc:
+        logger.warning("Prebuilt bundle install failed (%s); building locally.", exc)
+        return False
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
 async def rebuild_desktop_bundle_if_stale(
     project_root: Path,
     *,
@@ -131,6 +209,16 @@ async def rebuild_desktop_bundle_if_stale(
         )
 
     logger.info("Desktop source is ahead of bundle — rebuilding...")
+
+    # Prefer the CI-published prebuilt bundle (keyed to this desktop/ source by
+    # its git tree SHA) so low-RAM hosts skip the memory-heavy vite build. Falls
+    # through to the local build below on any miss.
+    if await _try_prebuilt_desktop_bundle(project_root):
+        return RebuildResult(
+            rebuilt=True,
+            success=True,
+            message="Installed prebuilt desktop bundle (no local build needed).",
+        )
 
     try:
         if _deps_install_needed(desktop_dir):
