@@ -1191,7 +1191,13 @@ if [[ -n "$_desktop_tree" ]]; then
         # running as root in the common `curl | sudo bash` invocation.
         _stage="$(mktemp -d "$INSTALL_DIR/static/.taos-bundle.XXXXXX")"
         _tarball="$(mktemp "$INSTALL_DIR/static/.taos-bundle.XXXXXX.tgz")"
+        # Verify the download against the CI-published SHA256 before extracting,
+        # so a corrupted or tampered tarball is rejected (we fall back to a local
+        # build). sha256sum on Linux, shasum -a 256 on macOS.
+        _exp_sha="$(curl -fsSL --max-time 20 "$_bundle_base/desktop-bundle.sha256" 2>/dev/null | tr -d '[:space:]')"
+        _sha_cmd="sha256sum"; command -v sha256sum >/dev/null 2>&1 || _sha_cmd="shasum -a 256"
         if curl -fsSL --max-time 120 "$_bundle_base/desktop-bundle.tar.gz" -o "$_tarball" \
+           && [[ -n "$_exp_sha" && "$($_sha_cmd "$_tarball" | awk '{print $1}')" == "$_exp_sha" ]] \
            && tar -C "$_stage" -xzf "$_tarball" \
            && [[ -f "$_stage/desktop/index.html" ]]; then
             rm -rf "$INSTALL_DIR/static/desktop"

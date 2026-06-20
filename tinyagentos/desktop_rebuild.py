@@ -142,6 +142,16 @@ async def _try_prebuilt_desktop_bundle(project_root: Path) -> bool:
         logger.warning("Prebuilt bundle download failed (%s); building locally.", exc)
         return False
 
+    # Verify against the CI-published SHA256 before extracting; reject a corrupted
+    # or tampered tarball and fall back to a local build.
+    try:
+        expected_sha = await asyncio.to_thread(_get, f"{_BUNDLE_BASE}/desktop-bundle.sha256", binary=False)
+    except Exception:
+        expected_sha = ""
+    if not expected_sha or hashlib.sha256(blob).hexdigest() != expected_sha.split()[0]:
+        logger.warning("Prebuilt bundle checksum missing or mismatched; building locally.")
+        return False
+
     import io
     import shutil
     import tarfile
