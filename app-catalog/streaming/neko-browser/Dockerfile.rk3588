@@ -1,40 +1,40 @@
-# taOS Neko Chromium for RK3588 (Orange Pi 5 Plus) — CDP + VPU H.264 encode.
+# taOS Neko Chromium for RK3588 — VPU H.264 encode via MPP + gstreamer-rockchip.
+# Multi-stage: stage 1 compiles Rockchip MPP, RGA and the gstreamer-rockchip
+# plugin against GStreamer 1.26 (trixie, matching the neko-cdp runtime, so the
+# plugin ABI lines up). Stage 2 layers the built libs onto the CDP image.
 #
-# SEPARATE, SoC-specific, arm64-only image. Built ON TOP of the taOS CDP image
-# so it inherits Chromium >=148 + the CDP DevTools enablement, then adds the
-# Rockchip MPP/RGA userspace + the GStreamer rkmpp plugin (mpph264enc) so WebRTC
-# encode runs on the VPU instead of the A76 cores. Generic arm64 and x86 nodes
-# keep using the plain CDP image (software encode); resolve_neko_image() picks
-# THIS image only when the SoC is rk3588/rk3576 and passes /dev/mpp_service,
-# /dev/dri, /dev/rga at docker run.
-#
-# Why a separate image (not one multi-arch image for every device): the Rockchip
-# MPP/RGA userspace and the mpph264enc rank boost are SoC-specific. Baking them
-# into the shared arm64 CDP image would bloat every arm64 pull (Graviton, Apple
-# Silicon, generic SBCs) and, worse, force NEKO_VIDEO_CODEC=h264 + mpph264enc
-# ranking on non-Rockchip arm64 where the VPU and device nodes do not exist,
-# breaking encode there. A separate image matches the per-SoC resolver design.
-FROM ghcr.io/jaylfc/taos-neko-cdp:latest
+# Built for the Rockchip VENDOR kernel (6.1.x-vendor-rk35xx) which exposes the
+# VPU via /dev/mpp_service (no V4L2). Shared publicly for the community (#624).
 
-# Rockchip MPP + RGA + GStreamer rkmpp plugin (mpph264enc).
-# NOTE (#624): these are NOT in Debian trixie or the Armbian-trixie repos. The
-# Pi (Debian trixie) only ships the rockchip KERNEL (linux-image-current-
-# rockchip64), not the multimedia userspace, so the plugin must be built from
-# source (MPP -> RGA -> gstreamer-rockchip) in a dedicated build stage. Until
-# that build lands, this RUN is a deliberate no-op (|| true) and the image
-# behaves exactly like the CDP image (software encode). The resolver flip
-# (DEFAULT_NEKO_RK3588_IMAGE -> this image) stays gated on a live Pi validation
-# that mpph264enc actually engages.
+# ---- stage 1: build the rockchip multimedia userspace --------------------
+FROM debian:trixie AS rkbuild
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        gstreamer1.0-rockchip librockchip-mpp1 librga2 \
-    && rm -rf /var/lib/apt/lists/* || true
+        git ca-certificates build-essential cmake meson ninja-build pkg-config \
+        libdrm-dev \
+        libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+# MPP (Media Process Platform) — nyanmisaka's maintained fork builds cleanly.
+RUN git clone --depth=1 -b jellyfin-mpp https://github.com/nyanmisaka/mpp.git mpp \
+    && cmake -S mpp -B mpp/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release \
+         -DBUILD_SHARED_LIBS=ON -DBUILD_TEST=OFF \
+    && cmake --build mpp/build -j"$(nproc)" \
+    && cmake --install mpp/build
+# RGA (2D raster graphics accel).
+RUN git clone --depth=1 -b jellyfin-rga https://github.com/nyanmisaka/rk-mirrors.git rga \
+    && meson setup rga rga/build --prefix=/usr -Dlibdrm=false -Dlibrga_demo=false --buildtype=release \
+    && meson install -C rga/build
+# gstreamer-rockchip plugin (mpph264enc) — built against trixie GStreamer 1.26.
+RUN git clone --depth=1 https://github.com/JeffyCN/gstreamer-rockchip.git gst \
+    && meson setup gst gst/build --prefix=/usr --buildtype=release \
+    && meson install -C gst/build
 
-LABEL taos.app.id="neko-browser-rk3588" \
-      taos.streaming.encode="rkmpp" \
-      taos.hardware.soc="rk3588" \
-      taos.base="taos-neko-cdp"
-
-# Prefer the VPU encoder. Safe to bake here because this image only ever runs on
-# rk3588/rk3576 (the resolver guarantees it), where the VPU exists.
-ENV NEKO_VIDEO_CODEC=h264 \
-    GST_PLUGIN_FEATURE_RANK="mpph264enc:512"
+# ---- stage 2: layer onto the CDP image -----------------------------------
+FROM ghcr.io/jaylfc/taos-neko-cdp:latest
+COPY --from=rkbuild /usr/lib/librockchip_mpp.so* /usr/lib/aarch64-linux-gnu/
+COPY --from=rkbuild /usr/lib/librga.so* /usr/lib/aarch64-linux-gnu/
+COPY --from=rkbuild /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstrockchipmpp.so /usr/lib/aarch64-linux-gnu/gstreamer-1.0/
+RUN ldconfig
+LABEL taos.app.id="neko-browser-rk3588" taos.streaming.encode="rkmpp" \
+      taos.hardware.soc="rk3588" taos.base="taos-neko-cdp"
+ENV NEKO_VIDEO_CODEC=h264 GST_PLUGIN_FEATURE_RANK="mpph264enc:512"
