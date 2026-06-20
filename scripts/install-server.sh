@@ -981,8 +981,11 @@ ensure_docker_for_apps() {
     fi
 }
 
-ensure_container_runtime
-ensure_docker_for_apps
+# Container/Docker setup is optional for the core controller. On hosts where it
+# cannot complete (WSL without systemd, minimal VMs, incus/docker iptables that
+# fail under set -e), warn and continue rather than aborting the whole install.
+ensure_container_runtime || warn "container runtime setup did not complete -- agent containers may be unavailable; continuing"
+ensure_docker_for_apps || warn "Docker setup did not complete -- Store Docker apps will be unavailable; continuing"
 
 # --- clone / update the repo ---------------------------------------------
 
@@ -1166,7 +1169,10 @@ ensure_litellm_postgres() {
     log "litellm postgres: data/.litellm_db_url written — virtual keys enabled"
 }
 
-ensure_litellm_postgres
+# Postgres backs LiteLLM virtual keys; without it the controller still runs and
+# falls back gracefully. Never let DB setup abort the core install (e.g. WSL
+# without systemd, where the postgres daemon cannot start).
+ensure_litellm_postgres || warn "litellm postgres setup did not complete -- virtual keys disabled, controller still runs; continuing"
 
 # --- desktop SPA bundle --------------------------------------------------
 # The bundle is not committed to git (static/desktop/ is gitignored), so it has
