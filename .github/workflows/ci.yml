@@ -15,8 +15,37 @@ on:
     - cron: "0 6 * * *"
 
 jobs:
-  test:
+  # Route the matrix to the self-hosted POOL (VPS + Fedora, both labelled
+  # taos-ci) rather than pinning it to one box. The two boxes are ~tied per
+  # core (Fedora i5-10600 ~2.0s, VPS EPYC ~2.2s on the same microbench), so the
+  # fastest run is the two matrix legs in PARALLEL across both — pinning the
+  # whole matrix to a single runner would serialise the legs and be slower. The
+  # always-on, dedicated VPS is the anchor; Fedora joins the pool when it is up
+  # and adds a parallel lane. We only fall back to GitHub-hosted when BOTH
+  # self-hosted runners are offline, so CI never hangs. Reading runner status
+  # needs a PAT with administration:read (secret RUNNER_ADMIN_PAT); without it
+  # we stay on the pool, which the always-on VPS keeps serviceable.
+  pick-runner:
     runs-on: ubuntu-latest
+    outputs:
+      on: ${{ steps.p.outputs.on }}
+    steps:
+      - id: p
+        env:
+          PAT: ${{ secrets.RUNNER_ADMIN_PAT }}
+        run: |
+          on='["self-hosted","taos-ci"]'
+          if [ -n "$PAT" ]; then
+            count=$(GH_TOKEN="$PAT" gh api "repos/${{ github.repository }}/actions/runners" \
+              --jq '[.runners[] | select(.status=="online") | select(any(.labels[].name; . == "taos-ci"))] | length' \
+              2>/dev/null || echo 1)
+            if [ "${count:-1}" -eq 0 ]; then on='"ubuntu-latest"'; fi
+          fi
+          echo "on=$on" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.on) }}
     # 45 min cap accommodates the cron run that includes 3.11 (~30 min);
     # 3.12/3.13 PR runs finish in ~16 min, so this only kicks in if 3.11
     # ever drifts further.
@@ -30,15 +59,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
+      # No actions/setup-python: it only ships prebuilt CPython for GitHub's
+      # ubuntu image, so on the self-hosted Fedora runner it fails with
+      # "version X not found for Fedora". uv provisions Python itself from
+      # distro-agnostic standalone builds, which works on Fedora, the Ubuntu
+      # VPS, and GitHub-hosted runners alike.
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+
+      - name: Provision Python via uv
+        run: uv python install ${{ matrix.python-version }}
 
       # Install the exact versions recorded in uv.lock (--frozen errors out
       # if the lock is stale rather than silently re-resolving). This is the
