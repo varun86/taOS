@@ -176,21 +176,31 @@ async def workspace_diff(request: Request, workspace_id: str):
     if err is not None:
         return err
 
-    # Collect status of every changed entry (tracked + untracked)
-    rc, out, _e = await _git(root, "status", "--porcelain")
+    # Collect status of every changed entry (tracked + untracked).
+    # Use -z for NUL-separated output so filenames with spaces/quotes are safe.
+    rc, out, _e = await _git(root, "status", "--porcelain=v1", "-z")
     if rc != 0:
         return JSONResponse({"error": "git status failed"}, status_code=500)
 
     entries: list[dict] = []
-    for line in out.splitlines():
-        if len(line) < 4:
+    # -z output: entries are "<XY> <path>\0"; renames are "<XY> <new>\0<old>\0".
+    raw_tokens = out.split("\0")
+    status_entries: list[tuple[str, str]] = []
+    i = 0
+    while i < len(raw_tokens):
+        token = raw_tokens[i]
+        if len(token) < 4:
+            i += 1
             continue
-        xy = line[:2]
-        rel_path = line[3:].strip()
-        # Handle renames: "R old -> new" (porcelain v1 uses " -> " separator)
-        if " -> " in rel_path:
-            rel_path = rel_path.split(" -> ", 1)[1]
+        xy = token[:2]
+        rel_path = token[3:]
+        if xy[0] in ("R", "C"):
+            i += 2  # skip old-path token
+        else:
+            i += 1
+        status_entries.append((xy, rel_path))
 
+    for xy, rel_path in status_entries:
         x, y = xy[0], xy[1]
         untracked = xy == "??"
 
@@ -262,9 +272,21 @@ async def accept_changes(request: Request, workspace_id: str, body: PathsBody):
         logger.warning("git add failed: %s", se)
         return JSONResponse({"error": "git add failed", "detail": se}, status_code=500)
 
+    # Check if anything was actually staged before committing.
+    rc_st, st_out, _ = await _git(root, "status", "--porcelain=v1", "-z")
+    staged = any(
+        len(t) >= 4 and t[0] not in (" ", "?")
+        for t in st_out.split("\0")
+    )
+    if not staged:
+        return {"ok": True, "committed": [], "note": "nothing to commit"}
+
     rc, _o, se = await _git(
-        root, "commit", "-m", f"agent: accept changes to {len(safe_paths)} file(s)",
-        "--allow-empty"
+        root,
+        "-c", "user.name=taOS",
+        "-c", "user.email=taos@localhost",
+        "commit",
+        "-m", f"agent: accept changes to {len(safe_paths)} file(s)",
     )
     if rc != 0:
         logger.warning("git commit failed: %s", se)
@@ -294,18 +316,24 @@ async def revert_changes(request: Request, workspace_id: str, body: PathsBody):
     errors: list[str] = []
 
     # Determine status for each path to decide how to discard
-    rc, status_out, _ = await _git(root, "status", "--porcelain", "--", *safe_paths)
+    rc, status_out, _ = await _git(root, "status", "--porcelain=v1", "-z", "--", *safe_paths)
 
     untracked: set[str] = set()
     tracked: list[str] = []
 
-    for line in status_out.splitlines():
-        if len(line) < 4:
+    raw_tokens = status_out.split("\0")
+    i = 0
+    while i < len(raw_tokens):
+        token = raw_tokens[i]
+        if len(token) < 4:
+            i += 1
             continue
-        xy = line[:2]
-        path = line[3:].strip()
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
+        xy = token[:2]
+        path = token[3:]
+        if xy[0] in ("R", "C"):
+            i += 2
+        else:
+            i += 1
         if xy == "??":
             untracked.add(path)
         else:

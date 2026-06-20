@@ -487,6 +487,16 @@ Keep responses concise and practical.`;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths: [path] }),
       });
+      if (res.status === 207) {
+        const data = await res.json();
+        const failed: string[] = data.failed ?? [];
+        if (failed.length > 0) {
+          setBuildError(`Revert failed for: ${failed.join(", ")}`);
+        } else {
+          setDiffEntries((prev) => prev.filter((e) => e.path !== path));
+        }
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setDiffEntries((prev) => prev.filter((e) => e.path !== path));
     } catch (err) {
@@ -529,6 +539,16 @@ Keep responses concise and practical.`;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths }),
       });
+      if (res.status === 207) {
+        const data = await res.json();
+        const failed: string[] = data.failed ?? [];
+        const reverted: string[] = data.reverted ?? [];
+        setDiffEntries((prev) => prev.filter((e) => !reverted.includes(e.path)));
+        if (failed.length > 0) {
+          setBuildError(`Revert failed for: ${failed.join(", ")}`);
+        }
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setDiffEntries([]);
     } catch (err) {
@@ -630,9 +650,9 @@ Keep responses concise and practical.`;
               </div>
             )}
 
-            {steps.map((step) => (
+            {steps.map((step, idx) => (
               <div
-                key={step.id}
+                key={streaming ? "stream-output" : step.id}
                 className="rounded-[12px] border border-shell-border bg-shell-surface px-4 py-3"
               >
                 <pre className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-shell-text-secondary">
