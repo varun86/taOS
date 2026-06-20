@@ -10,10 +10,58 @@ module can be used in unit tests without a Docker daemon.
 import asyncio
 import logging
 import secrets
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _detect_tailscale_ip() -> str | None:
+    """Return the Tailscale IPv4 address of this host, or None if unavailable.
+
+    Tries ``tailscale ip -4`` first (most reliable).  Falls back to looking
+    for the ``tailscale0`` interface via netifaces when the CLI is absent.
+    Returns None when Tailscale is not installed or not running -- callers
+    treat None as "no Tailscale" and omit the extra NAT1TO1 entry.
+    """
+    if shutil.which("tailscale"):
+        try:
+            result = subprocess.run(
+                ["tailscale", "ip", "-4"],
+                capture_output=True, text=True, timeout=2,
+            )
+            ip = result.stdout.strip()
+            if result.returncode == 0 and ip:
+                return ip
+        except Exception:
+            pass
+
+    try:
+        import netifaces  # type: ignore[import-untyped]
+        addrs = netifaces.ifaddresses("tailscale0")
+        entries = addrs.get(netifaces.AF_INET, [])
+        if entries:
+            return entries[0].get("addr")
+    except Exception:
+        pass
+
+    return None
+
+
+def build_nat1to1(node_ip: str) -> str:
+    """Build the NEKO_WEBRTC_NAT1TO1 value for this host.
+
+    Always includes ``node_ip`` (the LAN IP).  When Tailscale is active, the
+    Tailscale IP is appended as a second comma-separated entry so WebRTC ICE
+    candidates are advertised on both LAN and Tailscale networks.  If
+    detection fails for any reason, falls back to just ``node_ip``.
+    """
+    ts_ip = _detect_tailscale_ip()
+    if ts_ip and ts_ip != node_ip:
+        return f"{node_ip},{ts_ip}"
+    return node_ip
 
 DEFAULT_NEKO_IMAGE = "ghcr.io/m1k1o/neko/chromium:latest"
 DEFAULT_NEKO_GPU_IMAGE = "ghcr.io/m1k1o/neko/nvidia-chromium:latest"
@@ -121,7 +169,7 @@ def build_neko_run_args(
         "-e", f"NEKO_MEMBER_MULTIUSER_USER_PASSWORD={user_pwd}",
         "-e", f"NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD={admin_pwd}",
         "-e", f"NEKO_WEBRTC_EPR={epr_lo}-{epr_hi}",
-        "-e", f"NEKO_WEBRTC_NAT1TO1={node_ip}",
+        "-e", f"NEKO_WEBRTC_NAT1TO1={build_nat1to1(node_ip)}",
         f"--shm-size={shm_size}",
         "-v", f"{profile_volume}:{NEKO_PROFILE_MOUNT}",
     ]
