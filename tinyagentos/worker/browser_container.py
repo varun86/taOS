@@ -340,9 +340,10 @@ class BrowserContainerRunner:
         # The port is bound to 127.0.0.1 inside the container; the launcher
         # accesses it via `docker exec` / a loopback port binding on the host.
         # None for images that don't expose CDP (stock Neko, GPU image).
+        # The RK3588 image is built FROM the CDP image, so it also exposes CDP.
         cdp_url = (
             "http://127.0.0.1:9222"
-            if spec.image == DEFAULT_NEKO_CDP_IMAGE
+            if spec.image in (DEFAULT_NEKO_CDP_IMAGE, DEFAULT_NEKO_RK3588_IMAGE)
             else None
         )
 
