@@ -1952,6 +1952,10 @@ log "━━━━━━━━━━━━━━━━━━━━━━━━━
 log ""
 log "  Web UI      : http://$host_ip:$TAOS_PORT"
 log "  Localhost   : http://localhost:$TAOS_PORT"
+log ""
+log "  First run   : open the Web UI above and create your admin account."
+log "                You choose the username and password (8+ chars) -- there"
+log "                is no default password."
 if [[ "$TAOS_BROWSER_PROXY_PORT" != "0" ]]; then
     log "  Browser app : also listens on port $TAOS_BROWSER_PROXY_PORT (TAOS_BROWSER_PROXY_PORT)"
     log "                open both ports in your firewall if accessing remotely"
