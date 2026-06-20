@@ -18,6 +18,16 @@ on:
     # each release is a self-contained packaged download (see spa-build below).
     types: [published]
 
+# Cancel superseded runs of the same ref so a rapid series of pushes to a PR
+# branch does not stack up and starve the small self-hosted runner pool (this
+# bit us once: three superseded runs queued behind each other on two runners).
+# A PR push event carries ref refs/pull/<n>/merge, so successive pushes to the
+# same PR share a group and the older run is cancelled. master/dev are excluded
+# from cancellation: every promotion's CI (and its bundle publish) must finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' && github.ref != 'refs/heads/dev' }}
+
 jobs:
   # Route the matrix to the self-hosted POOL (VPS + Fedora, both labelled
   # taos-ci) rather than pinning it to one box. The two boxes are ~tied per
