@@ -51,3 +51,49 @@ describe("ProjectList — empty state (fix #618)", () => {
     expect(screen.getByTestId("create-dialog")).toBeInTheDocument();
   });
 });
+
+describe("ProjectList — open in new window (Task 111)", () => {
+  const projects = [{ id: "p1", name: "My Project", slug: "my-project" }];
+
+  it("calls onOpenInNewWindow with the project id when the affordance is clicked", () => {
+    const onOpenInNewWindow = vi.fn();
+    render(
+      <ProjectList
+        projects={projects}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onCreated={vi.fn()}
+        onOpenInNewWindow={onOpenInNewWindow}
+      />
+    );
+    fireEvent.click(screen.getByLabelText("Open My Project in a new window"));
+    expect(onOpenInNewWindow).toHaveBeenCalledWith("p1");
+  });
+
+  it("does not render the new-window affordance when no handler is provided", () => {
+    render(
+      <ProjectList
+        projects={projects}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onCreated={vi.fn()}
+      />
+    );
+    expect(screen.queryByLabelText("Open My Project in a new window")).not.toBeInTheDocument();
+  });
+
+  it("selecting the row (not the affordance) still calls onSelect", () => {
+    const onSelect = vi.fn();
+    render(
+      <ProjectList
+        projects={projects}
+        selectedId={null}
+        onSelect={onSelect}
+        onCreated={vi.fn()}
+        onOpenInNewWindow={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByText("My Project"));
+    expect(onSelect).toHaveBeenCalledWith("p1");
+  });
+});

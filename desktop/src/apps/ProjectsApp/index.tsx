@@ -1,13 +1,24 @@
 import { useEffect, useState } from "react";
 import { projectsApi, type Project } from "@/lib/projects";
+import { useProcessStore } from "@/stores/process-store";
+import { getApp } from "@/registry/app-registry";
 import { useIsMobile } from "../../hooks/use-is-mobile";
 import { MobileSplitView } from "../../components/mobile/MobileSplitView";
 import { ProjectList } from "./ProjectList";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 
-export function ProjectsApp({ windowId: _windowId }: { windowId: string }) {
+// `projectId` is a per-window prop: each Projects window can be pinned to a
+// different project (opened via the project list's "open in new window"), so
+// the user can view two projects side by side. Omitted for the first window.
+export function ProjectsApp({ windowId: _windowId, projectId }: { windowId: string; projectId?: string }) {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(projectId ?? null);
+  const openWindow = useProcessStore((s) => s.openWindow);
+
+  const openInNewWindow = (id: string) => {
+    const size = getApp("projects")?.defaultSize ?? { w: 1100, h: 720 };
+    openWindow("projects", size, { projectId: id }, { forceNew: true });
+  };
   const [error, setError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isMobile = useIsMobile();
@@ -55,6 +66,7 @@ export function ProjectsApp({ windowId: _windowId }: { windowId: string }) {
       selectedId={selectedId}
       onSelect={setSelectedId}
       onCreated={refresh}
+      onOpenInNewWindow={openInNewWindow}
       collapsed={sidebarCollapsed}
       onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
     />
