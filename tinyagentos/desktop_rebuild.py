@@ -134,18 +134,48 @@ async def rebuild_desktop_bundle_if_stale(
 
     try:
         if _deps_install_needed(desktop_dir):
-            logger.info("Dependencies changed or missing — running npm install...")
+            # Use `npm ci`, not `npm install`: ci installs exactly from the
+            # committed package-lock.json and NEVER rewrites it. `npm install`
+            # rewrites the lockfile, which leaves the tracked desktop/package-
+            # lock.json dirty and makes the next in-app `git pull` update abort
+            # with "local changes would be overwritten by merge" (the deadlock a
+            # user hit when their installed version predated the #852 restore).
+            logger.info("Dependencies changed or missing — running npm ci...")
             proc = await asyncio.create_subprocess_exec(
-                "npm", "install", "--silent",
+                "npm", "ci", "--silent",
                 cwd=str(desktop_dir),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
             if proc.returncode != 0:
-                msg = f"npm install failed (rc={proc.returncode}): {stderr.decode(errors='replace')[-500:]}"
-                logger.error(msg)
-                return RebuildResult(rebuilt=True, success=False, message=msg)
+                # `npm ci` fails if package.json and the lockfile are out of sync
+                # (rare). Fall back to `npm install`, then restore the lockfile so
+                # the tree stays clean for the next update.
+                logger.warning(
+                    "npm ci failed (rc=%s), falling back to npm install: %s",
+                    proc.returncode, stderr.decode(errors="replace")[-300:],
+                )
+                proc = await asyncio.create_subprocess_exec(
+                    "npm", "install", "--silent",
+                    cwd=str(desktop_dir),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+                if proc.returncode != 0:
+                    msg = f"npm install failed (rc={proc.returncode}): {stderr.decode(errors='replace')[-500:]}"
+                    logger.error(msg)
+                    return RebuildResult(rebuilt=True, success=False, message=msg)
+                # Discard the lockfile rewrite npm install just made so the
+                # working tree is clean for the next git-pull update.
+                restore = await asyncio.create_subprocess_exec(
+                    "git", "checkout", "--", "package-lock.json",
+                    cwd=str(desktop_dir),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await restore.communicate()
             _record_deps_install(desktop_dir)
         else:
             logger.info("Dependencies unchanged — skipping npm install.")
