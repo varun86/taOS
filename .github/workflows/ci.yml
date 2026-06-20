@@ -161,20 +161,22 @@ jobs:
           tree=$(git rev-parse HEAD:desktop)
           tar -C static -czf desktop-bundle.tar.gz desktop
           printf '%s\n' "$tree" > desktop-tree.txt
-          notes="Auto-built SPA bundle, matching desktop/ tree ${tree}. The installer downloads this when the tree matches, skipping the local vite build."
+          # Integrity digest the installer verifies before extracting.
+          sha256sum desktop-bundle.tar.gz | awk '{print $1}' > desktop-bundle.sha256
+          notes="Auto-built SPA bundle, matching desktop/ tree ${tree}. The installer downloads this when the tree matches, verifies desktop-bundle.sha256, then skips the local vite build."
           # Always keep the rolling 'bundle-latest' current (this is what the
           # installer fetches by default).
           if gh release view bundle-latest >/dev/null 2>&1; then
-            gh release upload bundle-latest desktop-bundle.tar.gz desktop-tree.txt --clobber
+            gh release upload bundle-latest desktop-bundle.tar.gz desktop-tree.txt desktop-bundle.sha256 --clobber
             gh release edit bundle-latest --notes "$notes"
           else
             gh release create bundle-latest --prerelease \
               --title "Prebuilt desktop bundle (rolling)" --notes "$notes" \
-              desktop-bundle.tar.gz desktop-tree.txt
+              desktop-bundle.tar.gz desktop-tree.txt desktop-bundle.sha256
           fi
           # On a version release, also attach the bundle to that release tag so
           # each published version is a self-contained packaged download.
           if [ "${{ github.event_name }}" = "release" ]; then
             gh release upload "${{ github.event.release.tag_name }}" \
-              desktop-bundle.tar.gz desktop-tree.txt --clobber
+              desktop-bundle.tar.gz desktop-tree.txt desktop-bundle.sha256 --clobber
           fi

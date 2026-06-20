@@ -332,8 +332,14 @@ async def test_prebuilt_bundle_installed_on_tree_match(tmp_path, monkeypatch):
         tar.addfile(info, io.BytesIO(payload))
     tarball = buf.getvalue()
 
+    import hashlib
+
     async def fake_to_thread(_fn, url, **_kwargs):
-        return "SHA123" if url.endswith("desktop-tree.txt") else tarball
+        if url.endswith("desktop-tree.txt"):
+            return "SHA123"
+        if url.endswith("desktop-bundle.sha256"):
+            return hashlib.sha256(tarball).hexdigest()
+        return tarball
 
     monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
 
@@ -366,3 +372,32 @@ async def test_prebuilt_bundle_skipped_when_git_missing(tmp_path, monkeypatch):
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
     assert await _try_prebuilt_desktop_bundle(tmp_path) is False
+
+
+@pytest.mark.asyncio
+async def test_prebuilt_bundle_rejected_on_checksum_mismatch(tmp_path, monkeypatch):
+    """Tree matches but the published SHA256 does not -> build locally, no install."""
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _git_proc("SHA123"))
+
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        data = b"x"
+        info = tarfile.TarInfo("desktop/index.html")
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    tarball = buf.getvalue()
+
+    async def fake_to_thread(_fn, url, **_kwargs):
+        if url.endswith("desktop-tree.txt"):
+            return "SHA123"
+        if url.endswith("desktop-bundle.sha256"):
+            return "deadbeef" * 8  # wrong digest
+        return tarball
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
+
+    assert await _try_prebuilt_desktop_bundle(tmp_path) is False
+    assert not (tmp_path / "static" / "desktop").exists()

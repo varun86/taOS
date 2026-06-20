@@ -8,14 +8,14 @@
 
 > **Beta (2026-06-02).** This is beta software meant for testers running it on their own hardware, so expect rough edges. The install script, backend, API, memory system (taOSmd), and multi-framework group chat all work; the desktop GUI is wired up for everyday use but a few flows (some agent management, worker connections, model routing) are still being smoothed out. Star or watch the repo to follow progress and catch the next release.
 >
-> **A heads-up on the catalogs:** with 100+ apps, 16 frameworks, and a large model catalog, plenty of install manifests have not been exercised on real hardware yet, so some apps, frameworks, and models will fail to install. If one does, [open an issue](https://github.com/jaylfc/tinyagentos/issues) with the name and the error you saw and I will fix the manifest as soon as I can. These reports are genuinely useful, most manifest fixes ship same-day.
+> **A heads-up on the catalogs:** with 100+ apps, 16 frameworks, and a large model catalog, plenty of install manifests have not been exercised on real hardware yet, so some apps, frameworks, and models will fail to install. If one does, [open an issue](https://github.com/jaylfc/taOS/issues) with the name and the error you saw and I will fix the manifest as soon as I can. These reports are genuinely useful, most manifest fixes ship same-day.
 
 <p align="center">
 <a href="https://www.star-history.com/?repos=jaylfc%2Ftinyagentos&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=jaylfc/tinyagentos&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=jaylfc/tinyagentos&type=date&legend=top-left" />
-   <img alt="Star History Chart" width="600" src="https://api.star-history.com/chart?repos=jaylfc/tinyagentos&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=jaylfc/taOS&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=jaylfc/taOS&type=date&legend=top-left" />
+   <img alt="Star History Chart" width="600" src="https://api.star-history.com/chart?repos=jaylfc/taOS&type=date&legend=top-left" />
  </picture>
 </a>
 </p>
@@ -73,7 +73,7 @@ Sovereignty by default, cloud by choice. Run taOS fully offline, or connect a cl
 
 ```bash
 # Debian / Ubuntu / Fedora / Arch / Alpine / macOS, one-line install
-curl -fsSL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scripts/install-server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/jaylfc/taOS/master/scripts/install-server.sh | sudo bash
 ```
 
 Run without `sudo` to install as a user-mode systemd unit instead. The script is idempotent, safe to re-run on an existing install. Supports env-var overrides for install path, branch, and port.
@@ -157,13 +157,13 @@ Combine ANY device into one AI compute mesh, desktops, laptops, SBCs, even phone
 # Linux / macOS, one-line worker install (auto-detects headless,
 # installs as a system service when run with sudo or as a user
 # service otherwise; works on a fresh Debian install or your existing box)
-curl -fsSL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scripts/install-worker.sh | sudo bash -s -- http://your-server:6969
+curl -fsSL https://raw.githubusercontent.com/jaylfc/taOS/master/scripts/install-worker.sh | sudo bash -s -- http://your-server:6969
 
 # Desktop, system tray worker app (interactive, with GUI tray icon)
 tinyagentos-worker http://your-server:6969
 
 # Android, one-line Termux setup
-curl -sL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/tinyagentos/worker/android_setup.sh | bash
+curl -sL https://raw.githubusercontent.com/jaylfc/taOS/master/tinyagentos/worker/android_setup.sh | bash
 ```
 
 ```powershell
@@ -171,7 +171,7 @@ curl -sL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/tinyagentos
 # Linux/macOS installer -- registers a Scheduled Task so the worker
 # starts at boot and survives logout)
 $env:TAOS_CONTROLLER_URL = 'http://your-server:6969'
-iwr -useb https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scripts/install-worker.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/jaylfc/taOS/master/scripts/install-worker.ps1 | iex
 ```
 
 **Pairing.** A worker no longer registers automatically just by reaching the controller. On first run it prints a short pairing code and announces itself as pending; you approve it in taOS (Cluster) by entering that code, which mints the worker's signing key. From then on the worker signs its register and heartbeat calls with that key, so a host on the LAN cannot register or impersonate a worker it does not physically control. Re-run the installer to resume pairing if you do not approve it straight away.
@@ -432,7 +432,7 @@ Full transparency on every file, service, user, and port the installers touch. N
 
 ### Controller install (`scripts/install-server.sh`)
 
-Run `curl -fsSL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scripts/install-server.sh | sudo bash` on a fresh Debian / Ubuntu / Fedora / Arch / Alpine box to get the controller fully installed, repo cloned to `~/tinyagentos/`, venv created, all deps installed, and both `tinyagentos.service` (port 6969) and `qmd.service` (port 7832) registered and started.
+Run `curl -fsSL https://raw.githubusercontent.com/jaylfc/taOS/master/scripts/install-server.sh | sudo bash` on a fresh Debian / Ubuntu / Fedora / Arch / Alpine box to get the controller fully installed, repo cloned to `~/tinyagentos/`, venv created, all deps installed, and both `tinyagentos.service` (port 6969) and `qmd.service` (port 7832) registered and started.
 
 | Where | What |
 |---|---|
@@ -511,12 +511,10 @@ git pull
 # Clear stale Python bytecode after upgrades (git pull preserves source mtimes
 # which can confuse Python's .pyc cache invalidation on some setups)
 find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-# Rebuild frontend if desktop source changed (omit if you didn't pull any desktop/ changes)
-cd desktop && npm install && npm run build && cd ..
 sudo systemctl restart tinyagentos
 ```
 
-The systemd unit also runs a conditional rebuild as an `ExecStartPre` step -- if you skip the manual `npm run build`, the next service restart detects the stale bundle and rebuilds it automatically (~50s startup overhead when it fires).
+You do not build the UI on every machine. `install-server.sh` and the in-app update download a prebuilt SPA bundle published by CI, matched to your `desktop/` source by its git tree hash, so installs and upgrades are fast and never run the memory-heavy vite build (which used to OOM on small machines like an 8GB WSL). The restart above triggers the same conditional fetch via the unit's `ExecStartPre` step when the desktop source changed. A local build (`cd desktop && npm install && npm run build`) is only needed for local frontend development, or kicks in automatically as a fallback when no matching prebuilt bundle is available.
 
 **Worker:**
 
@@ -547,7 +545,7 @@ On RK3588 boards with CPU image generation enabled, the sd-cpp backend ships as 
 `scripts/install-rknpu.sh` is an opt-in automated installer for the full Rockchip NPU stack. It pins `librknnrt` to 2.3.0, installs the jaylfc fork of rkllama, and preloads three chat models. All binaries are fetched from `huggingface.co/jaysom/tinyagentos-rockchip-mirror`, a TAOS-controlled mirror, and SHA256-verified before installation. If any checksum fails the script hard-aborts.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaylfc/tinyagentos/master/scripts/install-rknpu.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/jaylfc/taOS/master/scripts/install-rknpu.sh | sudo bash
 ```
 
 See [docs/mirror-policy.md](docs/mirror-policy.md) for the mirror governance policy, what is mirrored, when it updates, how to verify integrity independently, and how to self-host the mirror for air-gapped deployments. The same policy will extend to RK3576, Raspberry Pi 4, Mac mini / Apple Silicon, and x86 classes as those verified install paths land.
@@ -723,7 +721,7 @@ CI runs automatically on every push (Python 3.12 and 3.13 on every PR; Python 3.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines. Join [GitHub Discussions](https://github.com/jaylfc/tinyagentos/discussions) for questions and ideas.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines. Join [GitHub Discussions](https://github.com/jaylfc/taOS/discussions) for questions and ideas.
 
 ## Support the Project
 
@@ -748,8 +746,8 @@ If you maintain one of the libraries above and want a different phrasing or a li
 
 taOS is better for the people testing it, filing issues, and sending fixes:
 
-- [@hognek](https://github.com/hognek) -- the first community code contributions: Hermes bridge bounded-retry + dedup ([#468](https://github.com/jaylfc/tinyagentos/pull/468)), agent button states + feedback ([#469](https://github.com/jaylfc/tinyagentos/pull/469)), and browser/PWA mobile layout ([#470](https://github.com/jaylfc/tinyagentos/pull/470)).
-- [@johny-mnemonic](https://github.com/johny-mnemonic) -- first to run taOS on a heterogeneous multi-GPU stack beyond our own hardware, surfacing the gaps behind the agent-deploy and UI fixes (the [#357](https://github.com/jaylfc/tinyagentos/discussions/357) thread).
+- [@hognek](https://github.com/hognek) -- the first community code contributions: Hermes bridge bounded-retry + dedup ([#468](https://github.com/jaylfc/taOS/pull/468)), agent button states + feedback ([#469](https://github.com/jaylfc/taOS/pull/469)), and browser/PWA mobile layout ([#470](https://github.com/jaylfc/taOS/pull/470)).
+- [@johny-mnemonic](https://github.com/johny-mnemonic) -- first to run taOS on a heterogeneous multi-GPU stack beyond our own hardware, surfacing the gaps behind the agent-deploy and UI fixes (the [#357](https://github.com/jaylfc/taOS/discussions/357) thread).
 - [@m13v](https://github.com/m13v) and [@redkjuegos](https://github.com/redkjuegos) -- sustained feedback and discussion across issues.
 - …and everyone who's opened an issue or tested an early build. 🙏
 
