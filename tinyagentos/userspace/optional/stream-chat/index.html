@@ -387,7 +387,7 @@
   <div id="settings-panel" role="region" aria-label="Connection settings">
     <div class="settings-row">
       <label class="settings-label" for="input-base-url">Relay URL</label>
-      <input class="settings-input" id="input-base-url" type="url" placeholder="https://io.socialstream.ninja" autocomplete="off" spellcheck="false" />
+      <input class="settings-input" id="input-base-url" type="url" placeholder="https://io.socialstream.ninja" autocomplete="off" spellcheck="false" title="Custom relay URLs require network permissions for that origin to be declared in the app manifest." />
     </div>
     <div class="settings-row">
       <label class="settings-label" for="input-session-id">Session ID</label>
@@ -473,65 +473,56 @@
     return PLATFORM_COLORS[key] || '#6b7280';
   }
 
-  // ---- Sanitize chatmessage HTML ----
-  // Allow only a safe subset: text, <img> (for emotes), <b>, <i>, <em>,
-  // <strong>, <span>. Strip everything else including scripts and on* attrs.
-  var ALLOWED_TAGS = { img: true, b: true, i: true, em: true, strong: true, span: true, br: true };
-  var ALLOWED_ATTRS = { src: true, alt: true, title: true, width: true, height: true };
+  // ---- Build safe DOM nodes from SSN chatmessage HTML ----
+  // SSN messages may contain inline emote <img> tags and basic formatting.
+  // We parse into an inert template, then walk the tree constructing real DOM
+  // nodes -- never assigning untrusted HTML via innerHTML (eliminates mXSS risk).
+  var ALLOWED_INLINE_TAGS = { b: true, i: true, em: true, strong: true, span: true, br: true };
+  var ALLOWED_IMG_ATTRS   = { src: true, alt: true, title: true, width: true, height: true };
 
-  function sanitizeHtml(html) {
-    if (!html) return '';
-    // Parse in an inert template to avoid executing scripts
+  function buildSafeNodes(html) {
+    if (!html) return [];
     var tmpl = document.createElement('template');
     tmpl.innerHTML = html;
-    return sanitizeNode(tmpl.content);
+    return buildFromFragment(tmpl.content);
   }
 
-  function sanitizeNode(node) {
-    var result = '';
-    node.childNodes.forEach(function (child) {
-      if (child.nodeType === Node.TEXT_NODE) {
-        result += escapeText(child.textContent);
-      } else if (child.nodeType === Node.ELEMENT_NODE) {
-        var tag = child.tagName.toLowerCase();
-        if (ALLOWED_TAGS[tag]) {
-          var attrs = '';
-          for (var i = 0; i < child.attributes.length; i++) {
-            var attr = child.attributes[i];
-            var aname = attr.name.toLowerCase();
-            if (ALLOWED_ATTRS[aname]) {
-              // Block javascript: URLs on src
-              if (aname === 'src' && /^\s*javascript:/i.test(attr.value)) continue;
-              attrs += ' ' + aname + '="' + escapeAttr(attr.value) + '"';
-            }
-          }
-          if (tag === 'img') {
-            result += '<img' + attrs + ' />';
-          } else {
-            result += '<' + tag + attrs + '>' + sanitizeNode(child) + '</' + tag + '>';
-          }
-        } else {
-          // Unknown tag: descend but drop the tag itself
-          result += sanitizeNode(child);
-        }
-      }
+  function buildFromFragment(fragment) {
+    var nodes = [];
+    fragment.childNodes.forEach(function (child) {
+      var built = buildSafeNode(child);
+      if (built !== null) nodes.push(built);
     });
-    return result;
+    return nodes;
   }
 
-  function escapeText(t) {
-    return String(t)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
-  function escapeAttr(v) {
-    return String(v)
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+  function buildSafeNode(child) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(child.textContent);
+    }
+    if (child.nodeType !== Node.ELEMENT_NODE) return null;
+    var tag = child.tagName.toLowerCase();
+    if (tag === 'img') {
+      var src = child.getAttribute('src') || '';
+      // Block javascript: and data: URIs on img src
+      if (/^\s*(javascript|data):/i.test(src)) return null;
+      var imgEl = document.createElement('img');
+      imgEl.src = src;
+      imgEl.alt = child.getAttribute('alt') || '';
+      if (child.hasAttribute('title'))  imgEl.title  = child.getAttribute('title');
+      if (child.hasAttribute('width'))  imgEl.width  = parseInt(child.getAttribute('width'), 10) || 0;
+      if (child.hasAttribute('height')) imgEl.height = parseInt(child.getAttribute('height'), 10) || 0;
+      return imgEl;
+    }
+    if (ALLOWED_INLINE_TAGS[tag]) {
+      var el = document.createElement(tag);
+      buildFromFragment(child).forEach(function (n) { el.appendChild(n); });
+      return el;
+    }
+    // Unknown tag: descend, returning children directly
+    var wrapper = document.createDocumentFragment();
+    buildFromFragment(child).forEach(function (n) { wrapper.appendChild(n); });
+    return wrapper;
   }
 
   // ---- Status pill ----
@@ -613,7 +604,8 @@
     var chatimg = data.chatimg || '';
     var type = data.type || '';
     var isMod = !!data.moderator;
-    var donation = data.hasDonation || '';
+    var hasDon = data.hasDonation;
+    var donation = (typeof hasDon === 'string' && hasDon) ? hasDon : '';
 
     // Build row
     var row = document.createElement('div');
@@ -674,11 +666,11 @@
 
     content.appendChild(meta);
 
-    // Message text (sanitized HTML from SSN which may include emote <img> tags)
+    // Message text (DOM-built from SSN which may include emote <img> tags)
     if (chatmessage) {
       var textEl = document.createElement('div');
       textEl.className = 'msg-text';
-      textEl.innerHTML = sanitizeHtml(chatmessage);
+      buildSafeNodes(chatmessage).forEach(function (n) { textEl.appendChild(n); });
       content.appendChild(textEl);
     }
 

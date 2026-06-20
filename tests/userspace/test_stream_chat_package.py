@@ -164,3 +164,34 @@ async def test_stream_chat_on_demand_install_is_idempotent(tmp_path):
     assert first["installed_at"] == second["installed_at"]
     assert second["trust"] == "first-party"
     await store.close()
+
+
+# ---------------------------------------------------------------------------
+# CSP correctness for stream-chat network permissions
+# ---------------------------------------------------------------------------
+
+
+def test_bundle_csp_includes_both_ssn_origins():
+    """_bundle_csp must emit both https and wss SSN origins in connect-src."""
+    from tinyagentos.routes.userspace_apps import _bundle_csp
+    csp = _bundle_csp([
+        "https://io.socialstream.ninja",
+        "wss://io.socialstream.ninja",
+    ])
+    assert "https://io.socialstream.ninja" in csp
+    assert "wss://io.socialstream.ninja" in csp
+    assert "connect-src 'self'" in csp
+
+
+def test_bundle_csp_img_src_allows_remote():
+    """img-src must permit https: so avatar and emote images can load."""
+    from tinyagentos.routes.userspace_apps import _bundle_csp
+    csp = _bundle_csp([])
+    assert "img-src 'self' https:" in csp
+
+
+def test_bundle_csp_img_src_no_wildcard_connect():
+    """Widening img-src to https: must not affect connect-src (stays 'self' with no grants)."""
+    from tinyagentos.routes.userspace_apps import _bundle_csp
+    csp = _bundle_csp([])
+    assert "connect-src 'self';" in csp
