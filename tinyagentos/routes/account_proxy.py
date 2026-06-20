@@ -85,13 +85,21 @@ async def _forward(request: Request, action: str) -> Response:
         status_code=upstream.status_code,
         media_type=upstream.headers.get("content-type"),
     )
-    # Relay the session cookie, rescoped to this origin so the browser keeps it.
-    secure_ok = request.url.scheme == "https"
+    # Honor X-Forwarded-Proto so the cookie Secure attr survives a TLS-terminating
+    # proxy (the taOSgo relay terminates HTTPS and forwards to us over http).
+    fwd = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    secure_ok = request.url.scheme == "https" or fwd == "https"
+    # Relay the session cookie (rescoped to this origin) plus a small allowlist of
+    # response headers so redirects (Location) and auth challenges survive.
+    _RELAY = {"location", "cache-control", "www-authenticate"}
     for name, value in upstream.headers.multi_items():
-        if name.lower() == "set-cookie":
+        low = name.lower()
+        if low == "set-cookie":
             resp.raw_headers.append(
                 (b"set-cookie", _rewrite_set_cookie(value, secure_ok).encode("latin-1"))
             )
+        elif low in _RELAY:
+            resp.raw_headers.append((low.encode("latin-1"), value.encode("latin-1")))
     return resp
 
 

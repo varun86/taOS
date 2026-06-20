@@ -96,3 +96,32 @@ async def test_account_me_503_when_upstream_unreachable(client, monkeypatch):
     r = await client.get("/api/account/me")
     assert r.status_code == 503
     assert "unreachable" in r.json().get("error", "")
+
+
+@pytest.mark.asyncio
+async def test_secure_kept_when_x_forwarded_proto_https(client, monkeypatch):
+    """Behind a TLS-terminating proxy the request scheme is http but the browser
+    leg is https (X-Forwarded-Proto), so the cookie Secure attr must be kept."""
+    monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+
+    async def handler(method, url, **kw):
+        return _FakeResp(
+            headers={"content-type": "application/json", "set-cookie": "s=1; Path=/; Secure"}
+        )
+
+    _patch_upstream(monkeypatch, handler)
+    r = await client.get("/api/account/me", headers={"x-forwarded-proto": "https"})
+    assert "secure" in r.headers.get("set-cookie", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_redirect_location_is_relayed(client, monkeypatch):
+    monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+
+    async def handler(method, url, **kw):
+        return _FakeResp(content=b"", status=302, headers={"location": "https://taos.my/login"})
+
+    _patch_upstream(monkeypatch, handler)
+    r = await client.get("/api/account/me", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers.get("location") == "https://taos.my/login"
