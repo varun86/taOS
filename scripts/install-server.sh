@@ -981,8 +981,11 @@ ensure_docker_for_apps() {
     fi
 }
 
-ensure_container_runtime
-ensure_docker_for_apps
+# Container/Docker setup is optional for the core controller. On hosts where it
+# cannot complete (WSL without systemd, minimal VMs, incus/docker iptables that
+# fail under set -e), warn and continue rather than aborting the whole install.
+ensure_container_runtime || warn "container runtime setup did not complete -- agent containers may be unavailable; continuing"
+ensure_docker_for_apps || warn "Docker setup did not complete -- Store Docker apps will be unavailable; continuing"
 
 # --- clone / update the repo ---------------------------------------------
 
@@ -1166,7 +1169,10 @@ ensure_litellm_postgres() {
     log "litellm postgres: data/.litellm_db_url written — virtual keys enabled"
 }
 
-ensure_litellm_postgres
+# Postgres backs LiteLLM virtual keys; without it the controller still runs and
+# falls back gracefully. Never let DB setup abort the core install (e.g. WSL
+# without systemd, where the postgres daemon cannot start).
+ensure_litellm_postgres || warn "litellm postgres setup did not complete -- virtual keys disabled, controller still runs; continuing"
 
 # --- desktop SPA bundle --------------------------------------------------
 # The bundle is not committed to git (static/desktop/ is gitignored), so it has
@@ -1672,7 +1678,94 @@ install_linux_systemd_user() {
     log "logs:  journalctl --user -u tinyagentos -f"
 }
 
+# True when systemd is the running init, so the systemd path will actually work.
+# On WSL without systemd (or a minimal container), systemctl is either missing or
+# reports the system was not booted with systemd as PID 1.
+_systemd_is_init() {
+    command -v systemctl >/dev/null 2>&1 || return 1
+    case "$(systemctl is-system-running 2>/dev/null)" in
+        running|degraded|starting|initializing|maintenance) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Fallback when systemd is not the init (e.g. WSL without systemd): start the
+# controller as a plain background process so the Web UI is reachable now. It
+# will NOT auto-start on reboot; we leave a re-launch helper and explain how to
+# get a managed service. This is the controller-equivalent of the no-systemd
+# Docker daemon ladder above, so a WSL box is not left with a dead UI.
+install_linux_nohup() {
+    local pyenv="$INSTALL_DIR/.venv/bin/python"
+    local logf="$INSTALL_DIR/data/controller.log"
+    local runner="$INSTALL_DIR/scripts/taos-run.sh"
+    local runuser
+    if [[ "$(id -u)" == "0" ]]; then
+        ensure_taos_user
+        set_data_dir_ownership
+        runuser="taos"
+    else
+        runuser="$(id -un)"
+    fi
+
+    # Re-launch helper so the user can start taOS again after a reboot.
+    cat > "$runner" <<EOF
+#!/bin/bash
+# Start the taOS controller without systemd (background-free; runs in foreground).
+cd "$INSTALL_DIR" || exit 1
+# The live install ran the controller as '$runuser'. If this helper is later
+# re-run as root (the documented post-reboot path), re-drop to that user so
+# data/ ownership stays consistent. Minimal boxes may lack sudo, so prefer
+# runuser/su (util-linux) over sudo.
+if [ "\$(id -u)" = "0" ] && [ "\$(id -un)" != "$runuser" ]; then
+    if command -v runuser >/dev/null 2>&1; then exec runuser -u "$runuser" -- /bin/bash "\$0"
+    elif command -v sudo >/dev/null 2>&1; then exec sudo -u "$runuser" /bin/bash "\$0"
+    elif command -v su >/dev/null 2>&1; then exec su -s /bin/bash "$runuser" -c "exec /bin/bash '\$0'"; fi
+fi
+export PYTHONUNBUFFERED=1 TAOS_HOST=0.0.0.0 TAOS_PORT=$TAOS_PORT TAOS_BROWSER_PROXY_PORT=$TAOS_BROWSER_PROXY_PORT
+exec "$pyenv" -m tinyagentos
+EOF
+    chmod +x "$runner"
+    [[ "$runuser" != "$(id -un)" ]] && chown "$runuser": "$runner" 2>/dev/null || true
+
+    log "systemd is not the init here (e.g. WSL without systemd) -- starting the controller directly"
+    local launch="cd '$INSTALL_DIR'; PYTHONUNBUFFERED=1 TAOS_HOST=0.0.0.0 TAOS_PORT=$TAOS_PORT TAOS_BROWSER_PROXY_PORT=$TAOS_BROWSER_PROXY_PORT nohup '$pyenv' -m tinyagentos >> '$logf' 2>&1 &"
+    if [[ "$runuser" != "$(id -un)" ]]; then
+        # Drop to the service user without assuming sudo: minimal containers (a
+        # target of this fallback) frequently run as root with no sudo binary.
+        # Prefer runuser/su (util-linux, present on minimal boxes), then sudo.
+        if command -v runuser >/dev/null 2>&1; then
+            runuser -u "$runuser" -- bash -c "$launch"
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo -u "$runuser" bash -c "$launch"
+        else
+            su -s /bin/bash "$runuser" -c "$launch"
+        fi
+    else
+        bash -c "$launch"
+    fi
+
+    local i=0
+    while (( i < 15 )) && ! curl -sf -o /dev/null "http://localhost:$TAOS_PORT/api/health" 2>/dev/null; do
+        sleep 1; i=$((i+1))
+    done
+    if curl -sf -o /dev/null "http://localhost:$TAOS_PORT/api/health" 2>/dev/null; then
+        log "controller started (no-systemd mode), reachable on port $TAOS_PORT"
+    else
+        warn "controller did not answer on port $TAOS_PORT yet -- see $logf"
+    fi
+    warn "no systemd: taOS will NOT auto-start on reboot."
+    warn "  start it again later with:  bash $runner"
+    warn "  for a managed auto-start service, enable systemd and re-run this installer:"
+    warn "    WSL: put '[boot]' then 'systemd=true' in /etc/wsl.conf, run 'wsl --shutdown', reopen."
+}
+
 install_linux_systemd() {
+    # WSL/minimal boxes may not run systemd; the systemctl path would just fail
+    # and leave the UI dead. Fall back to a direct background launch instead.
+    if ! _systemd_is_init; then
+        install_linux_nohup
+        return
+    fi
     if have_root_or_sudo; then
         install_linux_systemd_system
     else
