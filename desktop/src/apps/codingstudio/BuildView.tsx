@@ -11,6 +11,7 @@ import {
   Check,
   X,
   GitBranch,
+  FolderDown,
 } from "lucide-react";
 import { streamTaosAgentChat } from "../appstudio/stream-chat";
 
@@ -37,6 +38,75 @@ interface BuildStep {
   id: number;
   kind: StepKind;
   text: string;
+}
+
+interface ParsedBlock {
+  path: string;
+  lang: string;
+  content: string;
+}
+
+type ApplyStatus = "idle" | "applying" | "applied" | "error";
+
+interface BlockApplyState {
+  status: ApplyStatus;
+  error?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Parse fenced code blocks from agent output                          */
+/*                                                                      */
+/*  Supported annotation formats (first line after opening fence):      */
+/*    // path: src/App.tsx                                              */
+/*    # path: src/App.tsx                                               */
+/*    // src/App.tsx                                                     */
+/*    path: src/App.tsx                                                  */
+/*  Or the language token itself as a filename hint when it contains    */
+/*  a slash: ```src/components/Button.tsx                               */
+/* ------------------------------------------------------------------ */
+
+const PATH_ANNOTATION_RE = /^(?:\/\/|#)?\s*(?:path:\s*)?(\S+\.\w+)\s*$/;
+
+function parseCodeBlocks(text: string): ParsedBlock[] {
+  const blocks: ParsedBlock[] = [];
+  // Match ```lang\n...``` with optional lang that may be a path
+  const fenceRe = /```(\S*)\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(text)) !== null) {
+    const langToken = m[1] ?? "";
+    const rawBody = m[2] ?? "";
+    let detectedPath: string | null = null;
+    let content = rawBody;
+
+    // Check if the lang token itself is a file path (contains a dot and
+    // possibly a slash, e.g. ```src/App.tsx)
+    if (langToken.includes(".") && (langToken.includes("/") || /\.\w{1,6}$/.test(langToken))) {
+      detectedPath = langToken;
+    }
+
+    // Inspect first line of body for a path annotation
+    if (!detectedPath) {
+      const firstLine = rawBody.split("\n")[0] ?? "";
+      const annotMatch = PATH_ANNOTATION_RE.exec(firstLine.trim());
+      if (annotMatch) {
+        detectedPath = annotMatch[1] ?? null;
+        // Strip the annotation line from content
+        content = rawBody.slice(firstLine.length + 1);
+      }
+    }
+
+    if (!detectedPath) continue;
+
+    // Skip paths that look like shell commands or URLs
+    if (detectedPath.startsWith("http") || detectedPath.startsWith("$")) continue;
+
+    blocks.push({
+      path: detectedPath,
+      lang: langToken.includes("/") ? "" : langToken,
+      content,
+    });
+  }
+  return blocks;
 }
 
 /* ------------------------------------------------------------------ */
@@ -119,7 +189,7 @@ function PatchView({ patch }: { patch: string }) {
         if (line.startsWith("@@")) cls = "text-blue-400";
         return (
           <div key={i} className={cls}>
-            {line || " "}
+            {line || " "}
           </div>
         );
       })}
@@ -274,6 +344,121 @@ function DiffReview({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Apply-blocks panel: shows detected files + apply button            */
+/* ------------------------------------------------------------------ */
+
+function ApplyBlocksPanel({
+  blocks,
+  workspaceId,
+  onApplied,
+}: {
+  blocks: ParsedBlock[];
+  workspaceId: string;
+  onApplied: () => void;
+}) {
+  const [states, setStates] = useState<Record<string, BlockApplyState>>({});
+  const [applying, setApplying] = useState(false);
+
+  const handleApply = useCallback(async () => {
+    setApplying(true);
+    const next: Record<string, BlockApplyState> = {};
+    for (const b of blocks) next[b.path] = { status: "applying" };
+    setStates(next);
+
+    try {
+      const res = await fetch(`/api/coding/workspaces/${workspaceId}/apply-blocks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocks: blocks.map((b) => ({ path: b.path, content: b.content })),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = (data as { error?: string }).error ?? `HTTP ${res.status}`;
+        const errStates: Record<string, BlockApplyState> = {};
+        for (const b of blocks) errStates[b.path] = { status: "error", error: msg };
+        setStates(errStates);
+        return;
+      }
+      const data = (await res.json()) as { applied: string[] };
+      const applied = new Set(data.applied);
+      const doneStates: Record<string, BlockApplyState> = {};
+      for (const b of blocks) {
+        doneStates[b.path] = applied.has(b.path)
+          ? { status: "applied" }
+          : { status: "error", error: "not confirmed by server" };
+      }
+      setStates(doneStates);
+      onApplied();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const errStates: Record<string, BlockApplyState> = {};
+      for (const b of blocks) errStates[b.path] = { status: "error", error: msg };
+      setStates(errStates);
+    } finally {
+      setApplying(false);
+    }
+  }, [blocks, workspaceId, onApplied]);
+
+  const allDone = blocks.length > 0 && blocks.every((b) => states[b.path]?.status === "applied");
+
+  return (
+    <div className="flex flex-col gap-2 rounded-[12px] border border-accent/30 bg-accent/5 p-3">
+      <div className="flex items-center gap-2">
+        <FolderDown size={14} className="text-accent" />
+        <span className="text-[12px] font-semibold text-shell-text">
+          {blocks.length} file{blocks.length !== 1 ? "s" : ""} detected in response
+        </span>
+        {!allDone && (
+          <button
+            type="button"
+            onClick={() => void handleApply()}
+            disabled={applying}
+            aria-label="Apply files to workspace"
+            className="ml-auto flex h-[26px] items-center gap-1.5 rounded-[8px] border border-accent/40 bg-accent/20 px-3 text-[11px] font-semibold text-accent hover:bg-accent/30 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40"
+          >
+            {applying ? <Loader2 size={11} className="animate-spin" /> : <FolderDown size={11} />}
+            Apply to workspace
+          </button>
+        )}
+        {allDone && (
+          <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-green-400">
+            <CheckCircle2 size={12} />
+            Applied
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        {blocks.map((b) => {
+          const st = states[b.path];
+          return (
+            <div
+              key={b.path}
+              className="flex items-center gap-2 rounded-[8px] bg-shell-bg-deep px-2.5 py-1.5"
+            >
+              {st?.status === "applying" && <Loader2 size={11} className="flex-none animate-spin text-accent" />}
+              {st?.status === "applied" && <CheckCircle2 size={11} className="flex-none text-green-400" />}
+              {st?.status === "error" && <XCircle size={11} className="flex-none text-red-400" />}
+              {(!st || st.status === "idle") && (
+                <span className="h-[11px] w-[11px] flex-none" />
+              )}
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-shell-text-secondary">
+                {b.path}
+              </span>
+              {st?.status === "error" && st.error && (
+                <span className="text-[10px] text-red-400">{st.error}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  BuildView                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -296,6 +481,9 @@ export function BuildView() {
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Detected code blocks from last completed stream
+  const [parsedBlocks, setParsedBlocks] = useState<ParsedBlock[]>([]);
 
   // Diff review
   const [diffEntries, setDiffEntries] = useState<DiffEntry[]>([]);
@@ -378,6 +566,14 @@ export function BuildView() {
     }
   }, []);
 
+  // Called after apply-blocks writes files; refresh diff and switch tab
+  const handleApplied = useCallback(() => {
+    if (activeWs) {
+      void fetchDiff(activeWs.id);
+      setTab("diff");
+    }
+  }, [activeWs, fetchDiff]);
+
   // Handle build submit
   const handleBuild = useCallback(async () => {
     if (streaming || !model || !activeWs) return;
@@ -390,19 +586,17 @@ export function BuildView() {
 
     setSteps([]);
     setBuildError(null);
+    setParsedBlocks([]);
     setStreaming(true);
     setTab("chat");
 
-    // The agent cannot directly edit arbitrary workspace files via its tool
-    // (it would need a filesystem MCP or shell tool scoped to the workspace path).
-    // Instead, we give the agent the workspace path context and ask it to emit
-    // file contents as fenced code blocks. The user can then paste them via
-    // the Code view. This is documented in the PR as the current limitation.
-    // See: agent-scoping note in PR body.
     const systemContext = `You are a coding assistant for taOS Coding Studio.
 The user has selected workspace: "${activeWs.name}" (id: ${activeWs.id}).
-Workspace path on the server is managed by taOS. You cannot write files directly.
-Respond with clear, actionable steps and code. Use fenced code blocks with filenames.
+When you write files, use fenced code blocks and annotate the filename on the first line of the block like this:
+\`\`\`tsx
+// path: src/App.tsx
+<file content here>
+\`\`\`
 Keep responses concise and practical.`;
 
     const userMessage = `${systemContext}\n\nUser request: ${text}`;
@@ -416,7 +610,6 @@ Keep responses concise and practical.`;
           if (!mountedRef.current) return;
           outputChunks.push(delta);
           const full = outputChunks.join("");
-          // Emit full response as rolling steps (paragraph chunks)
           setSteps([
             { id: nextId(), kind: "info", text: full },
           ]);
@@ -435,9 +628,15 @@ Keep responses concise and practical.`;
       if (abortRef.current === controller) abortRef.current = null;
       if (mountedRef.current) {
         setStreaming(false);
-        // After build completes, auto-refresh diff
-        void fetchDiff(activeWs.id);
-        setTab("diff");
+        const full = outputChunks.join("");
+        const blocks = parseCodeBlocks(full);
+        setParsedBlocks(blocks);
+        // Only auto-switch to diff tab if no blocks were detected;
+        // when blocks are present the user should apply them first.
+        if (blocks.length === 0) {
+          void fetchDiff(activeWs.id);
+          setTab("diff");
+        }
       }
     }
   }, [prompt, streaming, model, activeWs, fetchDiff]);
@@ -645,7 +844,8 @@ Keep responses concise and practical.`;
               <div className="flex flex-1 items-center justify-center">
                 <p className="max-w-[320px] text-center text-[12.5px] leading-relaxed text-shell-text-tertiary">
                   Describe what you want to build. The agent will respond with a plan and code.
-                  When it edits files, switch to the Diff tab to review and accept or reject changes.
+                  When it emits files, an Apply button appears below to write them to the workspace.
+                  Switch to the Diff tab to review and accept or reject changes.
                 </p>
               </div>
             )}
@@ -672,6 +872,15 @@ Keep responses concise and practical.`;
                 <Loader2 size={14} className="animate-spin" />
                 Thinking...
               </div>
+            )}
+
+            {/* Apply-blocks panel: shown after stream completes if files were detected */}
+            {!streaming && parsedBlocks.length > 0 && activeWs && (
+              <ApplyBlocksPanel
+                blocks={parsedBlocks}
+                workspaceId={activeWs.id}
+                onApplied={handleApplied}
+              />
             )}
 
             <div ref={logEndRef} />

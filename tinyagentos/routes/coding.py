@@ -25,6 +25,15 @@ class PathsBody(BaseModel):
     paths: list[str]
 
 
+class ApplyBlock(BaseModel):
+    path: str
+    content: str
+
+
+class ApplyBlocksBody(BaseModel):
+    blocks: list[ApplyBlock]
+
+
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
@@ -60,6 +69,10 @@ def _resolve_jailed(root: Path, rel: str, *, allow_root: bool = False) -> Path |
         return None
     target = (root / rel).resolve() if rel else root.resolve()
     if not target.is_relative_to(root):
+        return None
+    # Never allow paths into the workspace .git directory: writing there (e.g. a
+    # hooks/ script) would be code execution on the next git operation.
+    if ".git" in target.relative_to(root).parts:
         return None
     if target == root and not allow_root:
         return None
@@ -373,3 +386,51 @@ async def revert_changes(request: Request, workspace_id: str, body: PathsBody):
         )
 
     return {"ok": True, "reverted": reverted}
+
+
+# ---------------------------------------------------------------------------
+# Apply agent code blocks
+# ---------------------------------------------------------------------------
+
+@router.post("/api/coding/workspaces/{workspace_id}/apply-blocks")
+async def apply_blocks(request: Request, workspace_id: str, body: ApplyBlocksBody):
+    """Write a batch of files into the workspace, jailed to its directory.
+
+    Each block must supply a relative ``path`` and ``content`` string.
+    Paths are validated by ``_resolve_jailed``; any traversal attempt causes
+    the entire request to be rejected before any file is written.
+
+    Returns::
+
+        {
+            "applied": ["src/App.tsx", ...],
+            "skipped": []           # blocks whose path was invalid
+        }
+    """
+    root, err = await _workspace_root(request, workspace_id)
+    if err is not None:
+        return err
+
+    if not body.blocks:
+        return JSONResponse({"error": "no blocks provided"}, status_code=400)
+
+    # Validate all paths before writing anything so a bad path mid-list
+    # does not leave the workspace in a partially-written state.
+    resolved: list[tuple[str, Path, str]] = []
+    for block in body.blocks:
+        rel = (block.path or "").strip()
+        target = _resolve_jailed(root, rel)
+        if target is None or target == root or target.is_dir():
+            return JSONResponse(
+                {"error": f"invalid path: {block.path!r}"},
+                status_code=400,
+            )
+        resolved.append((rel, target, block.content))
+
+    applied: list[str] = []
+    for rel, target, content in resolved:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        applied.append(rel)
+
+    return {"applied": applied}
