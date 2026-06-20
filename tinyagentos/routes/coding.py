@@ -70,6 +70,10 @@ def _resolve_jailed(root: Path, rel: str, *, allow_root: bool = False) -> Path |
     target = (root / rel).resolve() if rel else root.resolve()
     if not target.is_relative_to(root):
         return None
+    # Never allow paths into the workspace .git directory: writing there (e.g. a
+    # hooks/ script) would be code execution on the next git operation.
+    if ".git" in target.relative_to(root).parts:
+        return None
     if target == root and not allow_root:
         return None
     return target
