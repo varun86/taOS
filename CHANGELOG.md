@@ -7,6 +7,23 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 
 ## [Unreleased]
 
+## [1.0.0-beta.5] - 2026-06-20
+
+### Added
+- Browser app redesigned to the current design bar with a collapsible sidebar.
+- Coding Studio: workspace-scoped agent file edits with a build loop and inline diff review.
+
+### Changed
+- CI runs the test matrix on GitHub-hosted runners, cancels superseded runs per ref, and auto-merges low-risk Dependabot patch and minor updates on green.
+
+### Fixed
+- Streamed browser now connects over Tailscale and other non-LAN addresses: WebRTC advertises the single connecting-host IP, fixing the white screen the previous comma-separated NAT mapping caused.
+- The "connecting" overlay can no longer hang over a session that is already live.
+- Hardened the streamed-browser iframe sandbox and several store and coding-studio endpoints: IDOR guard on submission reads, symlink-safe workspace writes, and an admin gate on install-registry mutations.
+- Store submissions return 400 on invalid input instead of 500.
+- Security: dompurify updated to 3.4.11; cryptography and pydantic-settings advisories cleared.
+- Install: the core install no longer aborts when optional components fail, and drops to the service user without assuming sudo (WSL robustness).
+
 ## [1.0.0-beta.3] - 2026-06-16
 
 ### Added
