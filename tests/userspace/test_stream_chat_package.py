@@ -1,4 +1,4 @@
-"""Tests for the stream-chat seed userspace app manifest and seeding.
+"""Tests for the stream-chat optional userspace app manifest and seeding.
 
 Mirrors the patterns in test_package.py (network permission validation) and
 test_seed.py (real bundled app seeding). No live network required.
@@ -27,11 +27,40 @@ permissions:
   - network:wss://io.socialstream.ninja
 """
 
+# Location of the stream-chat optional package (not in the auto-seed dir).
+_OPTIONAL_DIR = Path(__file__).resolve().parents[2] / "tinyagentos" / "userspace" / "optional"
+_STREAM_CHAT_DIR = _OPTIONAL_DIR / "stream-chat"
+
 
 async def _make_store(tmp_path: Path) -> UserspaceAppStore:
     store = UserspaceAppStore(tmp_path / "userspace_apps.db")
     await store.init()
     return store
+
+
+# ---------------------------------------------------------------------------
+# Package is under optional/, not seed/
+# ---------------------------------------------------------------------------
+
+
+def test_stream_chat_lives_in_optional_not_seed():
+    """stream-chat must be in optional/, not in the auto-seed dir."""
+    seed_dir = _DEFAULT_SEED_DIR
+    assert not (seed_dir / "stream-chat").exists(), (
+        "stream-chat must not be in the seed dir -- it is a private/optional app"
+    )
+    assert _STREAM_CHAT_DIR.exists(), (
+        "stream-chat must exist under tinyagentos/userspace/optional/"
+    )
+
+
+def test_stream_chat_optional_manifest_valid():
+    """The optional stream-chat manifest must be parseable."""
+    manifest_path = _STREAM_CHAT_DIR / "manifest.yaml"
+    assert manifest_path.exists()
+    m = parse_manifest(manifest_path.read_text("utf-8"))
+    assert m["id"] == "stream-chat"
+    assert m["version"] == "1.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -78,20 +107,40 @@ def test_stream_chat_no_path_in_network_origin():
 
 
 # ---------------------------------------------------------------------------
-# Real bundled stream-chat app seeding
+# stream-chat must NOT auto-seed
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_real_stream_chat_app_seeds(tmp_path):
-    """The bundled stream-chat app must seed as first-party from the default seed dir."""
+async def test_stream_chat_not_auto_seeded(tmp_path):
+    """seed_bundled_apps must NOT install stream-chat -- it is optional only."""
     apps_root = tmp_path / "apps"
     store = await _make_store(tmp_path)
 
     await seed_bundled_apps(store, apps_root)
 
     row = await store.get("stream-chat")
-    assert row is not None, "stream-chat not found after seeding"
+    assert row is None, (
+        "stream-chat should not be auto-seeded; it is in optional/, not seed/"
+    )
+    await store.close()
+
+
+# ---------------------------------------------------------------------------
+# stream-chat is still installable on demand via the optional dir
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_installable_on_demand(tmp_path):
+    """Explicitly seeding from the optional dir must install stream-chat correctly."""
+    apps_root = tmp_path / "apps"
+    store = await _make_store(tmp_path)
+
+    await seed_bundled_apps(store, apps_root, _OPTIONAL_DIR)
+
+    row = await store.get("stream-chat")
+    assert row is not None, "stream-chat not found after explicit optional install"
     assert row["trust"] == "first-party"
     assert row["version"] == "1.0.0"
     assert "app.kv" in row["permissions_requested"]
@@ -101,15 +150,15 @@ async def test_real_stream_chat_app_seeds(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_real_stream_chat_seeding_is_idempotent(tmp_path):
-    """Seeding stream-chat twice must not change installed_at or downgrade trust."""
+async def test_stream_chat_on_demand_install_is_idempotent(tmp_path):
+    """Installing stream-chat from optional/ twice must not change installed_at or trust."""
     apps_root = tmp_path / "apps"
     store = await _make_store(tmp_path)
 
-    await seed_bundled_apps(store, apps_root)
+    await seed_bundled_apps(store, apps_root, _OPTIONAL_DIR)
     first = await store.get("stream-chat")
 
-    await seed_bundled_apps(store, apps_root)
+    await seed_bundled_apps(store, apps_root, _OPTIONAL_DIR)
     second = await store.get("stream-chat")
 
     assert first["installed_at"] == second["installed_at"]
