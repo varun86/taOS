@@ -204,10 +204,18 @@ function SidebarTabRow({
       {!isPinned && !collapsed && (
         <span
           role="button"
+          tabIndex={0}
           aria-label={`Close ${title}`}
           onClick={(e) => {
             e.stopPropagation();
             onClose();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }
           }}
           className={[
             "flex-none flex h-[18px] w-[18px] items-center justify-center",

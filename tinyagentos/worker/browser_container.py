@@ -350,11 +350,10 @@ class BrowserContainerRunner:
         else:
             image = spec.image
             await self._ensure_image(image)
-            # build_neko_run_args calls build_nat1to1 → _detect_tailscale_ip,
-            # which runs a blocking subprocess.  Offload to a thread so the
-            # event loop is not stalled while the tailscale CLI is probed.
-            argv = await asyncio.to_thread(
-                build_neko_run_args,
+            # nat1to1_ip is resolved at the route layer (the blocking DNS
+            # lookup is offloaded there), so build_neko_run_args is now pure
+            # string assembly and can be called directly.
+            argv = build_neko_run_args(
                 container_name=container_name,
                 profile_volume=profile_volume,
                 node_ip=self.node_ip,

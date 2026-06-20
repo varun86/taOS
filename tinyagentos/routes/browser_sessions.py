@@ -9,6 +9,7 @@ Routes:
   POST   /api/browser/sessions/{id}/terminate  stop a session
 """
 
+import asyncio
 import logging
 import socket
 from typing import Any
@@ -248,9 +249,12 @@ async def get_my_session(
         try:
             if kind == "host":
                 runner = request.app.state.browser_container_runner
+                # _connecting_host_ip does a blocking DNS lookup; offload it so
+                # the event loop is not stalled while the host is resolved.
+                nat1to1_ip = await asyncio.to_thread(_connecting_host_ip, request)
                 session = await mgr.start_on_host(session["id"], profile_volume=vol,
                                                    runner=runner, mobile=mobile,
-                                                   nat1to1_ip=_connecting_host_ip(request))
+                                                   nat1to1_ip=nat1to1_ip)
             else:
                 worker = cluster.get_worker(node)
                 auth_token = getattr(request.app.state, "browser_worker_auth_token", None)

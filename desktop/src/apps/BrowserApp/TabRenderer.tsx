@@ -376,34 +376,47 @@ function LiveSessionSlot({ tabId, nekoUrl, streamToken }: LiveSessionSlotProps) 
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Listen for the neko iframe's load event; once it fires, hide the
-    // connecting overlay.  The iframe is rendered by LiveBrowserView inside
-    // wrapperRef, so we can find it once it mounts.
+    // Hide the connecting overlay once the neko iframe fires its first load
+    // event. The iframe is rendered by LiveBrowserView inside wrapperRef, so
+    // we attach directly if it is already present or observe for it to appear.
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    const onLoad = () => setConnecting(false);
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      setConnecting(false);
+    };
 
-    // The iframe may already be present (SSR / fast mount); attach directly if so.
-    const iframe = wrapper.querySelector("iframe");
+    // Safety net: clear the overlay even if the load event is never observed,
+    // e.g. the iframe loaded before the listener attached, or a cross-origin
+    // neko frame never emits load. Without this the overlay could obscure a
+    // session that is actually live indefinitely.
+    const timer = window.setTimeout(settle, 15000);
+
+    let iframe: HTMLIFrameElement | null = wrapper.querySelector("iframe");
+    let observer: MutationObserver | null = null;
+
     if (iframe) {
-      iframe.addEventListener("load", onLoad);
-      return () => iframe.removeEventListener("load", onLoad);
+      iframe.addEventListener("load", settle);
+    } else {
+      observer = new MutationObserver(() => {
+        const el = wrapper.querySelector("iframe");
+        if (el) {
+          observer?.disconnect();
+          observer = null;
+          iframe = el;
+          el.addEventListener("load", settle);
+        }
+      });
+      observer.observe(wrapper, { childList: true, subtree: true });
     }
 
-    // Otherwise observe for the iframe to appear, then attach.
-    const observer = new MutationObserver(() => {
-      const el = wrapper.querySelector("iframe");
-      if (el) {
-        observer.disconnect();
-        el.addEventListener("load", onLoad);
-      }
-    });
-    observer.observe(wrapper, { childList: true, subtree: true });
     return () => {
-      observer.disconnect();
-      const el = wrapper.querySelector("iframe");
-      if (el) el.removeEventListener("load", onLoad);
+      window.clearTimeout(timer);
+      observer?.disconnect();
+      iframe?.removeEventListener("load", settle);
     };
   }, []);
 
