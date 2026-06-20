@@ -16,7 +16,7 @@ import yaml
 # newline, which would let "wss://host\n; ..." slip a newline into the value.
 _NET_ORIGIN_RE = re.compile(r"\A(?:wss|https)://(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?\Z")
 
-_ALLOWED_TYPES = {"web", "container"}
+_ALLOWED_TYPES = {"web", "container", "tui"}
 _REQUIRED = ("id", "name", "version", "app_type")
 
 # Zip-bomb defenses: cap the declared uncompressed total, per-member size, and count.
@@ -59,6 +59,24 @@ def parse_manifest(text: str) -> dict:
             or not all(isinstance(p, int) and not isinstance(p, bool) for p in ports)
         ):
             raise PackageError("container app requires container.ports as a non-empty list of ints")
+    if data["app_type"] == "tui":
+        command = data.get("command")
+        if not command or not isinstance(command, str) or not command.strip():
+            raise PackageError("tui app requires a non-empty 'command' field")
+        data["command"] = command.strip()
+        args = data.get("args", [])
+        if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
+            raise PackageError("tui app 'args' must be a list of strings")
+        data["args"] = args
+        data.setdefault("needs_project_dir", True)
+        if not isinstance(data["needs_project_dir"], bool):
+            raise PackageError("tui app 'needs_project_dir' must be a boolean")
+        env = data.get("env", {})
+        if not isinstance(env, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in env.items()
+        ):
+            raise PackageError("tui app 'env' must be a map of string to string")
+        data["env"] = env
     data.setdefault("entry", "index.html")
     data.setdefault("icon", "")
     data.setdefault("permissions", [])
