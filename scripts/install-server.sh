@@ -1712,6 +1712,15 @@ install_linux_nohup() {
 #!/bin/bash
 # Start the taOS controller without systemd (background-free; runs in foreground).
 cd "$INSTALL_DIR" || exit 1
+# The live install ran the controller as '$runuser'. If this helper is later
+# re-run as root (the documented post-reboot path), re-drop to that user so
+# data/ ownership stays consistent. Minimal boxes may lack sudo, so prefer
+# runuser/su (util-linux) over sudo.
+if [ "\$(id -u)" = "0" ] && [ "\$(id -un)" != "$runuser" ]; then
+    if command -v runuser >/dev/null 2>&1; then exec runuser -u "$runuser" -- /bin/bash "\$0"
+    elif command -v sudo >/dev/null 2>&1; then exec sudo -u "$runuser" /bin/bash "\$0"
+    elif command -v su >/dev/null 2>&1; then exec su -s /bin/bash "$runuser" -c "exec /bin/bash '\$0'"; fi
+fi
 export PYTHONUNBUFFERED=1 TAOS_HOST=0.0.0.0 TAOS_PORT=$TAOS_PORT TAOS_BROWSER_PROXY_PORT=$TAOS_BROWSER_PROXY_PORT
 exec "$pyenv" -m tinyagentos
 EOF
@@ -1721,7 +1730,16 @@ EOF
     log "systemd is not the init here (e.g. WSL without systemd) -- starting the controller directly"
     local launch="cd '$INSTALL_DIR'; PYTHONUNBUFFERED=1 TAOS_HOST=0.0.0.0 TAOS_PORT=$TAOS_PORT TAOS_BROWSER_PROXY_PORT=$TAOS_BROWSER_PROXY_PORT nohup '$pyenv' -m tinyagentos >> '$logf' 2>&1 &"
     if [[ "$runuser" != "$(id -un)" ]]; then
-        sudo -u "$runuser" bash -c "$launch"
+        # Drop to the service user without assuming sudo: minimal containers (a
+        # target of this fallback) frequently run as root with no sudo binary.
+        # Prefer runuser/su (util-linux, present on minimal boxes), then sudo.
+        if command -v runuser >/dev/null 2>&1; then
+            runuser -u "$runuser" -- bash -c "$launch"
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo -u "$runuser" bash -c "$launch"
+        else
+            su -s /bin/bash "$runuser" -c "$launch"
+        fi
     else
         bash -c "$launch"
     fi
