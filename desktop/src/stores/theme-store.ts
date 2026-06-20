@@ -168,6 +168,18 @@ function loadWallpaperParams(): WallpaperParams {
   return { ...DEFAULT_WALLPAPER_PARAMS };
 }
 
+// Reduce-effects / performance mode (#58): kills GPU-heavy compositing (backdrop
+// blur, big shadows, continuous animations) for low-end devices. Persisted; the
+// data-perf root attribute (applied in App.tsx) drives the CSS in tokens.css.
+const REDUCE_EFFECTS_KEY = "taos-reduce-effects";
+function loadReduceEffects(): boolean {
+  try {
+    return localStorage.getItem(REDUCE_EFFECTS_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
 interface ThemeStore {
   wallpaperId: string;
   wallpaperImage: string;
@@ -185,6 +197,7 @@ interface ThemeStore {
   showOverlayText: boolean;
   wallpaperParams: WallpaperParams;
   showDesktopIcons: boolean;
+  reduceEffects: boolean;
   structure: Record<string, { variant?: string } & Record<string, unknown>>;
   effects: { module: string; params?: Record<string, unknown> }[];
 
@@ -200,6 +213,7 @@ interface ThemeStore {
   toggleOverlayText: () => void;
   setWallpaperParam: (key: keyof WallpaperParams, value: number) => void;
   toggleDesktopIcons: () => void;
+  setReduceEffects: (on: boolean) => void;
   getWallpapers: () => Wallpaper[];
 }
 
@@ -218,6 +232,7 @@ export const useThemeStore = create<ThemeStore>((set) => ({
   showOverlayText: loadSloganPref(),
   wallpaperParams: loadWallpaperParams(),
   showDesktopIcons: true,
+  reduceEffects: loadReduceEffects(),
   structure: {},
   effects: [],
 
@@ -264,6 +279,15 @@ export const useThemeStore = create<ThemeStore>((set) => ({
 
   toggleDesktopIcons() {
     set((s) => ({ showDesktopIcons: !s.showDesktopIcons }));
+  },
+
+  setReduceEffects(on) {
+    try {
+      localStorage.setItem(REDUCE_EFFECTS_KEY, on ? "on" : "off");
+    } catch {
+      // best-effort
+    }
+    set({ reduceEffects: on });
   },
 
   getWallpapers: () => WALLPAPERS,

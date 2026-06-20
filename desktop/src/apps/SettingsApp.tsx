@@ -23,6 +23,7 @@ import {
   Switch,
 } from "@/components/ui";
 import { useShortcuts } from "@/hooks/use-shortcut-registry";
+import { useThemeStore } from "@/stores/theme-store";
 import { ThemesPanel } from "@/apps/SettingsApp/ThemesPanel";
 import { safeFetch, ProgressBar, RestartProgressModal } from "@/apps/SettingsApp/_shared";
 import { UpdatesSection } from "@/apps/SettingsApp/UpdatesPanel";
@@ -549,6 +550,10 @@ function AccessibilitySection() {
   const [focusMode, setFocusMode] = useState(
     () => localStorage.getItem("taos-focus-mode") ?? "keyboard"
   );
+  // Reduce-effects / performance mode lives in the theme store (#58) so App.tsx
+  // applies the data-perf root attribute reactively. The toggle just flips it.
+  const reduceEffects = useThemeStore((s) => s.reduceEffects);
+  const setReduceEffects = useThemeStore((s) => s.setReduceEffects);
 
   const toggleReduceMotion = () => {
     const next = !reduceMotion;
@@ -594,6 +599,21 @@ function AccessibilitySection() {
             checked={reduceMotion}
             onCheckedChange={toggleReduceMotion}
             aria-label="Reduce motion"
+          />
+        </Card>
+
+        <Card className="p-4 flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <Label htmlFor="reduce-effects" className="text-sm font-medium text-shell-text">
+              Reduce effects
+            </Label>
+            <p className="text-xs text-shell-text-tertiary mt-0.5">Turn off background blur and heavy shadows for smoother performance on older or low-powered devices</p>
+          </div>
+          <Switch
+            id="reduce-effects"
+            checked={reduceEffects}
+            onCheckedChange={setReduceEffects}
+            aria-label="Reduce effects"
           />
         </Card>
 
