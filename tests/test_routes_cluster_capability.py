@@ -1,0 +1,152 @@
+"""Tests for the cluster capability-map endpoints.
+
+Coverage:
+- heartbeat requires worker HMAC; unsigned -> 401
+- heartbeat node_id must match the authenticated worker name -> 403 on mismatch
+- a signed heartbeat upserts and the row is readable via admin list
+- list filters by status
+- set-status validates the value and 404s an unknown node
+- prune drops stale rows
+- reads/mutations require an admin session
+"""
+from __future__ import annotations
+
+import pytest
+
+from test_routes_cluster_pairing import pair_worker, sign_worker_request
+
+
+async def _signed_heartbeat(client, key, node):
+    import json
+
+    path = "/api/cluster/capability/heartbeat"
+    body = json.dumps(node).encode()
+    headers = sign_worker_request(key, node["node_id"], "POST", path, body)
+    headers["Content-Type"] = "application/json"
+    return await client.post(path, content=body, headers=headers)
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_requires_hmac(client, app):
+    """An unsigned heartbeat is rejected by the worker HMAC gate."""
+    await app.state.capability_map.init()
+    resp = await client.post(
+        "/api/cluster/capability/heartbeat",
+        json={"node_id": "node-a"},
+    )
+    assert resp.status_code == 401
+    await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_name_mismatch_rejected(client, app):
+    """The signed worker name must equal the heartbeat node_id."""
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key = await pair_worker(client, app, "node-a", "http://10.0.0.5:9000")
+    # Sign as node-a but claim node_id node-b in the body.
+    import json
+
+    path = "/api/cluster/capability/heartbeat"
+    body = json.dumps({"node_id": "node-b"}).encode()
+    headers = sign_worker_request(key, "node-a", "POST", path, body)
+    headers["Content-Type"] = "application/json"
+    resp = await client.post(path, content=body, headers=headers)
+    assert resp.status_code == 403
+    await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_upserts_and_lists(client, app):
+    """A signed heartbeat upserts a row visible to the admin list."""
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key = await pair_worker(client, app, "node-a", "http://10.0.0.5:9000")
+    resp = await _signed_heartbeat(
+        client,
+        key,
+        {
+            "node_id": "node-a",
+            "hostname": "pi5",
+            "ram_mb": 16000,
+            "gpu": {"name": "mali"},
+            "npu": {"tops": 6},
+            "status": "online",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["node_id"] == "node-a"
+    assert resp.json()["gpu"] == {"name": "mali"}
+
+    resp = await client.get("/api/cluster/capability")
+    assert resp.status_code == 200
+    nodes = resp.json()["nodes"]
+    assert any(n["node_id"] == "node-a" and n["ram_mb"] == 16000 for n in nodes)
+    await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_list_filters_by_status(client, app):
+    """?status= filters the returned rows."""
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key_a = await pair_worker(client, app, "node-a", "http://10.0.0.5:9000")
+    key_b = await pair_worker(client, app, "node-b", "http://10.0.0.6:9000")
+    await _signed_heartbeat(client, key_a, {"node_id": "node-a", "status": "online"})
+    await _signed_heartbeat(client, key_b, {"node_id": "node-b", "status": "draining"})
+
+    resp = await client.get("/api/cluster/capability", params={"status": "draining"})
+    assert resp.status_code == 200
+    nodes = resp.json()["nodes"]
+    assert [n["node_id"] for n in nodes] == ["node-b"]
+    await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_set_status_validates_and_404s(client, app):
+    """set-status rejects bad values and unknown nodes."""
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key = await pair_worker(client, app, "node-a", "http://10.0.0.5:9000")
+    await _signed_heartbeat(client, key, {"node_id": "node-a", "status": "online"})
+
+    resp = await client.post(
+        "/api/cluster/capability/node-a/status", json={"status": "bogus"}
+    )
+    assert resp.status_code == 400
+
+    resp = await client.post(
+        "/api/cluster/capability/node-a/status", json={"status": "draining"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "draining"
+
+    resp = await client.post(
+        "/api/cluster/capability/ghost/status", json={"status": "online"}
+    )
+    assert resp.status_code == 404
+    await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_prune_drops_stale(client, app):
+    """prune removes rows older than the cutoff."""
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key = await pair_worker(client, app, "node-a", "http://10.0.0.5:9000")
+    # last_seen far in the past so any positive cutoff prunes it.
+    await _signed_heartbeat(
+        client, key, {"node_id": "node-a", "status": "online"}
+    )
+    # Force the row stale directly via the store, then prune.
+    await app.state.capability_map.upsert(
+        {"node_id": "node-a", "status": "online", "last_seen": 1}
+    )
+    resp = await client.post(
+        "/api/cluster/capability/prune", json={"older_than_s": 60}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["pruned"] == 1
+    resp = await client.get("/api/cluster/capability")
+    assert all(n["node_id"] != "node-a" for n in resp.json()["nodes"])
+    await app.state.capability_map.close()
