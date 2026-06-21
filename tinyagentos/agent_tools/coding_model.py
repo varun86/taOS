@@ -101,9 +101,19 @@ def _message_field(message, key):
 
 
 def parse_completion(response) -> dict:
-    """Turn a chat-completion response into the loop's step shape."""
-    choices = response["choices"] if isinstance(response, dict) else response.choices
-    message = choices[0]["message"] if isinstance(choices[0], dict) else choices[0].message
+    """Turn a chat-completion response into the loop's step shape.
+
+    A content-filtered or error-shaped response can come back with no choices or
+    no message; fall back to an empty final answer rather than raising, so the
+    loop's never-raise contract holds.
+    """
+    choices = (response["choices"] if isinstance(response, dict) else getattr(response, "choices", None)) or []
+    if not choices:
+        return {"type": "final", "text": ""}
+    first = choices[0]
+    message = first["message"] if isinstance(first, dict) else getattr(first, "message", None)
+    if message is None:
+        return {"type": "final", "text": ""}
     tool_calls = _message_field(message, "tool_calls")
     if tool_calls:
         calls = []

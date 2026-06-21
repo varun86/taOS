@@ -112,3 +112,15 @@ async def test_model_step_drives_loop_end_to_end(tmp_path):
     # The model was actually called with the workspace tools.
     assert seen["models"] == ["openai/gpt-x", "openai/gpt-x"]
     assert {t["function"]["name"] for t in seen["tools"]} == {"read_file", "write_file", "file_exists", "list_dir"}
+
+
+def test_parse_completion_empty_choices_is_safe_final():
+    assert coding_model.parse_completion({"choices": []}) == {"type": "final", "text": ""}
+
+
+def test_parse_completion_missing_choices_is_safe_final():
+    assert coding_model.parse_completion({}) == {"type": "final", "text": ""}
+
+
+def test_parse_completion_null_message_is_safe_final():
+    assert coding_model.parse_completion({"choices": [{"message": None}]}) == {"type": "final", "text": ""}
