@@ -7,7 +7,12 @@ name = "tinyagentos"
 version = "1.0.0-beta.6"
 description = "Self-hosted AI agent memory system for low-power hardware"
 license = { file = "LICENSE" }
-requires-python = ">=3.11"
+# Upper-capped at <3.14 because litellm (the proxy extra, the agent/model proxy
+# runtime) supports only >=3.10,<3.14. A fresh distro that defaults python3 to
+# 3.14 would otherwise build the venv on 3.14 and abort with "No matching
+# distribution found for litellm". The installer also steers the venv to a
+# supported interpreter; this cap makes the constraint explicit to pip and uv.
+requires-python = ">=3.11,<3.14"
 dependencies = [
     # Cap below 0.137: fastapi 0.137.0 regressed include_router so that a
     # mounted APIRouter contributes none of its routes to the app, leaving
