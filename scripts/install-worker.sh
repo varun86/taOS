@@ -20,6 +20,10 @@
 #     TAOS_REPO               git remote (default: https://github.com/jaylfc/tinyagentos)
 #     TAOS_SKIP_BENCHMARK     if set, skip the on-join benchmark run
 #     TAOS_SERVICE            install as system service: auto (default), user, skip
+#     TAOS_PAIR_MANUAL        if set, use free-tier manual pairing: the worker
+#                             prints its address + PIN and waits for the admin to
+#                             enter both in taOS > Cluster > Add worker (no
+#                             network announce/discovery)
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -507,10 +511,16 @@ install_and_enroll_incus() {
     # unknown workers). Crypto lives in Python, not shell.
     log "pairing worker '${WORKER_NAME}' with controller at $CONTROLLER_URL"
     log "  (the pairing code will be printed below — enter it in taOS > Cluster)"
+    local _pair_manual_flag=()
+    if [[ -n "${TAOS_PAIR_MANUAL:-}" ]]; then
+        _pair_manual_flag=(--manual)
+        log "  TAOS_PAIR_MANUAL set — using free-tier manual pairing (enter IP + PIN in Add worker)"
+    fi
     if ! "$INSTALL_DIR/.venv/bin/python" -m tinyagentos.worker.pair \
             "$CONTROLLER_URL" \
             --name "$WORKER_NAME" \
             --url "https://${LAN_IP}:8443" \
+            "${_pair_manual_flag[@]}" \
             --register-after; then
         warn "pairing requires admin approval in taOS > Cluster."
         warn "  The code was printed above. Once approved, re-run this installer to resume."

@@ -32,6 +32,9 @@ def main() -> None:
                         help="Platform string (default: current OS)")
     parser.add_argument("--state-dir", type=Path, default=None,
                         help="Directory for key persistence (default: system default)")
+    parser.add_argument("--manual", action="store_true",
+                        help="Free-tier manual pairing: show address + PIN and "
+                             "poll for admin authorisation (no announce/discovery)")
     parser.add_argument("--register-after", action="store_true",
                         help="Send a signed POST /api/cluster/workers after pairing")
     parser.add_argument("--timeout", type=float, default=600.0,
@@ -50,7 +53,11 @@ def main() -> None:
 
 async def _run(args) -> None:
     import httpx
-    from tinyagentos.worker.pairing import default_state_dir, run_pairing, sign_request_headers
+    from tinyagentos.worker.pairing import (
+        default_state_dir,
+        run_manual_pairing,
+        run_pairing,
+    )
 
     state_dir = args.state_dir or default_state_dir()
     name = args.name or _hostname()
@@ -64,15 +71,25 @@ async def _run(args) -> None:
         worker_url = agent.get_worker_url()
 
     async with httpx.AsyncClient(timeout=15) as client:
-        key = await run_pairing(
-            client,
-            args.controller,
-            name,
-            worker_url,
-            args.platform_name,
-            state_dir,
-            timeout=args.timeout,
-        )
+        if args.manual:
+            key = await run_manual_pairing(
+                client,
+                args.controller,
+                name,
+                worker_url,
+                state_dir,
+                timeout=args.timeout,
+            )
+        else:
+            key = await run_pairing(
+                client,
+                args.controller,
+                name,
+                worker_url,
+                args.platform_name,
+                state_dir,
+                timeout=args.timeout,
+            )
 
     print(f"\n[pair] paired successfully as '{name}'. Signing key saved to {state_dir}")
 
