@@ -78,6 +78,8 @@ curl -fsSL https://raw.githubusercontent.com/jaylfc/taOS/master/scripts/install-
 
 Run without `sudo` to install as a user-mode systemd unit instead. The script is idempotent, safe to re-run on an existing install. Supports env-var overrides for install path, branch, and port.
 
+Tested on WSL2 (Windows 11) with the default Ubuntu image, including the current Python 3.14 default: the installer provisions a compatible Python automatically, so a clean box needs nothing more than the one line above.
+
 **Manual / development:**
 
 ```bash
