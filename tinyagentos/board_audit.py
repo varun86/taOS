@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS board_audit (
     to_status TEXT,
     ts TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_board_audit_task ON board_audit(task_id);
+CREATE INDEX IF NOT EXISTS idx_board_audit_ts ON board_audit(ts);
 """
 
 _COLS = "id, task_id, event, actor, from_status, to_status, ts"
