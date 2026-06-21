@@ -70,3 +70,28 @@ async def test_failed_transition_is_not_audited(client):
     events = (await client.get(f"/api/projects/{pid}/tasks/{tid}/audit")).json()["events"]
     # Only the creation event; the failed reopen left no trace.
     assert [e["event"] for e in events] == ["task.created"]
+
+
+@pytest.mark.asyncio
+async def test_project_audit_feed_is_scoped(client):
+    """The project-wide feed returns only that project's events, newest first."""
+    p1 = (await client.post("/api/projects", json={"name": "P1", "slug": "p1"})).json()["id"]
+    p2 = (await client.post("/api/projects", json={"name": "P2", "slug": "p2"})).json()["id"]
+    t1 = (await client.post(f"/api/projects/{p1}/tasks", json={"title": "A"})).json()["id"]
+    await client.post(f"/api/projects/{p2}/tasks", json={"title": "B"})
+    await client.post(f"/api/projects/{p1}/tasks/{t1}/claim", json={"claimer_id": "agent-1"})
+
+    feed = (await client.get(f"/api/projects/{p1}/audit")).json()["events"]
+    events = [e["event"] for e in feed]
+    # Newest first: claim then create; nothing from p2.
+    assert events == ["task.claimed", "task.created"]
+    assert all(e["project_id"] == p1 for e in feed)
+
+
+@pytest.mark.asyncio
+async def test_project_audit_feed_limit_clamped(client):
+    p1 = (await client.post("/api/projects", json={"name": "P1", "slug": "p1"})).json()["id"]
+    await client.post(f"/api/projects/{p1}/tasks", json={"title": "A"})
+    await client.post(f"/api/projects/{p1}/tasks", json={"title": "B"})
+    feed = (await client.get(f"/api/projects/{p1}/audit", params={"limit": 1})).json()["events"]
+    assert len(feed) == 1

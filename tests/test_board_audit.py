@@ -70,3 +70,62 @@ async def test_get_returns_event_or_none(tmp_path):
     assert (await s.get(eid))["event"] == "open"
     assert await s.get("ba-missing") is None
     await s.close()
+
+
+@pytest.mark.asyncio
+async def test_recent_for_project_scoped_and_newest_first(tmp_path):
+    s = await _log(tmp_path)
+    await s.record("tsk-a", "task.created", project_id="prj-1", to_status="open")
+    await s.record("tsk-b", "task.created", project_id="prj-2", to_status="open")
+    await s.record("tsk-a", "task.closed", project_id="prj-1", to_status="closed")
+    feed = await s.recent_for_project("prj-1")
+    # Only prj-1 events, newest first.
+    assert [e["event"] for e in feed] == ["task.closed", "task.created"]
+    assert all(e["project_id"] == "prj-1" for e in feed)
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_recent_for_project_respects_limit(tmp_path):
+    s = await _log(tmp_path)
+    for i in range(5):
+        await s.record(f"tsk-{i}", "task.created", project_id="prj-1", to_status="open")
+    assert len(await s.recent_for_project("prj-1", limit=2)) == 2
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_record_stores_detail_json(tmp_path):
+    s = await _log(tmp_path)
+    eid = await s.record("tsk-1", "task.created", project_id="prj-1", detail={"title": "Ship it"})
+    ev = await s.get(eid)
+    assert ev["detail"] == {"title": "Ship it"}
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_post_init_migrates_old_schema(tmp_path):
+    """An existing board_audit table without project_id/detail is upgraded in place."""
+    import aiosqlite
+
+    db = tmp_path / "old.db"
+    async with aiosqlite.connect(str(db)) as conn:
+        await conn.execute(
+            "CREATE TABLE board_audit (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, "
+            "event TEXT NOT NULL, actor TEXT NOT NULL DEFAULT '', from_status TEXT, "
+            "to_status TEXT, ts TEXT NOT NULL)"
+        )
+        await conn.execute(
+            "INSERT INTO board_audit (id, task_id, event, ts) VALUES ('ba-old', 'tsk-z', 'task.created', '2026-01-01T00:00:00+00:00')"
+        )
+        await conn.commit()
+
+    s = BoardAuditLog(db)
+    await s.init()  # _post_init should ALTER in the new columns
+    ev = await s.get("ba-old")
+    assert ev["project_id"] == ""
+    assert ev["detail"] == {}
+    # New writes carry project_id and are queryable by the feed.
+    await s.record("tsk-new", "task.created", project_id="prj-9", to_status="open")
+    assert len(await s.recent_for_project("prj-9")) == 1
+    await s.close()
