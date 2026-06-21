@@ -7,6 +7,24 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 
 ## [Unreleased]
 
+### Changed
+- Dev version reconciled with master and bumped to `1.0.0-beta.10` for the next release cycle. No runtime change; the WSL install fixes from beta.7 to beta.9 are carried unchanged.
+
+## [1.0.0-beta.9] - 2026-06-21
+
+### Fixed
+- Install: a re-install over an existing virtualenv built with an unsupported Python (e.g. a 3.14 venv from an attempt before beta.8) reused that venv and failed with "requires a different Python: 3.14.x not in <3.14,>=3.11". The installer now detects an out-of-range venv interpreter and recreates the venv with a supported 3.11 to 3.13 Python.
+
+## [1.0.0-beta.8] - 2026-06-21
+
+### Fixed
+- Install: the controller venv now uses a litellm-compatible Python (3.11 to 3.13). A fresh distro that defaults python3 to 3.14 (e.g. WSL on Ubuntu 26.04) previously aborted with "No matching distribution found for litellm>=1.89.3", because litellm supports only >=3.10,<3.14. The installer now picks a supported interpreter, installs python3.13 if none is present, and fails with a clear message otherwise; requires-python is capped at <3.14 to match.
+
+## [1.0.0-beta.7] - 2026-06-21
+
+### Fixed
+- Install: libtorrent is no longer a core dependency, so a fresh install no longer aborts with "No matching distribution found for libtorrent>=2.0.9" on platforms without a libtorrent wheel (e.g. WSL). It is now an optional `torrent` extra; the model torrent mesh is enabled only where the OS-level package is present, and hosts without it fall back to a direct download.
+
 ## [1.0.0-beta.6] - 2026-06-21
 
 ### Added
