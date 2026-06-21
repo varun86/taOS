@@ -336,7 +336,11 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     project_event_broker = ProjectEventBroker()
     from tinyagentos.desktop_control import DesktopCommandBroker
     desktop_command_broker = DesktopCommandBroker()
-    project_task_store = ProjectTaskStore(data_dir / "projects.db", broker=project_event_broker)
+    from tinyagentos.board_audit import BoardAuditLog
+    board_audit_store = BoardAuditLog(data_dir / "board_audit.db")
+    project_task_store = ProjectTaskStore(
+        data_dir / "projects.db", broker=project_event_broker, audit=board_audit_store
+    )
     project_canvas_store = ProjectCanvasStoreImpl(data_dir / "projects.db", broker=project_event_broker)
     projects_root = data_dir / "projects"
     chat_hub = ChatHub()
@@ -430,6 +434,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await chat_messages.init()
         await chat_channels.init()
         await project_store.init()
+        await board_audit_store.init()
+        app.state.board_audit = board_audit_store
         await project_task_store.init()
         await project_canvas_store.init()
         projects_root.mkdir(parents=True, exist_ok=True)
@@ -1315,6 +1321,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.chat_messages = chat_messages
     app.state.chat_channels = chat_channels
     app.state.project_store = project_store
+    app.state.board_audit = board_audit_store
     app.state.project_task_store = project_task_store
     app.state.project_event_broker = project_event_broker
     app.state.desktop_command_broker = desktop_command_broker
