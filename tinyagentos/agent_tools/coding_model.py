@@ -107,11 +107,11 @@ def parse_completion(response) -> dict:
     no message; fall back to an empty final answer rather than raising, so the
     loop's never-raise contract holds.
     """
-    choices = (response["choices"] if isinstance(response, dict) else getattr(response, "choices", None)) or []
+    choices = (response.get("choices") if isinstance(response, dict) else getattr(response, "choices", None)) or []
     if not choices:
         return {"type": "final", "text": ""}
     first = choices[0]
-    message = first["message"] if isinstance(first, dict) else getattr(first, "message", None)
+    message = (first.get("message") if isinstance(first, dict) else getattr(first, "message", None))
     if message is None:
         return {"type": "final", "text": ""}
     tool_calls = _message_field(message, "tool_calls")
