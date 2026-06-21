@@ -7,6 +7,23 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 
 ## [Unreleased]
 
+## [1.0.0-beta.6] - 2026-06-21
+
+### Added
+- Coding Studio gains a model-agnostic tool-calling loop: agents read, edit, and verify files inside a workspace-jailed sandbox using filesystem tool primitives, driven by a LiteLLM-backed model step.
+- Cluster capability map: worker registration and heartbeats populate a per-node capability and hardware map with admin endpoints, plus a non-destructive stale-node offline sweep.
+- Append-only board audit log: every task transition is recorded, with a project-scoped activity feed and a task audit endpoint, indexed for unbounded growth.
+- `taos rollback`: a CLI recovery path that restores the previous branch and version, so a broken update can be recovered even when the dashboard is unreachable.
+
+### Changed
+- One Browser app: the separate streamed-browser app is gone. The Browser app attaches a Neko streamed session through a toggle, and a RAM-capable Pi host can serve the session itself instead of reporting that it is not capable.
+- The default store no longer seeds the X, Reddit, YouTube, and GitHub apps; they are optional installs.
+
+### Fixed
+- Browser sessions resolve the target worker before creating the session row, so a failed placement no longer leaves an orphaned session.
+- Auto-expiring notification toasts no longer archive themselves into the History view.
+- Dependabot majors updated: actions/checkout v7, dependabot/fetch-metadata v3, and the dev Python dependency group.
+
 ## [1.0.0-beta.5] - 2026-06-20
 
 ### Added
@@ -23,6 +40,25 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 - Store submissions return 400 on invalid input instead of 500.
 - Security: dompurify updated to 3.4.11; cryptography and pydantic-settings advisories cleared.
 - Install: the core install no longer aborts when optional components fail, and drops to the service user without assuming sudo (WSL robustness).
+
+## [1.0.0-beta.4.1] - 2026-06-20
+
+### Changed
+- Installs and in-app updates verify the prebuilt bundle's SHA256 before extracting; a corrupted or tampered bundle is rejected and falls back to a local build.
+- Re-installs update the existing install in place instead of forking a second copy.
+
+### Fixed
+- Symlink-safe staging (no fixed /tmp paths as root), atomic-rename swap, and a fix so the bundle is no longer treated as perpetually stale.
+- README corrected (installs download a prebuilt bundle, no local build) and links rebranded to jaylfc/taOS.
+
+## [1.0.0-beta.4] - 2026-06-20
+
+### Added
+- "Reduce effects" toggle (Settings, Accessibility) for low-end devices: disables background blur, heavy shadows, and continuous animations for a smoother UI on older hardware.
+
+### Changed
+- The installer and in-app update download a prebuilt UI bundle instead of building it locally, so installs and upgrades are faster and no longer fail or silently stay on the old version on low-memory machines including WSL. A local build, when still needed, now fails with a clear message instead of half-updating.
+- CI runs on self-hosted runners and gates the desktop test suite.
 
 ## [1.0.0-beta.3] - 2026-06-16
 

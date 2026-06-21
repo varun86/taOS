@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Bell, CheckCheck, Trash2 } from "lucide-react";
+import { X, Bell, CheckCheck, Trash2, History } from "lucide-react";
 import { useNotificationStore, type Notification } from "@/stores/notification-store";
 import { useProcessStore } from "@/stores/process-store";
 import { getApp } from "@/registry/app-registry";
@@ -16,10 +16,66 @@ function formatTime(ts: number): string {
   return `${Math.floor(delta / 86400_000)}d ago`;
 }
 
+function NotificationItem({
+  n,
+  onDismiss,
+  onItemClick,
+}: {
+  n: Notification;
+  onDismiss: (id: string) => void;
+  onItemClick: (n: Notification) => void;
+}) {
+  return (
+    <button
+      onClick={() => onItemClick(n)}
+      className={`w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors ${!n.read ? "bg-accent/5" : ""} ${n.action ? "cursor-pointer" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
+            <span className="text-xs font-medium text-shell-text truncate">{n.title}</span>
+          </div>
+          {n.body && <p className="text-xs text-shell-text-secondary mt-1 line-clamp-2">{n.body}</p>}
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[10px] text-shell-text-tertiary">{formatTime(n.timestamp)}</span>
+            <span className="text-[10px] text-shell-text-tertiary">.</span>
+            <span className="text-[10px] text-shell-text-tertiary">{n.source}</span>
+          </div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss(n.id);
+          }}
+          className="p-0.5 rounded hover:bg-white/10 shrink-0"
+          aria-label={`Dismiss: ${n.title}`}
+        >
+          <X size={12} className="text-shell-text-tertiary" />
+        </button>
+      </div>
+    </button>
+  );
+}
+
 export function NotificationCentre() {
-  const { notifications, centreOpen, closeCentre, markRead, markAllRead, clearAll, dismiss } = useNotificationStore();
+  const {
+    notifications,
+    centreOpen,
+    closeCentre,
+    markRead,
+    markAllRead,
+    clearAll,
+    dismiss,
+    archivedNotifications,
+    clearArchived,
+  } = useNotificationStore();
   const openWindow = useProcessStore((s) => s.openWindow);
   const [checklistDismissed, setChecklistDismissed] = useState(false);
+  const [tab, setTab] = useState<"inbox" | "history">("inbox");
+
+  const active = notifications.filter((n) => !n.archived);
+  const archived = archivedNotifications();
 
   // Optimistic local mark-read, plus a best-effort backend write for server
   // items so the read state persists across reloads. Network never blocks the UI.
@@ -87,7 +143,7 @@ export function NotificationCentre() {
             <span className="text-sm font-medium text-shell-text">Notifications</span>
           </div>
           <div className="flex items-center gap-1">
-            {notifications.length > 0 && (
+            {tab === "inbox" && active.length > 0 && (
               <>
                 <button onClick={handleMarkAllRead} className="p-1.5 rounded hover:bg-white/5" title="Mark all read">
                   <CheckCheck size={14} className="text-shell-text-tertiary" />
@@ -97,55 +153,86 @@ export function NotificationCentre() {
                 </button>
               </>
             )}
+            {tab === "history" && archived.length > 0 && (
+              <button onClick={clearArchived} className="p-1.5 rounded hover:bg-white/5" title="Clear history">
+                <Trash2 size={14} className="text-shell-text-tertiary" />
+              </button>
+            )}
             <button onClick={closeCentre} className="p-1.5 rounded hover:bg-white/5" aria-label="Close notifications">
               <X size={14} className="text-shell-text-tertiary" />
             </button>
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-white/10">
+          <button
+            onClick={() => setTab("inbox")}
+            className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${tab === "inbox" ? "text-accent border-b-2 border-accent" : "text-shell-text-tertiary hover:text-shell-text"}`}
+          >
+            Inbox{active.length > 0 ? ` (${active.length})` : ""}
+          </button>
+          <button
+            onClick={() => setTab("history")}
+            className={`flex-1 px-4 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1 ${tab === "history" ? "text-accent border-b-2 border-accent" : "text-shell-text-tertiary hover:text-shell-text"}`}
+          >
+            <History size={12} />
+            History{archived.length > 0 ? ` (${archived.length})` : ""}
+          </button>
+        </div>
+
         {/* List */}
         <div className="flex-1 overflow-y-auto">
-          {!checklistDismissed && (
-            <SetupChecklist onDismissed={() => setChecklistDismissed(true)} />
+          {tab === "inbox" && (
+            <>
+              {!checklistDismissed && (
+                <SetupChecklist onDismissed={() => setChecklistDismissed(true)} />
+              )}
+              {active.length === 0 ? (
+                <div className="px-4 py-12 text-center">
+                  <Bell size={24} className="mx-auto text-shell-text-tertiary mb-2" />
+                  <p className="text-xs text-shell-text-tertiary">No notifications</p>
+                </div>
+              ) : (
+                active.map((n) => (
+                  <NotificationItem
+                    key={n.id}
+                    n={n}
+                    onDismiss={dismiss}
+                    onItemClick={handleItemClick}
+                  />
+                ))
+              )}
+            </>
           )}
-          {notifications.length === 0 ? (
-            <div className="px-4 py-12 text-center">
-              <Bell size={24} className="mx-auto text-shell-text-tertiary mb-2" />
-              <p className="text-xs text-shell-text-tertiary">No notifications</p>
-            </div>
-          ) : (
-            notifications.map((n) => (
-              <button
-                key={n.id}
-                onClick={() => handleItemClick(n)}
-                className={`w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors ${!n.read ? "bg-accent/5" : ""} ${n.action ? "cursor-pointer" : ""}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
-                      <span className="text-xs font-medium text-shell-text truncate">{n.title}</span>
-                    </div>
-                    {n.body && <p className="text-xs text-shell-text-secondary mt-1 line-clamp-2">{n.body}</p>}
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-shell-text-tertiary">{formatTime(n.timestamp)}</span>
-                      <span className="text-[10px] text-shell-text-tertiary">·</span>
-                      <span className="text-[10px] text-shell-text-tertiary">{n.source}</span>
+          {tab === "history" && (
+            <>
+              {archived.length === 0 ? (
+                <div className="px-4 py-12 text-center">
+                  <History size={24} className="mx-auto text-shell-text-tertiary mb-2" />
+                  <p className="text-xs text-shell-text-tertiary">No archived notifications</p>
+                </div>
+              ) : (
+                archived.map((n) => (
+                  <div
+                    key={n.id}
+                    className="w-full text-left px-4 py-3 border-b border-white/5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs font-medium text-shell-text truncate">{n.title}</span>
+                        {n.body && <p className="text-xs text-shell-text-secondary mt-1 line-clamp-2">{n.body}</p>}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-shell-text-tertiary">{formatTime(n.timestamp)}</span>
+                          <span className="text-[10px] text-shell-text-tertiary">.</span>
+                          <span className="text-[10px] text-shell-text-tertiary">{n.source}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      dismiss(n.id);
-                    }}
-                    className="p-0.5 rounded hover:bg-white/10 shrink-0"
-                    aria-label={`Dismiss: ${n.title}`}
-                  >
-                    <X size={12} className="text-shell-text-tertiary" />
-                  </button>
-                </div>
-              </button>
-            ))
+                ))
+              )}
+            </>
           )}
         </div>
       </div>

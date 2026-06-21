@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 
 from typing import TYPE_CHECKING
@@ -9,7 +10,10 @@ from tinyagentos.base_store import BaseStore
 from tinyagentos.projects.ids import new_id
 
 if TYPE_CHECKING:
+    from tinyagentos.board_audit import BoardAuditLog
     from tinyagentos.projects.events import ProjectEventBroker
+
+logger = logging.getLogger(__name__)
 
 TASK_SCHEMA = """
 CREATE TABLE IF NOT EXISTS project_tasks (
@@ -86,14 +90,50 @@ def _row_to_task(row, description) -> dict:
 class ProjectTaskStore(BaseStore):
     SCHEMA = TASK_SCHEMA
 
-    def __init__(self, db_path, *, broker: "ProjectEventBroker | None" = None) -> None:
+    def __init__(
+        self,
+        db_path,
+        *,
+        broker: "ProjectEventBroker | None" = None,
+        audit: "BoardAuditLog | None" = None,
+    ) -> None:
         super().__init__(db_path)
         self._broker = broker
+        self._audit = audit
 
     async def _publish(self, project_id: str, kind: str, payload: dict) -> None:
         if self._broker is not None:
             from tinyagentos.projects.events import ProjectEvent
             await self._broker.publish(project_id, ProjectEvent(kind=kind, payload=payload))
+
+    async def _record_audit(
+        self,
+        task_id: str,
+        event: str,
+        actor: str,
+        from_status: str | None,
+        to_status: str | None,
+        project_id: str = "",
+    ) -> None:
+        """Append a status transition to the board audit log (best effort).
+
+        The audit log lives in its own store; a failure to record must never
+        roll back or break the task mutation that already committed. project_id
+        is recorded so the project-scoped activity feed never crosses projects.
+        """
+        if self._audit is None:
+            return
+        try:
+            await self._audit.record(
+                task_id=task_id,
+                event=event,
+                actor=actor,
+                from_status=from_status,
+                to_status=to_status,
+                project_id=project_id,
+            )
+        except Exception:
+            logger.warning("board audit record failed for task %s", task_id, exc_info=True)
 
     async def create_task(
         self,
@@ -121,6 +161,7 @@ class ProjectTaskStore(BaseStore):
         await self._db.commit()
         new_task = await self.get_task(tid)
         await self._publish(project_id, "task.created", {"id": new_task["id"], "task": new_task})
+        await self._record_audit(tid, "task.created", created_by, None, "open", project_id=project_id)
         return new_task
 
     async def get_task(self, task_id: str) -> dict | None:
@@ -204,6 +245,10 @@ class ProjectTaskStore(BaseStore):
             existing = await self.get_task(task_id)
             if existing is not None:
                 await self._publish(existing["project_id"], "task.claimed", {"id": task_id, "claimed_by": claimer_id})
+            await self._record_audit(
+                task_id, "task.claimed", claimer_id, "open", "claimed",
+                project_id=existing["project_id"] if existing else "",
+            )
         return changed
 
     async def release_task(self, task_id: str, releaser_id: str) -> bool:
@@ -224,6 +269,10 @@ class ProjectTaskStore(BaseStore):
                     "task.released",
                     {"id": task_id, "releaser_id": releaser_id},
                 )
+            await self._record_audit(
+                task_id, "task.released", releaser_id, "claimed", "open",
+                project_id=existing["project_id"] if existing else "",
+            )
         return changed
 
     async def close_task(
@@ -245,6 +294,14 @@ class ProjectTaskStore(BaseStore):
             existing = await self.get_task(task_id)
             if existing is not None:
                 await self._publish(existing["project_id"], "task.closed", {"id": task_id, "closed_by": closed_by})
+            # Derive the pre-close status race-free from the committed row rather
+            # than a separate pre-read (which would have a TOCTOU gap). close does
+            # not clear claimed_by, so a set claimer means it was 'claimed'.
+            from_status = "claimed" if existing and existing.get("claimed_by") else "open"
+            await self._record_audit(
+                task_id, "task.closed", closed_by, from_status, "closed",
+                project_id=existing["project_id"] if existing else "",
+            )
         return changed
 
     async def reopen_task(self, task_id: str, reopened_by: str) -> bool:
@@ -265,6 +322,10 @@ class ProjectTaskStore(BaseStore):
             existing = await self.get_task(task_id)
             if existing is not None:
                 await self._publish(existing["project_id"], "task.reopened", {"id": task_id, "reopened_by": reopened_by})
+            await self._record_audit(
+                task_id, "task.reopened", reopened_by, "closed", "open",
+                project_id=existing["project_id"] if existing else "",
+            )
         return changed
 
     async def add_relationship(

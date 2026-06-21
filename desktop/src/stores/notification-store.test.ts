@@ -73,11 +73,17 @@ describe("mergeServerNotifications", () => {
     expect(useNotificationStore.getState().notifications.map((n) => n.id)).toContain("srv-901");
 
     store.dismiss("srv-901");
-    expect(useNotificationStore.getState().notifications.map((n) => n.id)).not.toContain("srv-901");
+    // Dismissed item is archived, not removed from the store.
+    const all = useNotificationStore.getState().notifications;
+    const dismissed = all.find((n) => n.id === "srv-901");
+    expect(dismissed).toBeDefined();
+    expect(dismissed?.archived).toBe(true);
 
-    // Backend still reports it (no server-side dismiss); it must stay hidden.
+    // Backend still reports it (no server-side dismiss); it must stay hidden from active.
     store.mergeServerNotifications([srv(901, 100)]);
-    expect(useNotificationStore.getState().notifications.map((n) => n.id)).not.toContain("srv-901");
+    const afterPoll = useNotificationStore.getState().notifications;
+    const stillArchived = afterPoll.find((n) => n.id === "srv-901");
+    expect(stillArchived?.archived).toBe(true);
   });
 
   it("caps the merged list at 100 items", () => {
@@ -85,5 +91,77 @@ describe("mergeServerNotifications", () => {
     const many = Array.from({ length: 150 }, (_, i) => srv(i, i));
     store.mergeServerNotifications(many);
     expect(useNotificationStore.getState().notifications).toHaveLength(100);
+  });
+});
+
+describe("dismiss archives instead of removing", () => {
+  it("sets archived flag on dismiss", () => {
+    const store = useNotificationStore.getState();
+    const id = store.addNotification({ source: "system", title: "test", body: "body", level: "info" });
+
+    store.dismiss(id);
+
+    const all = useNotificationStore.getState().notifications;
+    expect(all).toHaveLength(1);
+    expect(all[0].archived).toBe(true);
+    expect(all[0].id).toBe(id);
+  });
+
+  it("excludes archived items from active notifications", () => {
+    const store = useNotificationStore.getState();
+    const id1 = store.addNotification({ source: "system", title: "keep", body: "active", level: "info" });
+    const id2 = store.addNotification({ source: "system", title: "archive", body: "gone", level: "info" });
+
+    store.dismiss(id2);
+
+    const active = useNotificationStore.getState().notifications.filter((n) => !n.archived);
+    expect(active).toHaveLength(1);
+    expect(active[0].id).toBe(id1);
+  });
+
+  it("archivedNotifications returns archived items newest-first", () => {
+    const store = useNotificationStore.getState();
+    store.addNotification({ source: "system", title: "old", body: "b", level: "info" });
+    const id2 = store.addNotification({ source: "system", title: "new", body: "b", level: "info" });
+
+    store.dismiss(id2);
+
+    const archived = store.archivedNotifications();
+    expect(archived).toHaveLength(1);
+    expect(archived[0].id).toBe(id2);
+    expect(archived[0].archived).toBe(true);
+  });
+
+  it("clearAll archives all notifications", () => {
+    const store = useNotificationStore.getState();
+    store.addNotification({ source: "system", title: "a", body: "b", level: "info" });
+    store.addNotification({ source: "system", title: "c", body: "d", level: "info" });
+
+    store.clearAll();
+
+    const all = useNotificationStore.getState().notifications;
+    expect(all).toHaveLength(2);
+    expect(all.every((n) => n.archived)).toBe(true);
+  });
+
+  it("clearArchived removes archived items permanently", () => {
+    const store = useNotificationStore.getState();
+    const id = store.addNotification({ source: "system", title: "test", body: "b", level: "info" });
+    store.dismiss(id);
+
+    store.clearArchived();
+
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
+  });
+
+  it("unreadCount excludes archived items", () => {
+    const store = useNotificationStore.getState();
+    const id1 = store.addNotification({ source: "system", title: "unread", body: "b", level: "info" });
+    store.addNotification({ source: "system", title: "to-archive", body: "b", level: "info" });
+
+    expect(store.unreadCount()).toBe(2);
+
+    store.dismiss(id1);
+    expect(store.unreadCount()).toBe(1);
   });
 });

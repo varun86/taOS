@@ -35,6 +35,11 @@ class ApplyBlocksBody(BaseModel):
     blocks: list[ApplyBlock]
 
 
+class ToolCallBody(BaseModel):
+    name: str
+    arguments: dict | None = None
+
+
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
@@ -450,3 +455,32 @@ async def apply_blocks(request: Request, workspace_id: str, body: ApplyBlocksBod
         applied.append(rel)
 
     return {"applied": applied}
+
+
+# ---------------------------------------------------------------------------
+# Agent tool-calling loop (#86)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/coding/tools")
+async def list_coding_tools(request: Request):
+    """The workspace tool schemas the agent loop hands to the model."""
+    from tinyagentos.agent_tools.coding_tools import TOOL_SCHEMAS
+
+    return {"tools": TOOL_SCHEMAS}
+
+
+@router.post("/api/coding/workspaces/{workspace_id}/tool")
+async def run_coding_tool(request: Request, workspace_id: str, body: ToolCallBody):
+    """Execute one agent tool call against a jailed workspace.
+
+    The execution half of the tool-calling loop: the model proposes a call, the
+    controller runs it here and feeds the structured result back. Errors are
+    returned as {"ok": false, "error": ...} (HTTP 200) so the loop can recover;
+    only an unknown workspace is a hard 404.
+    """
+    from tinyagentos.agent_tools.coding_tools import dispatch
+
+    root, err = await _workspace_root(request, workspace_id)
+    if err is not None:
+        return err
+    return dispatch(root, body.name, body.arguments)

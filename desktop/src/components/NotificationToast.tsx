@@ -264,7 +264,7 @@ function extractTagged(text: string, tag: string): string | undefined {
 /*  ToastItem                                                          */
 /* ------------------------------------------------------------------ */
 
-function ToastItem({ notif }: { notif: Notification }) {
+function ToastItem({ notif, onExpire }: { notif: Notification; onExpire: () => void }) {
   const dismiss = useNotificationStore((s) => s.dismiss);
   const Icon = LEVEL_ICONS[notif.level];
   const isAgentPaused = notif.source === "agent.paused";
@@ -272,9 +272,12 @@ function ToastItem({ notif }: { notif: Notification }) {
   useEffect(() => {
     // Agent-paused toasts stay until the user explicitly acts on them.
     if (isAgentPaused) return;
-    const timer = setTimeout(() => dismiss(notif.id), 5000);
+    // Auto-expiry only hides the toast; it must NOT archive. Archiving is an
+    // explicit user action (the X button / "Keep paused"). Otherwise every
+    // toast that simply times out would silently fill the History view.
+    const timer = setTimeout(onExpire, 5000);
     return () => clearTimeout(timer);
-  }, [notif.id, dismiss, isAgentPaused]);
+  }, [notif.id, onExpire, isAgentPaused]);
 
   return (
     <div
@@ -332,7 +335,7 @@ export function NotificationToasts() {
   const byId = new Map(notifications.map((n) => [n.id, n] as const));
   const active = toastIds
     .map((id) => byId.get(id))
-    .filter((n): n is Notification => !!n && !n.read)
+    .filter((n): n is Notification => !!n && !n.read && !n.archived)
     .slice(0, 3);
 
   return (
@@ -342,7 +345,11 @@ export function NotificationToasts() {
       role="region"
     >
       {active.map((n) => (
-        <ToastItem key={n.id} notif={n} />
+        <ToastItem
+          key={n.id}
+          notif={n}
+          onExpire={() => setToastIds((prev) => prev.filter((id) => id !== n.id))}
+        />
       ))}
     </div>
   );

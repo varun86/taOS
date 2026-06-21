@@ -654,6 +654,49 @@ async def reopen_task(
     return await store.get_task(task_id)
 
 
+@router.get("/api/projects/{project_id}/audit")
+async def project_audit_feed(
+    project_id: str,
+    request: Request,
+    user: CurrentUser = Depends(current_user),
+    limit: int = 100,
+):
+    """Project-wide board activity feed, newest first (owner-gated, #105).
+
+    Scoped to the project so it never surfaces another project's events. limit
+    is clamped to a sane ceiling to keep the response bounded.
+    """
+    pstore = request.app.state.project_store
+    project_or_err = await _get_owned_project(pstore, project_id, user)
+    if isinstance(project_or_err, JSONResponse):
+        return project_or_err
+    audit = getattr(request.app.state, "board_audit", None)
+    capped = max(1, min(limit, 500))
+    events = await audit.recent_for_project(project_id, capped) if audit is not None else []
+    return {"project_id": project_id, "events": events}
+
+
+@router.get("/api/projects/{project_id}/tasks/{task_id}/audit")
+async def task_audit_history(
+    project_id: str,
+    task_id: str,
+    request: Request,
+    user: CurrentUser = Depends(current_user),
+):
+    """Append-only audit trail for a task: every status transition in order (#105)."""
+    pstore = request.app.state.project_store
+    project_or_err = await _get_owned_project(pstore, project_id, user)
+    if isinstance(project_or_err, JSONResponse):
+        return project_or_err
+    store = request.app.state.project_task_store
+    existing = await store.get_task(task_id)
+    if existing is None or existing["project_id"] != project_id:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    audit = getattr(request.app.state, "board_audit", None)
+    events = await audit.history(task_id) if audit is not None else []
+    return {"task_id": task_id, "events": events}
+
+
 @router.post("/api/projects/{project_id}/tasks/{task_id}/relationships")
 async def add_relationship(
     project_id: str,

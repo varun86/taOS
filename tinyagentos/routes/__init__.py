@@ -111,6 +111,9 @@ def register_all_routers(app):
     from tinyagentos.routes.cluster_migrate import router as cluster_migrate_router
     app.include_router(cluster_migrate_router)
 
+    from tinyagentos.routes.cluster_capability import router as cluster_capability_router
+    app.include_router(cluster_capability_router)
+
     from tinyagentos.routes.training import router as training_router
     app.include_router(training_router)
 

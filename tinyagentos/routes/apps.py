@@ -26,10 +26,13 @@ _GENERIC_ICON = "/static/app-icons/generic-service.svg"
 # runtime location). The frontend owns name/icon/cover; the backend only tracks
 # which ids are installed, gated to this allowlist so the endpoint can't be used
 # to write arbitrary install rows.
+# The platform social apps (reddit, youtube-library, github-browser, x-monitor)
+# were DE-SEEDED from the default store: they are unfinished and now live as the
+# operator's private App Studio drafts to be finished + published on stream, not
+# offered to every user. The Creative Studios remain installable optional apps.
 OPTIONAL_FRONTEND_APPS = {
-    "reddit", "youtube-library", "github-browser", "x-monitor",
-    # Creative Studios install the same way: a frontend-only optional app whose
-    # install row just flips the launcher visibility, no service spawned.
+    # Creative Studios: a frontend-only optional app whose install row just
+    # flips the launcher visibility, no service spawned.
     "coding-studio", "design-studio", "music-studio", "app-studio", "office-suite",
 }
 _FRONTEND_APP_KIND = "frontend-app"
@@ -37,10 +40,6 @@ _FRONTEND_APP_KIND = "frontend-app"
 # In-core version for each optional app. When an app becomes a real .taosapp
 # package, the package version will win instead of this value.
 APP_VERSIONS: dict[str, str] = {
-    "reddit": "1.0.0",
-    "youtube-library": "1.0.0",
-    "github-browser": "1.0.0",
-    "x-monitor": "1.0.0",
     "coding-studio": "1.0.0",
     "design-studio": "1.0.0",
     "music-studio": "1.0.0",
@@ -50,10 +49,6 @@ APP_VERSIONS: dict[str, str] = {
 
 # Trust level for each optional app (all current optional apps are first-party).
 APP_TRUST: dict[str, str] = {
-    "reddit": "first-party",
-    "youtube-library": "first-party",
-    "github-browser": "first-party",
-    "x-monitor": "first-party",
     "coding-studio": "first-party",
     "design-studio": "first-party",
     "music-studio": "first-party",

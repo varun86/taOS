@@ -108,21 +108,21 @@ class TestOptionalInstalled:
 
     @pytest.mark.asyncio
     async def test_install_then_listed(self, client):
-        resp = await client.post("/api/apps/optional/reddit/install")
+        resp = await client.post("/api/apps/optional/coding-studio/install")
         assert resp.status_code == 200
-        assert resp.json()["app_id"] == "reddit"
+        assert resp.json()["app_id"] == "coding-studio"
         resp = await client.get("/api/apps/optional/installed")
-        assert resp.json()["installed"] == ["reddit"]
+        assert resp.json()["installed"] == ["coding-studio"]
 
     @pytest.mark.asyncio
     async def test_uninstall_removes(self, client):
-        await client.post("/api/apps/optional/x-monitor/install")
+        await client.post("/api/apps/optional/coding-studio/install")
         resp = await client.get("/api/apps/optional/installed")
-        assert "x-monitor" in resp.json()["installed"]
-        resp = await client.post("/api/apps/optional/x-monitor/uninstall")
+        assert "coding-studio" in resp.json()["installed"]
+        resp = await client.post("/api/apps/optional/coding-studio/uninstall")
         assert resp.status_code == 200
         resp = await client.get("/api/apps/optional/installed")
-        assert "x-monitor" not in resp.json()["installed"]
+        assert "coding-studio" not in resp.json()["installed"]
 
     @pytest.mark.asyncio
     async def test_unknown_app_rejected_install(self, client):
@@ -136,10 +136,10 @@ class TestOptionalInstalled:
 
     @pytest.mark.asyncio
     async def test_optional_app_not_in_installed_services(self, client):
-        await client.post("/api/apps/optional/github-browser/install")
+        await client.post("/api/apps/optional/coding-studio/install")
         resp = await client.get("/api/apps/installed")
         ids = {i["app_id"] for i in resp.json()}
-        assert "github-browser" not in ids
+        assert "coding-studio" not in ids
 
 
 class TestOptionalCatalog:
@@ -166,18 +166,18 @@ class TestOptionalCatalog:
     async def test_install_records_version(self, client):
         from tinyagentos.routes.apps import APP_VERSIONS
         store = client._transport.app.state.installed_apps
-        resp = await client.post("/api/apps/optional/reddit/install")
+        resp = await client.post("/api/apps/optional/coding-studio/install")
         assert resp.status_code == 200
         rows = await store.list_installed()
-        row = next((r for r in rows if r["app_id"] == "reddit"), None)
+        row = next((r for r in rows if r["app_id"] == "coding-studio"), None)
         assert row is not None
-        assert row["version"] == APP_VERSIONS["reddit"]
+        assert row["version"] == APP_VERSIONS["coding-studio"]
 
     @pytest.mark.asyncio
     async def test_update_available_false_for_fresh_install(self, client):
-        await client.post("/api/apps/optional/youtube-library/install")
+        await client.post("/api/apps/optional/coding-studio/install")
         resp = await client.get("/api/apps/optional/catalog")
-        app = next(a for a in resp.json()["apps"] if a["id"] == "youtube-library")
+        app = next(a for a in resp.json()["apps"] if a["id"] == "coding-studio")
         assert app["installed"] is True
         assert app["update_available"] is False
 
@@ -187,14 +187,14 @@ class TestOptionalCatalog:
         store = client._transport.app.state.installed_apps
         await store._db.execute(
             "INSERT OR REPLACE INTO installed_apps (app_id, installed_at, version, metadata) VALUES (?, ?, ?, ?)",
-            ("x-monitor", 1000.0, "0.9.0", json.dumps({"kind": "frontend-app"})),
+            ("coding-studio", 1000.0, "0.9.0", json.dumps({"kind": "frontend-app"})),
         )
         await store._db.commit()
         resp = await client.get("/api/apps/optional/catalog")
-        app = next(a for a in resp.json()["apps"] if a["id"] == "x-monitor")
+        app = next(a for a in resp.json()["apps"] if a["id"] == "coding-studio")
         assert app["installed"] is True
         assert app["update_available"] is True
-        assert app["version"] == APP_VERSIONS["x-monitor"]
+        assert app["version"] == APP_VERSIONS["coding-studio"]
 
     @pytest.mark.asyncio
     async def test_catalog_does_not_leak_unknown_ids(self, client):
@@ -208,3 +208,23 @@ class TestOptionalCatalog:
         returned_ids = {a["id"] for a in resp.json()["apps"]}
         assert "unknown-app" not in returned_ids
         assert returned_ids == OPTIONAL_FRONTEND_APPS
+
+
+class TestSocialAppsDeseeded:
+    """The platform social apps were removed from the default store."""
+
+    def test_social_apps_not_in_allowlist(self):
+        for app_id in ("reddit", "x-monitor", "github-browser", "youtube-library"):
+            assert app_id not in OPTIONAL_FRONTEND_APPS
+
+    @pytest.mark.asyncio
+    async def test_social_app_install_404(self, client):
+        for app_id in ("reddit", "x-monitor", "github-browser", "youtube-library"):
+            resp = await client.post(f"/api/apps/optional/{app_id}/install")
+            assert resp.status_code == 404, app_id
+
+    @pytest.mark.asyncio
+    async def test_social_apps_absent_from_catalog(self, client):
+        resp = await client.get("/api/apps/optional/catalog")
+        ids = {a["id"] for a in resp.json()["apps"]}
+        assert ids.isdisjoint({"reddit", "x-monitor", "github-browser", "youtube-library"})

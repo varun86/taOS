@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { NotificationToasts } from "./NotificationToast";
 
 const mockDismiss = vi.fn();
@@ -63,5 +63,31 @@ describe("NotificationToasts", () => {
     render(<NotificationToasts />);
     fireEvent.click(screen.getByRole("button", { name: /dismiss notification/i }));
     await waitFor(() => expect(mockDismiss).toHaveBeenCalledWith("test-2"));
+  });
+
+  it("auto-expires the toast after 5s without archiving it", () => {
+    vi.useFakeTimers();
+    try {
+      mockNotifications.length = 0;
+      mockNotifications.push({
+        id: "test-3",
+        source: "system",
+        title: "Synced",
+        body: "Your files are up to date.",
+        level: "success",
+        read: false,
+        timestamp: Date.now(),
+      });
+      mockDismiss.mockClear();
+      render(<NotificationToasts />);
+      expect(screen.getByText("Synced")).toBeInTheDocument();
+      // Toast vanishes from view once the 5s timer fires...
+      act(() => vi.advanceTimersByTime(5000));
+      expect(screen.queryByText("Synced")).not.toBeInTheDocument();
+      // ...but auto-expiry must never archive (dismiss is the explicit action).
+      expect(mockDismiss).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

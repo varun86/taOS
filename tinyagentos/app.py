@@ -258,6 +258,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     agent_grants_store = AgentGrantsStore(data_dir / "agent_grants.db")
     from tinyagentos.cluster.pairing_store import ClusterPairingStore
     cluster_pairing_store = ClusterPairingStore(data_dir / "cluster_pairing.db")
+    from tinyagentos.cluster.capability_map import CapabilityMap
+    capability_map_store = CapabilityMap(data_dir / "capability_map.db")
 
     metrics_store = MetricsStore(data_dir / "metrics.db")
     notif_store = NotificationStore(data_dir / "notifications.db")
@@ -336,7 +338,11 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     project_event_broker = ProjectEventBroker()
     from tinyagentos.desktop_control import DesktopCommandBroker
     desktop_command_broker = DesktopCommandBroker()
-    project_task_store = ProjectTaskStore(data_dir / "projects.db", broker=project_event_broker)
+    from tinyagentos.board_audit import BoardAuditLog
+    board_audit_store = BoardAuditLog(data_dir / "board_audit.db")
+    project_task_store = ProjectTaskStore(
+        data_dir / "projects.db", broker=project_event_broker, audit=board_audit_store
+    )
     project_canvas_store = ProjectCanvasStoreImpl(data_dir / "projects.db", broker=project_event_broker)
     projects_root = data_dir / "projects"
     chat_hub = ChatHub()
@@ -411,6 +417,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.agent_grants = agent_grants_store
         await cluster_pairing_store.init()
         app.state.cluster_pairing = cluster_pairing_store
+        await capability_map_store.init()
+        app.state.capability_map = capability_map_store
         await metrics_store.init()
         await notif_store.init()
         await qmd_client.init()
@@ -430,6 +438,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         await chat_messages.init()
         await chat_channels.init()
         await project_store.init()
+        await board_audit_store.init()
+        app.state.board_audit = board_audit_store
         await project_task_store.init()
         await project_canvas_store.init()
         projects_root.mkdir(parents=True, exist_ok=True)
@@ -1315,6 +1325,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.chat_messages = chat_messages
     app.state.chat_channels = chat_channels
     app.state.project_store = project_store
+    app.state.board_audit = board_audit_store
     app.state.project_task_store = project_task_store
     app.state.project_event_broker = project_event_broker
     app.state.desktop_command_broker = desktop_command_broker
@@ -1370,6 +1381,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.auth_requests = auth_requests_store
     app.state.agent_grants = agent_grants_store
     app.state.cluster_pairing = cluster_pairing_store
+    app.state.capability_map = capability_map_store
 
     # Detect and set container runtime (eager, so tests work without lifespan)
     try:
@@ -1401,6 +1413,15 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
 
 
 def main():
+    import sys
+    # `taos rollback [ref]` -- undo the last update (restore branch + version) and
+    # restart. Delegates to the pure-shell recovery script so it behaves the same
+    # whether the app is healthy or a bad update left it broken.
+    if len(sys.argv) > 1 and sys.argv[1] == "rollback":
+        import subprocess
+        script = PROJECT_DIR / "scripts" / "rollback.sh"
+        raise SystemExit(subprocess.call(["bash", str(script), *sys.argv[2:]]))
+
     import uvicorn
     config = load_config(PROJECT_DIR / "data" / "config.yaml")
     app = create_app()

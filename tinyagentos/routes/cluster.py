@@ -267,9 +267,49 @@ async def register_worker(request: Request, body: WorkerRegister):
         signing_key=signing_key,
     )
     await cluster.register_worker(info)
+    await _record_worker_capability(request.app, body.name, body.host_lan_ip, body.hardware)
     if body.pending_storage_backup:
         await _surface_storage_backup(request.app, body.name, body.pending_storage_backup)
     return {"status": "registered", "name": body.name}
+
+
+async def _record_worker_capability(app, name: str, host_lan_ip: str, hardware: dict) -> None:
+    """Populate the capability map from a registering worker (best effort).
+
+    The worker's detected hardware dict already carries cpu/ram_mb/gpu/npu, the
+    same shape the capability map stores, so registration doubles as a heartbeat
+    that marks the node online. A failure here must never fail registration; an
+    explicit admin set-status still owns 'draining'.
+    """
+    store = getattr(app.state, "capability_map", None)
+    if store is None:
+        return
+    hw = hardware or {}
+    try:
+        current = await store.get(name)
+        status = "draining" if current is not None and current["status"] == "draining" else "online"
+        # The store does a full-row overwrite, so a legacy/flat-mode worker that
+        # re-registers without hardware would wipe previously-detected fields.
+        # Carry forward each field the incoming hardware omits.
+        prev = current or {}
+
+        def _keep(key, default):
+            val = hw.get(key)
+            return val if val else prev.get(key, default)
+
+        await store.upsert(
+            {
+                "node_id": name,
+                "hostname": host_lan_ip or prev.get("hostname") or name,
+                "cpu": _keep("cpu", {}),
+                "ram_mb": _keep("ram_mb", 0),
+                "gpu": _keep("gpu", {}),
+                "npu": _keep("npu", {}),
+                "status": status,
+            }
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("capability-map upsert on worker registration failed for %s", name)
 
 
 async def _surface_storage_backup(app, worker_name: str, marker: dict) -> None:
