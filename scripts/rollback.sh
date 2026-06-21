@@ -50,21 +50,44 @@ fi
 # can still be resolved; never fatal (offline recovery must still work).
 git fetch origin --tags --quiet 2>/dev/null || log "fetch skipped (offline?)"
 
+# An explicit target may name a branch that only exists on the remote
+# (origin/<name>). Resolve it to the remote ref and recreate it locally so both
+# branch and version are restored, not just a detached commit.
+if [[ -n "$target_ref" ]] && ! git rev-parse --verify --quiet "${prev_sha}^{commit}" >/dev/null; then
+  if git rev-parse --verify --quiet "origin/${target_ref}^{commit}" >/dev/null; then
+    prev_branch="$target_ref"
+    prev_sha="origin/${target_ref}"
+    log "explicit target resolved to remote branch origin/${target_ref}"
+  fi
+fi
+
 if ! git rev-parse --verify --quiet "${prev_sha}^{commit}" >/dev/null; then
   echo "taos rollback: cannot resolve '$prev_sha' to a commit" >&2
   exit 1
 fi
 
+# A broken update often leaves a dirty tree, and a plain checkout would fail
+# under set -e and defeat the recovery. Stash local changes (including
+# untracked) first so the checkout always lands; getting back to a working
+# version beats preserving in-place edits, and the stash keeps them retrievable.
+if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+  if git stash push --include-untracked -m "taos-rollback-$(git rev-parse --short HEAD 2>/dev/null)" >/dev/null 2>&1; then
+    log "stashed local changes before rollback (recover with: git stash list)"
+  else
+    log "could not stash local changes; will force the checkout"
+  fi
+fi
+
 # Restore BOTH branch and version: move/create the recorded branch onto the
 # recorded commit and check it out. With no recorded branch (explicit ref or
 # tag fallback) we land in detached HEAD at that commit, which is still a valid
-# running state.
+# running state. Fall back to --force so a stubborn tree can never block recovery.
 if [[ -n "$prev_branch" && "$prev_branch" != "HEAD" ]]; then
   log "restoring branch '$prev_branch' at ${prev_sha:0:12}"
-  git checkout -B "$prev_branch" "$prev_sha"
+  git checkout -B "$prev_branch" "$prev_sha" 2>/dev/null || git checkout --force -B "$prev_branch" "$prev_sha"
 else
   log "checking out $prev_sha (detached)"
-  git checkout --quiet --detach "$prev_sha"
+  git checkout --quiet --detach "$prev_sha" 2>/dev/null || git checkout --quiet --force --detach "$prev_sha"
 fi
 
 # --- restart the service (first method that applies wins) ---
@@ -85,7 +108,20 @@ if [[ -z "$restarted" ]] && command -v launchctl >/dev/null 2>&1; then
   fi
 fi
 if [[ -z "$restarted" && -x "$INSTALL_DIR/scripts/taos-run.sh" ]]; then
-  pkill -f "tinyagentos" 2>/dev/null || true
+  # Stop the running controller, but never signal THIS rollback process or its
+  # ancestors: the invoking `taos` CLI also has "tinyagentos" in its command
+  # line, so a bare `pkill -f tinyagentos` would kill the process doing the
+  # rollback before the new controller starts.
+  skip=" $$ "
+  _p=$$
+  while _p="$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' ')"; do
+    [[ -z "$_p" || "$_p" == "0" || "$_p" == "1" ]] && break
+    skip="$skip$_p "
+  done
+  for _pid in $(pgrep -f "taos-run.sh|tinyagentos" 2>/dev/null || true); do
+    case "$skip" in *" $_pid "*) continue ;; esac
+    kill "$_pid" 2>/dev/null || true
+  done
   nohup "$INSTALL_DIR/scripts/taos-run.sh" >/dev/null 2>&1 &
   restarted="nohup"
 fi
