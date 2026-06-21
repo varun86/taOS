@@ -116,33 +116,42 @@ async def create_session(
         return JSONResponse({"error": "session has no user id"}, status_code=401)
 
     cluster = request.app.state.cluster_manager
-    if body.node is not None:
-        capable_names = {n["name"] for n in list_browser_nodes(cluster)}
-        if body.node not in capable_names:
-            return JSONResponse({"error": "no_capable_node"}, status_code=409)
-        node = body.node
-    else:
-        node = pick_browser_node(cluster)
-        if node is None:
-            return JSONResponse({"error": "no_capable_node"}, status_code=409)
-
-    worker = cluster.get_worker(node)
-    if worker is None:
+    # Placement: explicit worker -> host (if RAM-capable) -> best worker. The
+    # host branch is what lets a capable controller (e.g. a 16GB Pi) serve a
+    # streamed session itself; the previous worker-only path returned
+    # no_capable_node on a host with no Tier-2 browser workers.
+    host_hw = getattr(request.app.state, "host_hardware", None)
+    target = resolve_browser_target(cluster, host_hw, explicit_node=body.node)
+    if target is None:
         return JSONResponse({"error": "no_capable_node"}, status_code=409)
+    kind, node = target
 
     mgr = request.app.state.browser_sessions
     session = await mgr.create_session(
         "user", user_id, body.url, body.profile or "default"
     )
+    vol = f"taos-browser-{session['id']}"
     auth_token = getattr(request.app.state, "browser_worker_auth_token", None)
     try:
-        session = await mgr.start_on_worker(
-            session["id"],
-            node=node,
-            worker_url=worker.url,
-            profile_volume=f"taos-browser-{session['id']}",
-            auth_token=auth_token,
-        )
+        if kind == "host":
+            runner = request.app.state.browser_container_runner
+            # _connecting_host_ip does a blocking DNS lookup; offload it so the
+            # event loop is not stalled while the host is resolved.
+            nat1to1_ip = await asyncio.to_thread(_connecting_host_ip, request)
+            session = await mgr.start_on_host(
+                session["id"], profile_volume=vol, runner=runner, nat1to1_ip=nat1to1_ip
+            )
+        else:
+            worker = cluster.get_worker(node)
+            if worker is None:
+                return JSONResponse({"error": "no_capable_node"}, status_code=409)
+            session = await mgr.start_on_worker(
+                session["id"],
+                node=node,
+                worker_url=worker.url,
+                profile_volume=vol,
+                auth_token=auth_token,
+            )
     except BrowserWorkerError:
         return JSONResponse({"error": "worker_start_failed"}, status_code=502)
     return JSONResponse(session, status_code=201)
