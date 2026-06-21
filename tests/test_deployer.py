@@ -198,12 +198,12 @@ class TestDeployAgent:
             )
 
     @pytest.mark.asyncio
-    async def test_deploy_fails_when_key_mint_returns_none_no_db(self, tmp_path):
+    async def test_deploy_fails_when_key_mint_returns_none_no_db(self, tmp_path, monkeypatch):
         """When LiteLLM runs without a Postgres DB, create_agent_key returns None.
-        The deployer must refuse to fall back to the shared master key — injecting
-        it would give the agent full admin API access and access to every other
-        agent's key. Deploy must fail with a clear error directing operators to
-        configure a Postgres database."""
+        With the master-key fallback DISABLED (the hardened/multi-tenant opt-out),
+        the deployer must refuse rather than inject the shared master key, with a
+        clear error directing operators to configure Postgres."""
+        monkeypatch.setenv("TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", "1")
         mock_proxy = MagicMock()
         mock_proxy.is_running.return_value = True
         mock_proxy.url = "http://localhost:4000"
@@ -224,7 +224,7 @@ class TestDeployAgent:
             result = await deploy_agent(req)
             assert result["success"] is False
             assert "routing-only" in result["error"] or "DATABASE_URL" in result["error"]
-            assert "master key" in result["error"]
+            assert "fallback is disabled" in result["error"]
 
     @pytest.mark.asyncio
     async def test_master_key_never_injected_into_container_env(self, tmp_path):
@@ -306,11 +306,11 @@ class TestDeployAgent:
             )
 
     @pytest.mark.asyncio
-    async def test_deploy_fails_loudly_when_db_configured_but_key_mint_fails(self, tmp_path):
-        """DB configured + /key/generate returns None → deploy fails with a
-        clear error. Falling back to the master key here would hide real
-        LiteLLM bugs (migration pending, DB unreachable, master key drift)
-        and ship broken agents."""
+    async def test_deploy_fails_loudly_when_db_configured_but_key_mint_fails(self, tmp_path, monkeypatch):
+        """DB configured + /key/generate returns None, fallback DISABLED → deploy
+        fails with a clear error naming the DB host (no credentials leaked) so
+        operators can see which DB instance is misbehaving."""
+        monkeypatch.setenv("TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", "1")
         mock_proxy = MagicMock()
         mock_proxy.is_running.return_value = True
         mock_proxy.url = "http://localhost:4000"
@@ -1174,3 +1174,60 @@ class TestContainerFailureExplanation:
         assert deployer._is_unprivileged_userns(str(f2)) is True
         # missing file (e.g. macOS): not an unprivileged Linux userns
         assert deployer._is_unprivileged_userns(str(tmp_path / "nope")) is False
+
+
+class TestMasterKeyFallback:
+    """Per-agent virtual key mint failure: gated master-key fallback (#668 regression).
+
+    When LiteLLM can't mint a per-agent scoped key (routing-only / ARM where
+    prisma can't start), deploy falls back to the shared master key on a
+    single-user instance (default) instead of refusing, unless the operator
+    sets TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK.
+    """
+
+    def _proxy(self):
+        proxy = MagicMock()
+        proxy.is_running.return_value = True
+        proxy.create_agent_key = AsyncMock(return_value=None)  # mint fails
+        proxy.database_url = None  # routing-only
+        proxy.url = "http://127.0.0.1:7834"
+        return proxy
+
+    async def _run(self, tmp_path):
+        async def mock_exec(name, cmd, **kwargs):
+            return (0, "10.0.0.5") if "hostname -I" in " ".join(cmd) else (0, "ok")
+        req = _req(data_dir=tmp_path, framework="hermes", model="kilo-auto/free",
+                   extra_config={"llm_proxy": self._proxy()})
+        with patch("tinyagentos.deployer.create_container", new_callable=AsyncMock) as mock_create, \
+             patch("tinyagentos.deployer.exec_in_container", side_effect=mock_exec), \
+             patch("tinyagentos.deployer.push_file", new_callable=AsyncMock, return_value=(0, "")), \
+             patch("tinyagentos.deployer.add_proxy_device", new_callable=AsyncMock, return_value={"success": True, "output": ""}), \
+             patch("tinyagentos.llm_proxy.get_litellm_master_key", return_value="sk-master-xyz"):
+            mock_create.return_value = {"success": True, "name": "taos-agent-test"}
+            result = await deploy_agent(req)
+            env = mock_create.call_args.kwargs["env"]
+            return result, env
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_master_key_by_default(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", raising=False)
+        result, env = await self._run(tmp_path)
+        assert result["success"] is True
+        assert env["LITELLM_API_KEY"] == "sk-master-xyz"
+        assert env["OPENAI_API_KEY"] == "sk-master-xyz"
+        assert any("master key" in s for s in result["steps"])
+
+    @pytest.mark.asyncio
+    async def test_refuses_when_fallback_disabled(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", "1")
+        async def mock_exec(name, cmd, **kwargs):
+            return (0, "ok")
+        req = _req(data_dir=tmp_path, framework="hermes", model="kilo-auto/free",
+                   extra_config={"llm_proxy": self._proxy()})
+        with patch("tinyagentos.deployer.create_container", new_callable=AsyncMock), \
+             patch("tinyagentos.deployer.exec_in_container", side_effect=mock_exec), \
+             patch("tinyagentos.deployer.push_file", new_callable=AsyncMock, return_value=(0, "")), \
+             patch("tinyagentos.deployer.add_proxy_device", new_callable=AsyncMock, return_value={"success": True, "output": ""}):
+            result = await deploy_agent(req)
+        assert result["success"] is False
+        assert "fallback is disabled" in result["error"]
