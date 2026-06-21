@@ -65,4 +65,15 @@ describe("usePerfAutoDetect (#58 first-run GPU probe)", () => {
     driveFrames(5);
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it("does not trip when the tab is backgrounded (throttled rAF is not a GPU signal)", () => {
+    const spy = vi.fn();
+    useThemeStore.setState({ setReduceEffects: spy } as never);
+    // Tab hidden for the whole probe: rAF throttling would read as low FPS.
+    const hiddenSpy = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    renderHook(() => usePerfAutoDetect());
+    driveFrames(5); // looks slow, but it is a throttling artifact
+    expect(spy).not.toHaveBeenCalled();
+    hiddenSpy.mockRestore();
+  });
 });

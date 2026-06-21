@@ -34,6 +34,19 @@ export function usePerfAutoDetect(): void {
 
     let frames = 0;
     let raf = 0;
+    // A backgrounded tab throttles requestAnimationFrame to ~1fps, which would
+    // look exactly like a struggling GPU. Only trust the probe if the tab stayed
+    // visible the whole time: bail if it starts hidden, and drop the result if
+    // it is hidden at any point during the probe.
+    const hidden = () => typeof document !== "undefined" && document.hidden;
+    if (hidden()) return;
+    let trustworthy = true;
+    const onVis = () => {
+      if (hidden()) trustworthy = false;
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVis);
+    }
     const start = performance.now();
     const tick = (now: number) => {
       frames += 1;
@@ -42,12 +55,19 @@ export function usePerfAutoDetect(): void {
         return;
       }
       const fps = (frames * 1000) / (now - start);
-      // Only persist when we turn effects OFF (a low-end device benefits from
-      // the no-flash fast path on the next load). A capable machine stays
-      // unset so it re-probes and adapts if the hardware ever changes.
-      if (fps < FPS_THRESHOLD) setReduceEffects(true);
+      // A low-end device benefits from Reduce effects; enabling it persists the
+      // choice as "on", which the no-flash boot script reads on the next load. A
+      // capable machine is left unset so it re-probes if the hardware changes.
+      // Skip if the tab was ever backgrounded: the low FPS is then a throttling
+      // artifact, not a GPU signal.
+      if (trustworthy && !hidden() && fps < FPS_THRESHOLD) setReduceEffects(true);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVis);
+      }
+    };
   }, [setReduceEffects]);
 }
