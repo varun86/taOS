@@ -1056,6 +1056,18 @@ ensure_uv() {
     command -v uv >/dev/null 2>&1
 }
 
+# Self-heal a stale venv: a re-install over a .venv built with an unsupported
+# Python (e.g. a 3.14 venv from an attempt before this fix) would otherwise be
+# reused, and `pip install -e .` fails the requires-python <3.14 check. Recreate
+# it if its interpreter is out of the supported [3.11,3.14) range.
+if [[ -d .venv ]]; then
+    _vv=$(.venv/bin/python -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null || echo 0)
+    if [ "$_vv" -lt 311 ] || [ "$_vv" -ge 314 ]; then
+        warn "existing .venv uses an unsupported Python ($_vv); recreating with a 3.11-3.13 interpreter"
+        rm -rf .venv
+    fi
+fi
+
 if [[ ! -d .venv ]]; then
     PYBIN="$(pick_system_python || true)"
     if [[ -n "$PYBIN" ]]; then
