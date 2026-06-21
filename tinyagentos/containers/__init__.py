@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 
 from .backend import ContainerInfo, _parse_memory, detect_runtime, get_backend, set_backend
@@ -264,6 +265,30 @@ async def add_proxy_device(
     if bind_mode:
         cmd.append(f"bind={bind_mode}")
     code, output = await _run(cmd)
+    if code != 0 and "Proxy devices are forbidden" in (output or ""):
+        # Multi-user installs put agent containers in a restricted incus
+        # project (e.g. user-999) which blocks proxy devices by default. taOS
+        # needs proxy devices to wire the container's localhost to host
+        # services (LiteLLM, the controller). Only the trusted controller adds
+        # devices, never the agent inside the container, so relaxing this one
+        # restriction is safe; the isolation that matters (idmap, disk paths,
+        # network) stays. Self-heal: allow proxy devices on the project named
+        # in the error and retry once, so deploys work regardless of how the
+        # per-user project was provisioned (the provisioning is outside taOS).
+        m = re.search(r'project "([^"]+)"', output or "")
+        if m:
+            project = m.group(1)
+            allow_code, _ = await _run([
+                "incus", "project", "set", project,
+                "restricted.devices.proxy", "allow",
+            ])
+            if allow_code == 0:
+                logger.warning(
+                    "add_proxy_device: project %r forbade proxy devices; set "
+                    "restricted.devices.proxy=allow and retried %s",
+                    project, device_name,
+                )
+                code, output = await _run(cmd)
     return {"success": code == 0, "output": output}
 
 
