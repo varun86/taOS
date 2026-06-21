@@ -7,6 +7,9 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 
 ## [Unreleased]
 
+### Changed
+- Dev version reconciled with master and bumped to `1.0.0-beta.10` for the next release cycle. No runtime change; the WSL install fixes from beta.7 to beta.9 are carried unchanged.
+
 ## [1.0.0-beta.9] - 2026-06-21
 
 ### Fixed
