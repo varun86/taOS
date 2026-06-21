@@ -273,8 +273,6 @@ class ProjectTaskStore(BaseStore):
         reason: str | None = None,
     ) -> bool:
         now = time.time()
-        # Capture the pre-close status for the audit trail (open or claimed).
-        before = await self.get_task(task_id) if self._audit is not None else None
         cursor = await self._db.execute(
             """UPDATE project_tasks
                SET status = 'closed', closed_by = ?, closed_at = ?, close_reason = ?, updated_at = ?
@@ -287,10 +285,11 @@ class ProjectTaskStore(BaseStore):
             existing = await self.get_task(task_id)
             if existing is not None:
                 await self._publish(existing["project_id"], "task.closed", {"id": task_id, "closed_by": closed_by})
-            await self._record_audit(
-                task_id, "task.closed", closed_by,
-                before["status"] if before else None, "closed",
-            )
+            # Derive the pre-close status race-free from the committed row rather
+            # than a separate pre-read (which would have a TOCTOU gap). close does
+            # not clear claimed_by, so a set claimer means it was 'claimed'.
+            from_status = "claimed" if existing and existing.get("claimed_by") else "open"
+            await self._record_audit(task_id, "task.closed", closed_by, from_status, "closed")
         return changed
 
     async def reopen_task(self, task_id: str, reopened_by: str) -> bool:
