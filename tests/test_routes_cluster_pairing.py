@@ -681,3 +681,95 @@ async def test_claim_capped_pending_returns_404(client, app):
     )
     assert resp.status_code == 404
     await app.state.cluster_pairing.close()
+
+
+# ---------------------------------------------------------------------------
+# manual (free-tier) pairing: authorize (admin) + manual-claim (worker poll)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_manual_authorize_requires_admin(unauthed_client):
+    """POST /api/cluster/pairing/manual without a session -> 401/403."""
+    resp = await unauthed_client.post(
+        "/api/cluster/pairing/manual",
+        json={"url": "192.168.1.50", "code": "ABCD2345"},
+    )
+    assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_manual_authorize_then_claim_happy_path(client, app):
+    """Admin authorises {ip, code}; the worker poll returns the key + url.
+
+    This exercises the route layer (regression guard for the urlparse import:
+    a bare-host url must be normalised and parsed without raising)."""
+    await app.state.cluster_pairing.init()
+    # Bare host (no scheme) must be accepted and normalised to http://.
+    resp = await client.post(
+        "/api/cluster/pairing/manual",
+        json={"url": "192.168.1.50:9000", "code": "ABCD2345"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "authorized"
+
+    # The worker polls (unauthenticated) with its name + the same code.
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        claim = await c.post(
+            "/api/cluster/pairing/manual-claim",
+            json={"name": "manual-worker", "code": "ABCD2345"},
+        )
+    assert claim.status_code == 200, claim.text
+    body = claim.json()
+    assert "signing_key" in body and len(body["signing_key"]) == 64
+    assert body["url"] == "http://192.168.1.50:9000"
+    await app.state.cluster_pairing.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_authorize_rejects_empty(client, app):
+    """Empty url or code -> 400."""
+    await app.state.cluster_pairing.init()
+    r1 = await client.post("/api/cluster/pairing/manual", json={"url": "", "code": "x"})
+    r2 = await client.post("/api/cluster/pairing/manual", json={"url": "1.2.3.4", "code": ""})
+    assert r1.status_code == 400
+    assert r2.status_code == 400
+    await app.state.cluster_pairing.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_authorize_rejects_invalid_address(client, app):
+    """A url with no hostname -> 400."""
+    await app.state.cluster_pairing.init()
+    resp = await client.post(
+        "/api/cluster/pairing/manual",
+        json={"url": "http://", "code": "ABCD2345"},
+    )
+    assert resp.status_code == 400
+    await app.state.cluster_pairing.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_claim_awaiting_before_authorize(unauthed_client):
+    """Polling before any authorise -> 202 awaiting (not an error)."""
+    resp = await unauthed_client.post(
+        "/api/cluster/pairing/manual-claim",
+        json={"name": "w-await", "code": "NOPE2345"},
+    )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "awaiting"
+
+
+@pytest.mark.asyncio
+async def test_manual_claim_rate_limited(unauthed_client):
+    """Exceeding the per-IP window on manual-claim -> 429."""
+    import tinyagentos.routes.cluster as _cl
+    _cl._manual_claim_hits.clear()
+    last = None
+    for _ in range(_cl._MANUAL_CLAIM_MAX_PER_WINDOW + 3):
+        last = await unauthed_client.post(
+            "/api/cluster/pairing/manual-claim",
+            json={"name": "w-flood", "code": "GUESS234"},
+        )
+    assert last.status_code == 429
+    _cl._manual_claim_hits.clear()

@@ -42,12 +42,13 @@ CREATE TABLE IF NOT EXISTS cluster_pairings (
 -- code hash, not the worker name. The worker then polls manual_claim with the
 -- same code; that mints the key into cluster_pairings for its name and returns
 -- the admin-supplied url as the authoritative address. Single-use, short TTL.
+-- Single-use is enforced by DELETE-on-claim (not a consumed flag) so a claimed
+-- or expired authorisation leaves no stale signing key at rest in the table.
 CREATE TABLE IF NOT EXISTS cluster_manual_pairings (
     code_hash    TEXT PRIMARY KEY,
     url          TEXT NOT NULL,
     signing_key  BLOB NOT NULL,
-    created_ts   REAL NOT NULL,
-    consumed     INTEGER NOT NULL DEFAULT 0
+    created_ts   REAL NOT NULL
 );
 """
 
@@ -198,43 +199,51 @@ class ClusterPairingStore(BaseStore):
         await self._db.execute(
             """
             INSERT INTO cluster_manual_pairings
-                (code_hash, url, signing_key, created_ts, consumed)
-            VALUES (?, ?, ?, ?, 0)
+                (code_hash, url, signing_key, created_ts)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(code_hash) DO UPDATE SET
                 url         = excluded.url,
                 signing_key = excluded.signing_key,
-                created_ts  = excluded.created_ts,
-                consumed    = 0
+                created_ts  = excluded.created_ts
             """,
             (code_hash, url, key, _now()),
         )
         await self._db.commit()
 
     async def manual_claim(self, name: str, code: str) -> tuple[bytes, str] | None:
-        """Claim a manual authorisation. If a non-expired, unconsumed record
-        exists for this code, persist its signing key for `name` in
-        cluster_pairings, mark the manual record consumed (single-use), and
-        return (key, url). Returns None when no authorisation matches yet, so
-        the worker keeps polling until the admin enters the IP and code."""
+        """Claim a manual authorisation. If a non-expired record exists for this
+        code, persist its signing key for `name` in cluster_pairings, delete the
+        manual record (single-use, so no stale key is left at rest), and return
+        (key, url). Returns None when no authorisation matches yet, so the worker
+        keeps polling until the admin enters the IP and code. An expired record
+        is deleted on access so abandoned authorisations do not accumulate."""
         if self._db is None:
             raise RuntimeError("ClusterPairingStore not initialised")
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         cursor = await self._db.execute(
-            "SELECT url, signing_key, created_ts, consumed"
+            "SELECT url, signing_key, created_ts"
             " FROM cluster_manual_pairings WHERE code_hash = ?",
             (code_hash,),
         )
         row = await cursor.fetchone()
-        if row is None or row["consumed"]:
+        if row is None:
             return None
         if (_now() - row["created_ts"]) > _EXPIRY_SECS:
+            # Clean up the abandoned authorisation instead of leaving the key at rest.
+            await self._db.execute(
+                "DELETE FROM cluster_manual_pairings WHERE code_hash = ?",
+                (code_hash,),
+            )
+            await self._db.commit()
             return None
         key = bytes(row["signing_key"])
         url = row["url"]
-        # Single-use: only the caller whose UPDATE flips consumed 0->1 wins.
+        # Single-use: DELETE is the race guard. Only the caller whose DELETE
+        # actually removes the row (rowcount == 1) wins; a concurrent caller
+        # gets rowcount == 0 and None. The row is gone afterwards, so no
+        # consumed signing key lingers in the table.
         consume = await self._db.execute(
-            "UPDATE cluster_manual_pairings SET consumed = 1"
-            " WHERE code_hash = ? AND consumed = 0",
+            "DELETE FROM cluster_manual_pairings WHERE code_hash = ?",
             (code_hash,),
         )
         if consume.rowcount != 1:
