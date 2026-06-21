@@ -1413,6 +1413,15 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
 
 
 def main():
+    import sys
+    # `taos rollback [ref]` -- undo the last update (restore branch + version) and
+    # restart. Delegates to the pure-shell recovery script so it behaves the same
+    # whether the app is healthy or a bad update left it broken.
+    if len(sys.argv) > 1 and sys.argv[1] == "rollback":
+        import subprocess
+        script = PROJECT_DIR / "scripts" / "rollback.sh"
+        raise SystemExit(subprocess.call(["bash", str(script), *sys.argv[2:]]))
+
     import uvicorn
     config = load_config(PROJECT_DIR / "data" / "config.yaml")
     app = create_app()

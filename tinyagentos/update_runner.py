@@ -36,6 +36,21 @@ class UpdateResult:
     ok: bool = True  # False when a step failed and no (or partial) switch happened
 
 
+def _record_rollback_target(project_dir, branch: str, sha: str, ts: int) -> None:
+    """Persist the pre-update branch + commit for `taos rollback` (best effort).
+
+    Always called before an update mutates the tree, so even a clean
+    fast-forward (no recovery tag) leaves a restore point.
+    """
+    if not branch or not sha:
+        return
+    try:
+        from tinyagentos.rollback import record_pre_update
+        record_pre_update(project_dir, branch=branch, sha=sha, ts=ts)
+    except Exception:  # noqa: BLE001
+        logger.warning("update_runner: failed to record rollback target", exc_info=True)
+
+
 async def _run(args: list[str], cwd: Path) -> tuple[int, str]:
     """Run a subprocess safely (no shell) and return (returncode, output)."""
     proc = await asyncio.create_subprocess_exec(
@@ -82,6 +97,10 @@ async def update_to_master(project_dir: Path) -> UpdateResult:
         ["git", "status", "--porcelain", "-u"], project_dir
     )
     dirty = bool(status_out.strip())
+
+    # Record the rollback target AFTER the dirty probe so the (gitignored) state
+    # file never counts as a dirty working tree and triggers a spurious stash.
+    _record_rollback_target(project_dir, branch, current_sha, ts)
 
     result = UpdateResult(previous_sha=current_sha, new_sha=current_sha)
 
@@ -184,12 +203,18 @@ async def switch_to_branch(branch: str, project_dir: Path) -> UpdateResult:
         return UpdateResult(previous_sha="", new_sha="", ok=False,
                             message=f"Fetch failed — no changes applied. ({out.strip()[:200]})")
 
+    _, cur_branch_out = await _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], project_dir)
+    cur_branch = cur_branch_out.strip()
     _, sha_out = await _run(["git", "rev-parse", "HEAD"], project_dir)
     current_sha = sha_out.strip()
     short_sha = current_sha[:7]
 
     _, status_out = await _run(["git", "status", "--porcelain", "-u"], project_dir)
     dirty = bool(status_out.strip())
+
+    # After the dirty probe (see update_to_master) so the gitignored state file
+    # never triggers a spurious stash.
+    _record_rollback_target(project_dir, cur_branch, current_sha, ts)
 
     result = UpdateResult(previous_sha=current_sha, new_sha=current_sha)
 

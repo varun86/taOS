@@ -115,3 +115,6 @@ docs/audit/
 .understand-anything/
 docs/agent-jobs/
 .design/
+
+# Update rollback target (written by the updater, never tracked)
+.taos-rollback
