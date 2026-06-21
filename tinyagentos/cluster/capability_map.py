@@ -108,3 +108,23 @@ class CapabilityMap(BaseStore):
             count = cur.rowcount
         await self._db.commit()
         return count
+
+    async def mark_stale_offline(self, older_than_s: int) -> int:
+        """Mark nodes that stopped heartbeating as offline (row preserved).
+
+        The non-destructive counterpart to prune_stale: an 'online' node whose
+        last_seen is older than the cutoff is flipped to 'offline' so the
+        scheduler stops placing work on it, but the row (and its hardware) stays
+        for history and for when it comes back. 'draining' is an admin intent
+        and is left untouched; only 'online' nodes go stale-offline. Returns the
+        number of nodes flipped.
+        """
+        cutoff = int(time.time()) - older_than_s
+        async with self._db.execute(
+            "UPDATE capability_map SET status = 'offline' "
+            "WHERE status = 'online' AND last_seen < ?",
+            (cutoff,),
+        ) as cur:
+            count = cur.rowcount
+        await self._db.commit()
+        return count

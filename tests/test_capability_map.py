@@ -117,3 +117,22 @@ async def test_upsert_requires_node_id(tmp_path):
     with pytest.raises(ValueError):
         await s.upsert({"hostname": "x"})
     await s.close()
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_offline_preserves_row(tmp_path):
+    s = CapabilityMap(tmp_path / "cap.db")
+    await s.init()
+    # Fresh online node (recent last_seen) + a stale online one + a draining one.
+    await s.upsert({"node_id": "fresh", "status": "online"})
+    await s.upsert({"node_id": "stale", "status": "online", "last_seen": 1})
+    await s.upsert({"node_id": "drain", "status": "draining", "last_seen": 1})
+    flipped = await s.mark_stale_offline(older_than_s=60)
+    assert flipped == 1
+    assert (await s.get("stale"))["status"] == "offline"
+    assert (await s.get("fresh"))["status"] == "online"
+    # draining is an admin intent; a stale sweep must not touch it.
+    assert (await s.get("drain"))["status"] == "draining"
+    # The row is preserved, not deleted.
+    assert await s.get("stale") is not None
+    await s.close()
