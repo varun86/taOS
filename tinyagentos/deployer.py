@@ -198,30 +198,69 @@ async def deploy_agent(req: DeployRequest) -> dict:
             key_models = [m for m in [req.model, *(req.fallback_models or [])] if m]
             llm_key = await proxy.create_agent_key(req.name, models=key_models or None)
             if llm_key is None:
-                # Key mint failed — either LiteLLM is running without a
-                # Postgres DB (routing-only mode, so /key/generate is
-                # unavailable) or the DB is configured but the call failed
-                # (migration pending, DB unreachable, master key mismatch).
-                # Either way we must NOT fall back to the shared master key:
-                # injecting it gives every agent full admin API access and
-                # access to all other agents' keys. Fail loudly instead.
+                # Key mint failed. Two distinct cases, handled differently:
+                #
+                # 1. Routing-only (db_url is None): LiteLLM has no Postgres, so
+                #    virtual keys are simply unavailable (e.g. an ARM box where
+                #    prisma can't start). This is an expected capability gap,
+                #    not a bug. taOS is single-user per instance, so we fall
+                #    back to the shared master key by default and warn loudly;
+                #    a hardened / multi-tenant operator sets
+                #    TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK=1 to refuse instead.
+                #
+                # 2. DB configured but mint failed (db_url is set): the proxy
+                #    HAS a key store but /key/generate broke (migration pending,
+                #    DB unreachable, master-key drift). That is a real bug. The
+                #    master key would mask it AND ship an unscoped agent, so we
+                #    always refuse here regardless of the env var, directing the
+                #    operator at the misbehaving DB.
                 db_url = getattr(proxy, "database_url", None)
-                if db_url is None:
-                    msg = (
-                        "per-agent LiteLLM virtual key could not be minted: "
-                        "LiteLLM is running in routing-only mode (no Postgres "
-                        "DATABASE_URL configured). Configure a Postgres database "
-                        "for LiteLLM so per-agent scoped keys can be issued. "
-                        "Deploying with the shared master key is not permitted "
-                        "because it grants agents full admin API access."
-                    )
-                else:
+                if db_url is not None:
                     db_host = db_url.split("@")[-1] if "@" in db_url else db_url
                     msg = (
-                        f"virtual key mint failed despite DB configured at {db_host}"
+                        "per-agent LiteLLM virtual key mint failed despite DB "
+                        f"configured at {db_host}. This is a LiteLLM/DB fault "
+                        "(migration pending, DB unreachable, or master-key "
+                        "drift), not a missing-DB capability gap, so the deploy "
+                        "is refused rather than silently using the shared "
+                        "master key. Fix the LiteLLM Postgres connection."
                     )
-                logger.error("deploy %s: %s", req.name, msg)
-                return {"success": False, "error": msg, "steps": steps}
+                    logger.error("deploy %s: %s", req.name, msg)
+                    return {"success": False, "error": msg, "steps": steps}
+
+                why = (
+                    "LiteLLM is running in routing-only mode (no Postgres "
+                    "DATABASE_URL configured)"
+                )
+                fallback_disabled = os.environ.get(
+                    "TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", ""
+                ).strip().lower() in ("1", "true", "yes")
+                if fallback_disabled:
+                    msg = (
+                        f"per-agent LiteLLM virtual key could not be minted: {why}. "
+                        "The master-key fallback is disabled "
+                        "(TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK is set), so the "
+                        "deploy is refused. Configure a Postgres database for "
+                        "LiteLLM to issue per-agent scoped keys, or unset that "
+                        "variable on a single-user instance."
+                    )
+                    logger.error("deploy %s: %s", req.name, msg)
+                    return {"success": False, "error": msg, "steps": steps}
+
+                from tinyagentos.llm_proxy import get_litellm_master_key
+                llm_key = get_litellm_master_key(req.data_dir)
+                logger.warning(
+                    "deploy %s: %s; falling back to the shared LiteLLM master "
+                    "key. This agent has full LiteLLM admin access. Configure "
+                    "Postgres-backed virtual keys for per-agent isolation, or "
+                    "set TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK=1 to refuse "
+                    "instead.",
+                    req.name, why,
+                )
+                steps.append(
+                    "llm-key: per-agent virtual key unavailable, using shared "
+                    "master key (no per-agent isolation)"
+                )
             from tinyagentos.llm_proxy import EMBEDDING_ALIAS
             # Primary key for openclaw's litellm provider.
             env["LITELLM_API_KEY"] = llm_key

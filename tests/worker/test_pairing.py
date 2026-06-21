@@ -420,6 +420,102 @@ async def test_run_pairing_timeout(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# async unit: run_manual_pairing (free-tier, no announce)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_manual_pairing_happy_path(tmp_path):
+    """No announce: poll manual-claim -> 202 -> 200 with key -> saved + returned."""
+    import secrets
+    from tinyagentos.worker.pairing import run_manual_pairing, load_signing_key
+
+    fake_key = secrets.token_bytes(32)
+    claim_count = 0
+
+    async def mock_post(url, **kwargs):
+        nonlocal claim_count
+        if "/pairing/announce" in url:
+            raise AssertionError("manual pairing must NOT announce")
+        if "/pairing/manual-claim" in url:
+            claim_count += 1
+            if claim_count <= 2:
+                return _make_mock_response(202, {"status": "awaiting"})
+            return _make_mock_response(200, {"signing_key": fake_key.hex(),
+                                             "url": "http://10.0.0.1:9000"})
+        raise AssertionError(f"unexpected POST to {url}")
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=mock_post)
+
+    printed = []
+    key = await run_manual_pairing(
+        mock_client,
+        "http://controller:6969",
+        "manual-worker",
+        "http://10.0.0.1:9000",
+        tmp_path,
+        poll_interval=0.01,
+        timeout=10.0,
+        print_fn=printed.append,
+    )
+
+    assert key == fake_key
+    assert load_signing_key(tmp_path) == fake_key
+    # The address + PIN banner must have been printed for the user.
+    assert any("Pairing PIN" in str(m) for m in printed)
+    assert any("Worker address" in str(m) for m in printed)
+
+
+@pytest.mark.asyncio
+async def test_run_manual_pairing_already_paired_short_circuit(tmp_path):
+    """If a key already exists, run_manual_pairing returns it without HTTP calls."""
+    from tinyagentos.worker.pairing import run_manual_pairing, save_signing_key
+
+    existing = b"\xab" * 32
+    save_signing_key(tmp_path, existing)
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=AssertionError("should not be called"))
+
+    key = await run_manual_pairing(
+        mock_client,
+        "http://controller:6969",
+        "w",
+        "http://x",
+        tmp_path,
+        poll_interval=0.01,
+        timeout=5.0,
+    )
+    assert key == existing
+    mock_client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_manual_pairing_timeout(tmp_path):
+    """run_manual_pairing raises TimeoutError if the admin never authorises."""
+    from tinyagentos.worker.pairing import run_manual_pairing
+
+    async def mock_post(url, **kwargs):
+        if "/pairing/manual-claim" in url:
+            return _make_mock_response(202, {"status": "awaiting"})
+        raise AssertionError(f"unexpected POST to {url}")
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=mock_post)
+
+    with pytest.raises(TimeoutError):
+        await run_manual_pairing(
+            mock_client,
+            "http://controller:6969",
+            "w",
+            "http://x",
+            tmp_path,
+            poll_interval=0.01,
+            timeout=0.1,
+        )
+
+
+# ---------------------------------------------------------------------------
 # WorkerAgent: signed register / heartbeat
 # ---------------------------------------------------------------------------
 

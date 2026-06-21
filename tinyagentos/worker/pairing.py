@@ -169,6 +169,73 @@ async def run_pairing(
         )
 
 
+async def run_manual_pairing(
+    client,
+    controller_url: str,
+    name: str,
+    url: str,
+    state_dir: Path,
+    *,
+    poll_interval: float = 3.0,
+    timeout: float = 600.0,
+    print_fn=print,
+) -> bytes:
+    """Drive the free-tier manual pairing flow and return the signing key.
+
+    Unlike run_pairing, the worker does NOT announce itself: there is no
+    network discovery on the free tier. The worker shows its LAN address and
+    a PIN, the user types both into taOS > Cluster > Add worker, and the
+    worker polls manual-claim until the admin authorisation lands.
+
+    If a key already exists in state_dir, returns it immediately (idempotent).
+    Raises TimeoutError if the admin does not authorise within timeout seconds.
+    """
+    existing = load_signing_key(state_dir)
+    if existing is not None:
+        return existing
+
+    controller_url = controller_url.rstrip("/")
+    code = generate_pairing_code()
+    _print_manual_instructions(url, code, print_fn)
+
+    deadline = time.monotonic() + timeout
+    while True:
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"manual pairing timed out after {timeout}s; "
+                f"re-run `python -m tinyagentos.worker.pair {controller_url} "
+                f"--name {name} --manual` to resume"
+            )
+        await asyncio.sleep(poll_interval)
+
+        resp = await client.post(
+            f"{controller_url}/api/cluster/pairing/manual-claim",
+            json={"name": name, "code": code},
+        )
+        if resp.status_code == 202:
+            # Admin has not entered the IP + PIN yet; keep polling.
+            continue
+        if resp.status_code == 200:
+            key = bytes.fromhex(resp.json()["signing_key"])
+            save_signing_key(state_dir, key)
+            return key
+        raise RuntimeError(
+            f"manual pairing claim failed with HTTP {resp.status_code}: "
+            f"{_describe_error(resp)}"
+        )
+
+
+def _print_manual_instructions(url: str, code: str, print_fn) -> None:
+    print_fn("")
+    print_fn("=" * 56)
+    print_fn("  Add this worker from taOS > Cluster > Add worker:")
+    print_fn(f"    Worker address : {url}")
+    print_fn(f"    Pairing PIN    : {code}")
+    print_fn("  Enter both, then this worker joins automatically.")
+    print_fn("=" * 56)
+    print_fn("")
+
+
 async def _announce(
     client,
     controller_url: str,

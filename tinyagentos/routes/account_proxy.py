@@ -11,6 +11,7 @@ renders its 'service unavailable' state, so the client ships ahead of taos.my.
 from __future__ import annotations
 
 import os
+import re
 
 import httpx
 from fastapi import APIRouter, Request, Response
@@ -73,13 +74,12 @@ def _rewrite_set_cookie(value: str, secure_ok: bool) -> str:
     return "; ".join(kept)
 
 
-async def _forward(request: Request, action: str) -> Response:
+async def _forward_to(request: Request, method: str, path: str) -> Response:
     base = _base_url()
     if base is None:
         return JSONResponse(
             {"error": "account service not configured"}, status_code=503
         )
-    method, path = _ACTIONS[action]
     headers: dict[str, str] = {}
     cookie = request.headers.get("cookie")
     if cookie:
@@ -125,6 +125,20 @@ async def _forward(request: Request, action: str) -> Response:
     return resp
 
 
+async def _forward(request: Request, action: str) -> Response:
+    method, path = _ACTIONS[action]
+    return await _forward_to(request, method, path)
+
+
+# A join request_id reaches the upstream URL path, so it must be a simple opaque
+# token, never something that can inject path segments or query (../, %2f, ?).
+_RID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _valid_rid(rid: str) -> bool:
+    return bool(_RID_RE.match(rid))
+
+
 @router.get("/api/account/me")
 async def account_me(request: Request):
     return await _forward(request, "me")
@@ -143,3 +157,43 @@ async def account_register(request: Request):
 @router.post("/api/account/logout")
 async def account_logout(request: Request):
     return await _forward(request, "logout")
+
+
+# --- taOSgo cluster-join (consent-join) proxy ---
+# Same cookie-passthrough pattern as the auth actions above: the taOS client
+# calls same-origin /api/account/cluster/join/* and we forward to the taos.my
+# /api/cluster/join/* endpoints (taos-website PR #35) so the session cookie
+# round-trips through this origin. The signed-in worker app POSTs a join request;
+# the user approves/denies from inside taOS; the app polls for the preauth key.
+_JOIN_BASE = "/api/cluster/join"
+
+
+@router.post("/api/account/cluster/join/request")
+async def cluster_join_request(request: Request):
+    return await _forward_to(request, "POST", f"{_JOIN_BASE}/request")
+
+
+@router.get("/api/account/cluster/join/requests")
+async def cluster_join_requests(request: Request):
+    return await _forward_to(request, "GET", f"{_JOIN_BASE}/requests")
+
+
+@router.post("/api/account/cluster/join/requests/{rid}/approve")
+async def cluster_join_approve(request: Request, rid: str):
+    if not _valid_rid(rid):
+        return JSONResponse({"error": "invalid request id"}, status_code=400)
+    return await _forward_to(request, "POST", f"{_JOIN_BASE}/requests/{rid}/approve")
+
+
+@router.post("/api/account/cluster/join/requests/{rid}/deny")
+async def cluster_join_deny(request: Request, rid: str):
+    if not _valid_rid(rid):
+        return JSONResponse({"error": "invalid request id"}, status_code=400)
+    return await _forward_to(request, "POST", f"{_JOIN_BASE}/requests/{rid}/deny")
+
+
+@router.get("/api/account/cluster/join/requests/{rid}/poll")
+async def cluster_join_poll(request: Request, rid: str):
+    if not _valid_rid(rid):
+        return JSONResponse({"error": "invalid request id"}, status_code=400)
+    return await _forward_to(request, "GET", f"{_JOIN_BASE}/requests/{rid}/poll")

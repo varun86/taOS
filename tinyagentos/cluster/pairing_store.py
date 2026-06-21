@@ -36,6 +36,20 @@ CREATE TABLE IF NOT EXISTS cluster_pairings (
     created_ts          REAL,
     confirmed_ts        REAL
 );
+
+-- Manual (free-tier) pairing: the admin authorises a {url, code} pair in the
+-- Cluster app BEFORE the worker is known by name, so this table is keyed by the
+-- code hash, not the worker name. The worker then polls manual_claim with the
+-- same code; that mints the key into cluster_pairings for its name and returns
+-- the admin-supplied url as the authoritative address. Single-use, short TTL.
+-- Single-use is enforced by DELETE-on-claim (not a consumed flag) so a claimed
+-- or expired authorisation leaves no stale signing key at rest in the table.
+CREATE TABLE IF NOT EXISTS cluster_manual_pairings (
+    code_hash    TEXT PRIMARY KEY,
+    url          TEXT NOT NULL,
+    signing_key  BLOB NOT NULL,
+    created_ts   REAL NOT NULL
+);
 """
 
 
@@ -172,6 +186,80 @@ class ClusterPairingStore(BaseStore):
         if cursor.rowcount != 1:
             return None
         return key
+
+    async def manual_authorize(self, url: str, code: str) -> None:
+        """Authorise a manual (free-tier) pairing: store the admin-supplied url
+        plus a freshly minted signing key, keyed by the code hash. The worker is
+        not known by name yet. A re-authorise for the same code replaces the
+        prior record and its key."""
+        if self._db is None:
+            raise RuntimeError("ClusterPairingStore not initialised")
+        code_hash = hashlib.sha256(code.encode()).hexdigest()
+        key = secrets.token_bytes(32)
+        await self._db.execute(
+            """
+            INSERT INTO cluster_manual_pairings
+                (code_hash, url, signing_key, created_ts)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(code_hash) DO UPDATE SET
+                url         = excluded.url,
+                signing_key = excluded.signing_key,
+                created_ts  = excluded.created_ts
+            """,
+            (code_hash, url, key, _now()),
+        )
+        await self._db.commit()
+
+    async def manual_claim(self, name: str, code: str) -> tuple[bytes, str] | None:
+        """Claim a manual authorisation. If a non-expired record exists for this
+        code, persist its signing key for `name` in cluster_pairings, delete the
+        manual record (single-use, so no stale key is left at rest), and return
+        (key, url). Returns None when no authorisation matches yet, so the worker
+        keeps polling until the admin enters the IP and code. An expired record
+        is deleted on access so abandoned authorisations do not accumulate."""
+        if self._db is None:
+            raise RuntimeError("ClusterPairingStore not initialised")
+        code_hash = hashlib.sha256(code.encode()).hexdigest()
+        cursor = await self._db.execute(
+            "SELECT url, signing_key, created_ts"
+            " FROM cluster_manual_pairings WHERE code_hash = ?",
+            (code_hash,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        if (_now() - row["created_ts"]) > _EXPIRY_SECS:
+            # Clean up the abandoned authorisation instead of leaving the key at rest.
+            await self._db.execute(
+                "DELETE FROM cluster_manual_pairings WHERE code_hash = ?",
+                (code_hash,),
+            )
+            await self._db.commit()
+            return None
+        key = bytes(row["signing_key"])
+        url = row["url"]
+        # Single-use: DELETE is the race guard. Only the caller whose DELETE
+        # actually removes the row (rowcount == 1) wins; a concurrent caller
+        # gets rowcount == 0 and None. The row is gone afterwards, so no
+        # consumed signing key lingers in the table.
+        consume = await self._db.execute(
+            "DELETE FROM cluster_manual_pairings WHERE code_hash = ?",
+            (code_hash,),
+        )
+        if consume.rowcount != 1:
+            await self._db.commit()
+            return None
+        # Persist the key under the worker name so its signed requests authenticate.
+        await self._db.execute(
+            """
+            INSERT INTO cluster_pairings (name, signing_key, created_ts, confirmed)
+            VALUES (?, ?, ?, 0)
+            ON CONFLICT(name) DO UPDATE SET signing_key = excluded.signing_key
+            """,
+            (name, key, _now()),
+        )
+        await self._db.commit()
+        return key, url
 
     async def get_signing_key(self, name: str) -> bytes | None:
         """Return the worker's current signing key, or None if not paired."""

@@ -226,3 +226,42 @@ class TestContainerLifecycle:
             assert result["success"] is True
             # Should have called stop --force then delete --force
             assert mock_run.call_count == 2
+
+
+class TestAddProxyDeviceSelfHeal:
+    """Restricted multi-user incus projects block proxy devices; add_proxy_device
+    self-heals by allowing them on the named project and retrying once."""
+
+    @pytest.mark.asyncio
+    async def test_relaxes_restricted_project_and_retries(self):
+        from tinyagentos.containers import add_proxy_device
+        forbidden = (
+            'Invalid device "taos-proxy-litellm" on container '
+            '"taos-agent-x" of project "user-999": Proxy devices are forbidden'
+        )
+        calls = []
+        async def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[:3] == ["incus", "config", "device"]:
+                # first add fails, retry (after project relax) succeeds
+                add_attempts = [c for c in calls if c[:3] == ["incus", "config", "device"]]
+                return (1, forbidden) if len(add_attempts) == 1 else (0, "")
+            if cmd[:3] == ["incus", "project", "set"]:
+                return (0, "")
+            return (0, "")
+        with patch("tinyagentos.containers._run", new_callable=AsyncMock, side_effect=fake_run):
+            res = await add_proxy_device("taos-agent-x", "taos-proxy-litellm",
+                                         "tcp:127.0.0.1:4000", "tcp:127.0.0.1:4000")
+        assert res["success"] is True
+        assert ["incus", "project", "set", "user-999", "restricted.devices.proxy", "allow"] in calls
+        # device add attempted twice (initial + retry)
+        assert sum(1 for c in calls if c[:3] == ["incus", "config", "device"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_non_forbidden_failure_not_retried(self):
+        from tinyagentos.containers import add_proxy_device
+        with patch("tinyagentos.containers._run", new_callable=AsyncMock, return_value=(1, "some other error")) as mr:
+            res = await add_proxy_device("c", "d", "tcp:127.0.0.1:1", "tcp:127.0.0.1:1")
+        assert res["success"] is False
+        # only the single add attempt, no project-set self-heal
+        assert mr.call_count == 1

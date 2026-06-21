@@ -369,8 +369,10 @@ export function ActivityApp({ windowId: _windowId }: { windowId: string }) {
           </CardContent>
         </Card>
 
-        {/* NPU */}
-        {(npu.cores || npu.type) && (
+        {/* NPU -- only when one is actually present. type "none" (or absent)
+            means no NPU, so the whole card is hidden rather than showing a
+            debugfs-permission message on hardware that has no NPU at all. */}
+        {npu.type && npu.type !== "none" && (
           <Card className="col-span-12 md:col-span-6 p-4">
             <CardContent className="p-0">
               <div className="flex items-center justify-between mb-3">

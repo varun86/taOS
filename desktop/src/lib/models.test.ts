@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchClusterWorkers, fetchCloudProviders } from "./models";
+import { fetchClusterWorkers, fetchCloudProviders, loadAgentModels } from "./models";
 
 const originalFetch = global.fetch;
 
@@ -131,5 +131,61 @@ describe("fetchCloudProviders", () => {
   it("returns [] on network error", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("offline"));
     expect(await fetchCloudProviders()).toEqual([]);
+  });
+});
+
+describe("loadAgentModels", () => {
+  function mockApis(opts: {
+    catalog?: unknown[];
+    providers?: unknown[];
+    litellm?: { id: string }[];
+  }) {
+    const { catalog = [], providers = [], litellm = [] } = opts;
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      const json = (body: unknown) => Promise.resolve({
+        ok: true,
+        headers: { get: () => "application/json" },
+        json: async () => body,
+      });
+      if (url === "/api/models") return json({ models: catalog });
+      if (url === "/api/cluster/workers") return json([]);
+      if (url === "/api/providers") return json(providers);
+      if (url.startsWith("/api/providers/models")) return json({ data: litellm });
+      return json({});
+    });
+  }
+
+  it("includes a cloud-provider model present in both /api/providers and /v1/models", async () => {
+    mockApis({
+      providers: [{ name: "deepseek-test", type: "deepseek", models: [{ id: "deepseek-chat" }] }],
+      litellm: [{ id: "deepseek-chat" }],
+    });
+    const out = await loadAgentModels();
+    const ds = out.find((m) => m.id === "deepseek-chat");
+    expect(ds).toBeDefined();
+    expect(ds?.hostKind).toBe("cloud");
+    expect(ds?.host).toBe("deepseek-test");
+  });
+
+  it("drops LiteLLM ids that map to no configured provider (internal aliases)", async () => {
+    mockApis({
+      providers: [{ name: "deepseek-test", type: "deepseek", models: [{ id: "deepseek-chat" }] }],
+      litellm: [{ id: "deepseek-chat" }, { id: "default" }, { id: "some-internal-alias" }],
+    });
+    const out = await loadAgentModels();
+    expect(out.find((m) => m.id === "deepseek-chat")).toBeDefined();
+    expect(out.find((m) => m.id === "default")).toBeUndefined();
+    expect(out.find((m) => m.id === "some-internal-alias")).toBeUndefined();
+  });
+
+  it("includes downloaded controller-catalog models as hostKind controller", async () => {
+    mockApis({
+      catalog: [{ id: "gemma-4-e2b-gguf", name: "Gemma 4", has_downloaded_variant: true },
+                { id: "not-downloaded", has_downloaded_variant: false }],
+    });
+    const out = await loadAgentModels();
+    const g = out.find((m) => m.id === "gemma-4-e2b-gguf");
+    expect(g?.hostKind).toBe("controller");
+    expect(out.find((m) => m.id === "not-downloaded")).toBeUndefined();
   });
 });

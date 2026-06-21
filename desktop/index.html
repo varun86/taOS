@@ -51,6 +51,19 @@
         width: 100vw;
       }
     </style>
+
+    <!-- Reduce-effects: apply the saved choice before first paint so a low-end
+         device never flashes the full effects on load (#58). First-run GPU
+         auto-detect happens in-app via a frame-rate probe. -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("taos-reduce-effects") === "on") {
+            document.documentElement.setAttribute("data-perf", "reduced");
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

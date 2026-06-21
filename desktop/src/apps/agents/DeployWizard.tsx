@@ -454,13 +454,20 @@ export function DeployWizard({
               description: String(a.description ?? ""),
               verification_status: (a.verification_status as Framework["verification_status"]) ?? "alpha",
             }));
-            // openclaw first, then preserve API order
-            mapped.sort((a, b) => {
-              if (a.id === "openclaw") return -1;
-              if (b.id === "openclaw") return 1;
-              return 0;
-            });
+            // Hermes is the recommended default and shows first; OpenClaw
+            // second; the rest preserve API order.
+            const rank = (id: string) => (id === "hermes" ? 0 : id === "openclaw" ? 1 : 2);
+            mapped.sort((a, b) => rank(a.id) - rank(b.id));
             setFrameworks(mapped);
+            // Default-select Hermes (or the first visible framework) so the
+            // wizard opens on a working choice instead of nothing selected.
+            setSelectedFramework((cur) => {
+              if (cur) return cur;
+              const preferred = mapped.find((f) => f.id === "hermes")
+                ?? mapped.find((f) => f.verification_status !== "alpha")
+                ?? mapped[0];
+              return preferred?.id ?? "";
+            });
           }
         }
       } catch { /* leave frameworks empty, wizard will show nothing selectable */ }
