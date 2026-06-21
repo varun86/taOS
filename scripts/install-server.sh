@@ -1024,17 +1024,40 @@ install_rk3588_perf_if_needed
 
 # --- python venv + controller deps ---------------------------------------
 
+pick_python() {
+    local c v
+    for c in python3.13 python3.12 python3.11 python3; do
+        command -v "$c" >/dev/null 2>&1 || continue
+        v=$("$c" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null) || continue
+        if [ "$v" -ge 311 ] && [ "$v" -lt 314 ]; then echo "$c"; return 0; fi
+    done
+    return 1
+}
+
 if [[ ! -d .venv ]]; then
-    log "creating venv"
-    # On distros that ship Python 3.14+ (Arch) or where libtorrent's Python
-    # binding is only available as a system package (Fedora — see dnf branch
-    # above), we need the venv to inherit system site-packages so `import
-    # libtorrent` resolves against the OS-installed binding. PyPI does not
-    # publish libtorrent wheels for 3.14 yet.
+    # litellm (proxy extra) supports only >=3.10,<3.14, so a fresh distro that
+    # defaults python3 to 3.14 must not be used for the venv or the install aborts
+    # with "No matching distribution found for litellm". Pick a supported one.
+    PYBIN="$(pick_python || true)"
+    if [[ -z "$PYBIN" ]]; then
+        warn "no Python 3.11-3.13 found (litellm has no 3.14 build yet); installing python3.13"
+        if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get install -y -q python3.13 python3.13-venv >/dev/null 2>&1 || true
+        elif command -v dnf >/dev/null 2>&1; then
+            sudo dnf install -y -q python3.13 >/dev/null 2>&1 || true
+        elif command -v pacman >/dev/null 2>&1; then
+            sudo pacman -S --noconfirm python313 >/dev/null 2>&1 || true
+        fi
+        PYBIN="$(pick_python || true)"
+    fi
+    [[ -z "$PYBIN" ]] && die "taOS needs Python 3.11-3.13 (litellm does not support 3.14 yet). Install it (e.g. 'sudo apt install python3.13 python3.13-venv'), or create the venv with uv ('uv venv --python 3.13 .venv'), then re-run."
+    log "creating venv with $PYBIN ($("$PYBIN" --version 2>&1))"
+    # Fedora's libtorrent binding is a system package; inherit site-packages so
+    # `import libtorrent` resolves against it.
     if command -v pacman >/dev/null 2>&1 || [[ -f /etc/fedora-release ]]; then
-        python3 -m venv --system-site-packages .venv
+        "$PYBIN" -m venv --system-site-packages .venv
     else
-        python3 -m venv .venv
+        "$PYBIN" -m venv .venv
     fi
 fi
 
