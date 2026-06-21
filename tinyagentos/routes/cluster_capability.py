@@ -119,3 +119,16 @@ async def capability_prune(request: Request, body: PruneRequest):
         return JSONResponse({"error": "capability map unavailable"}, status_code=503)
     removed = await store.prune_stale(body.older_than_s)
     return {"pruned": removed}
+
+
+@router.post("/api/cluster/capability/sweep")
+async def capability_sweep(request: Request, body: PruneRequest):
+    """Admin — flip online nodes with no recent heartbeat to offline (row kept)."""
+    ok, err = _require_admin(request)
+    if not ok:
+        return err
+    store = _store(request)
+    if store is None:
+        return JSONResponse({"error": "capability map unavailable"}, status_code=503)
+    flipped = await store.mark_stale_offline(body.older_than_s)
+    return {"offlined": flipped}
