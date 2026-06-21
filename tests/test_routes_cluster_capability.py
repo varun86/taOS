@@ -167,3 +167,18 @@ async def test_prune_drops_stale(client, app):
     resp = await client.get("/api/cluster/capability")
     assert all(n["node_id"] != "node-a" for n in resp.json()["nodes"])
     await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_sweep_offlines_stale_online_nodes(client, app):
+    """The sweep endpoint flips stale online nodes offline, keeping the row."""
+    await app.state.capability_map.init()
+    await app.state.capability_map.upsert({"node_id": "n-live", "status": "online"})
+    await app.state.capability_map.upsert({"node_id": "n-gone", "status": "online", "last_seen": 1})
+    resp = await client.post("/api/cluster/capability/sweep", json={"older_than_s": 60})
+    assert resp.status_code == 200
+    assert resp.json()["offlined"] == 1
+    nodes = {n["node_id"]: n["status"] for n in (await client.get("/api/cluster/capability")).json()["nodes"]}
+    assert nodes["n-gone"] == "offline"
+    assert nodes["n-live"] == "online"
+    await app.state.capability_map.close()
