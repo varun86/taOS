@@ -27,7 +27,6 @@ export default defineConfig({
       "src/apps/BrowserApp/AddressBar.test.tsx",
       "src/apps/BrowserApp/keyboard.test.ts",
       "src/apps/BrowserApp/ProfileSwitcher.test.tsx",
-      "src/apps/StreamedBrowserApp/StreamedBrowserApp.test.tsx",
       //   Order-dependent: passes in isolation, fails under the full suite (#114):
       "src/components/__tests__/EmojiPicker.test.tsx",
     ],
