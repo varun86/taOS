@@ -126,6 +126,14 @@ async def create_session(
         return JSONResponse({"error": "no_capable_node"}, status_code=409)
     kind, node = target
 
+    # Resolve the worker BEFORE creating the session row, so a failed lookup
+    # returns 409 without leaving an orphaned session record in the store.
+    worker = None
+    if kind != "host":
+        worker = cluster.get_worker(node)
+        if worker is None:
+            return JSONResponse({"error": "no_capable_node"}, status_code=409)
+
     mgr = request.app.state.browser_sessions
     session = await mgr.create_session(
         "user", user_id, body.url, body.profile or "default"
@@ -142,9 +150,6 @@ async def create_session(
                 session["id"], profile_volume=vol, runner=runner, nat1to1_ip=nat1to1_ip
             )
         else:
-            worker = cluster.get_worker(node)
-            if worker is None:
-                return JSONResponse({"error": "no_capable_node"}, status_code=409)
             session = await mgr.start_on_worker(
                 session["id"],
                 node=node,

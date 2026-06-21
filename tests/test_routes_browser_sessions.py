@@ -124,3 +124,21 @@ class TestCreateSessionHostPlacement:
         resp = await client.post("/api/browser/sessions", json={"url": "http://example.com"})
         assert resp.status_code == 409
         assert resp.json()["error"] == "no_capable_node"
+
+
+@pytest.mark.asyncio
+async def test_create_worker_lookup_failure_leaves_no_orphan(client, monkeypatch):
+    """If the chosen worker can't be resolved, 409 without creating a session row."""
+    import tinyagentos.routes.browser_sessions as bs
+
+    # Force placement onto a 'worker' that the cluster can't resolve.
+    monkeypatch.setattr(bs, "resolve_browser_target", lambda *a, **k: ("worker", "ghost"))
+    app = client._transport.app  # noqa: SLF001
+    app.state.cluster_manager.get_worker = lambda name: None  # noqa: SLF001
+    mgr = AsyncMock()
+    app.state._state["browser_sessions"] = mgr  # noqa: SLF001
+
+    resp = await client.post("/api/browser/sessions", json={"url": "http://example.com"})
+    assert resp.status_code == 409
+    assert resp.json()["error"] == "no_capable_node"
+    mgr.create_session.assert_not_awaited()
