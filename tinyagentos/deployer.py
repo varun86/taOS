@@ -198,31 +198,40 @@ async def deploy_agent(req: DeployRequest) -> dict:
             key_models = [m for m in [req.model, *(req.fallback_models or [])] if m]
             llm_key = await proxy.create_agent_key(req.name, models=key_models or None)
             if llm_key is None:
-                # Key mint failed — either LiteLLM is running without a
-                # Postgres DB (routing-only mode, so /key/generate is
-                # unavailable, e.g. an ARM box where prisma can't start) or
-                # the DB is configured but the call failed.
+                # Key mint failed. Two distinct cases, handled differently:
                 #
-                # The strong path is a per-agent scoped virtual key. When it
-                # can't be minted, the safe-but-unusable choice is to refuse
-                # the deploy; the pragmatic choice is to fall back to the
-                # shared master key. The master key grants the agent full
-                # LiteLLM admin API access (it can read other agents' keys),
-                # so the fallback is only acceptable on a single-tenant,
-                # operator-trusted deployment. taOS is single-user per
-                # instance, so we allow it by default and warn loudly; a
-                # hardened / multi-tenant operator sets
-                # TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK=1 to keep the refusal.
+                # 1. Routing-only (db_url is None): LiteLLM has no Postgres, so
+                #    virtual keys are simply unavailable (e.g. an ARM box where
+                #    prisma can't start). This is an expected capability gap,
+                #    not a bug. taOS is single-user per instance, so we fall
+                #    back to the shared master key by default and warn loudly;
+                #    a hardened / multi-tenant operator sets
+                #    TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK=1 to refuse instead.
+                #
+                # 2. DB configured but mint failed (db_url is set): the proxy
+                #    HAS a key store but /key/generate broke (migration pending,
+                #    DB unreachable, master-key drift). That is a real bug. The
+                #    master key would mask it AND ship an unscoped agent, so we
+                #    always refuse here regardless of the env var, directing the
+                #    operator at the misbehaving DB.
                 db_url = getattr(proxy, "database_url", None)
-                if db_url is None:
-                    why = (
-                        "LiteLLM is running in routing-only mode (no Postgres "
-                        "DATABASE_URL configured)"
-                    )
-                else:
+                if db_url is not None:
                     db_host = db_url.split("@")[-1] if "@" in db_url else db_url
-                    why = f"virtual key mint failed despite DB configured at {db_host}"
+                    msg = (
+                        "per-agent LiteLLM virtual key mint failed despite DB "
+                        f"configured at {db_host}. This is a LiteLLM/DB fault "
+                        "(migration pending, DB unreachable, or master-key "
+                        "drift), not a missing-DB capability gap, so the deploy "
+                        "is refused rather than silently using the shared "
+                        "master key. Fix the LiteLLM Postgres connection."
+                    )
+                    logger.error("deploy %s: %s", req.name, msg)
+                    return {"success": False, "error": msg, "steps": steps}
 
+                why = (
+                    "LiteLLM is running in routing-only mode (no Postgres "
+                    "DATABASE_URL configured)"
+                )
                 fallback_disabled = os.environ.get(
                     "TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", ""
                 ).strip().lower() in ("1", "true", "yes")

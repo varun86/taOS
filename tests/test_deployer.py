@@ -307,10 +307,12 @@ class TestDeployAgent:
 
     @pytest.mark.asyncio
     async def test_deploy_fails_loudly_when_db_configured_but_key_mint_fails(self, tmp_path, monkeypatch):
-        """DB configured + /key/generate returns None, fallback DISABLED → deploy
-        fails with a clear error naming the DB host (no credentials leaked) so
-        operators can see which DB instance is misbehaving."""
-        monkeypatch.setenv("TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", "1")
+        """DB configured + /key/generate returns None → deploy ALWAYS fails with
+        a clear error naming the DB host (no credentials leaked), regardless of
+        the fallback opt-out. A configured-but-broken DB is a real fault that
+        must surface, not be masked by the shared master key."""
+        # Explicitly leave the opt-out UNSET to prove the refusal is unconditional.
+        monkeypatch.delenv("TAOS_DISABLE_AGENT_MASTER_KEY_FALLBACK", raising=False)
         mock_proxy = MagicMock()
         mock_proxy.is_running.return_value = True
         mock_proxy.url = "http://localhost:4000"
