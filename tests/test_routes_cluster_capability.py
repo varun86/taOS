@@ -129,6 +129,23 @@ async def test_set_status_validates_and_404s(client, app):
 
 
 @pytest.mark.asyncio
+async def test_heartbeat_preserves_admin_draining(client, app):
+    """A routine heartbeat must not clear an admin-set 'draining' status."""
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key = await pair_worker(client, app, "node-a", "http://10.0.0.5:9000")
+    await _signed_heartbeat(client, key, {"node_id": "node-a", "status": "online"})
+    r = await client.post(
+        "/api/cluster/capability/node-a/status", json={"status": "draining"}
+    )
+    assert r.json()["status"] == "draining"
+    # A subsequent heartbeat (defaults status=online) must keep it draining.
+    r = await _signed_heartbeat(client, key, {"node_id": "node-a", "status": "online"})
+    assert r.json()["status"] == "draining"
+    await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
 async def test_prune_drops_stale(client, app):
     """prune removes rows older than the cutoff."""
     await app.state.capability_map.init()

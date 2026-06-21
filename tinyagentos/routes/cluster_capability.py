@@ -63,8 +63,16 @@ async def capability_heartbeat(request: Request, body: CapabilityHeartbeat):
     store = _store(request)
     if store is None:
         return JSONResponse({"error": "capability map unavailable"}, status_code=503)
+    payload = body.model_dump()
+    # "draining" is an admin decision to stop scheduling new work on a node that
+    # is still alive and heartbeating. A routine heartbeat (status defaults to
+    # "online") must not silently clear that intent; only an explicit admin
+    # set-status call clears draining. Preserve it across heartbeats.
+    current = await store.get(body.node_id)
+    if current is not None and current["status"] == "draining":
+        payload["status"] = "draining"
     try:
-        node = await store.upsert(body.model_dump())
+        node = await store.upsert(payload)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return node
