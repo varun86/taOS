@@ -109,3 +109,34 @@ async def test_loop_passes_growing_transcript_to_model(tmp_path):
     assert seen_roles[0] == "user"
     assert "tool" in seen_roles
     assert out["final"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_loop_non_dict_step_stops_safely(tmp_path):
+    """model_step returning None / a list must not crash the loop."""
+    async def returns_none(transcript):
+        return None
+
+    out = await coding_loop.run_tool_loop(tmp_path, returns_none)
+    assert out["stopped"] == "final"
+    assert out["final"] is None
+    assert out["iterations"] == 1
+
+
+@pytest.mark.asyncio
+async def test_loop_malformed_call_entry_is_soft_error(tmp_path):
+    """A non-dict entry in calls surfaces as a soft error, loop continues."""
+    steps = [
+        {"type": "tool_calls", "calls": ["not-a-dict", None]},
+        {"type": "final", "text": "kept going"},
+    ]
+    seq = list(steps)
+
+    async def model_step(transcript):
+        return seq.pop(0) if seq else {"type": "final", "text": "done"}
+
+    out = await coding_loop.run_tool_loop(tmp_path, model_step)
+    assert out["final"] == "kept going"
+    tool_msgs = [m for m in out["transcript"] if m["role"] == "tool"]
+    assert all(m["result"]["ok"] is False for m in tool_msgs)
+    assert tool_msgs[0]["result"]["error"] == "malformed tool call"

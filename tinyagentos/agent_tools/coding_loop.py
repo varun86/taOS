@@ -54,7 +54,9 @@ async def run_tool_loop(
     while iterations < max_iterations:
         iterations += 1
         step = await model_step(transcript)
-        kind = step.get("type")
+        # A misbehaving model_step that returns a non-mapping must not crash the
+        # loop (its whole contract is to stay resilient); treat it as a safe stop.
+        kind = step.get("type") if isinstance(step, dict) else None
 
         if kind == "final":
             text = step.get("text", "")
@@ -70,6 +72,18 @@ async def run_tool_loop(
             calls = step.get("calls") or []
             transcript.append({"role": "assistant", "tool_calls": calls})
             for call in calls:
+                # A non-dict call entry (bare string, None) must surface as a soft
+                # error, not crash the loop via .get on a non-mapping.
+                if not isinstance(call, dict):
+                    transcript.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": None,
+                            "name": None,
+                            "result": {"ok": False, "error": "malformed tool call"},
+                        }
+                    )
+                    continue
                 result = coding_tools.dispatch(
                     workspace_root, call.get("name"), call.get("arguments")
                 )
