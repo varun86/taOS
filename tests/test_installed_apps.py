@@ -1,0 +1,162 @@
+import pytest
+import pytest_asyncio
+
+from tinyagentos.installed_apps import InstalledAppsStore
+
+
+@pytest_asyncio.fixture
+async def store(tmp_path):
+    store = InstalledAppsStore(tmp_path / "installed_apps.db")
+    await store.init()
+    yield store
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_install_and_is_installed(store):
+    assert not await store.is_installed("myapp")
+    await store.install("myapp", version="1.0.0")
+    assert await store.is_installed("myapp")
+
+
+@pytest.mark.asyncio
+async def test_install_default_version_and_metadata(store):
+    await store.install("myapp")
+    rows = await store.list_installed()
+    assert len(rows) == 1
+    assert rows[0]["app_id"] == "myapp"
+    assert rows[0]["version"] == ""
+    assert rows[0]["metadata"] == {}
+
+
+@pytest.mark.asyncio
+async def test_install_with_metadata(store):
+    await store.install("myapp", version="2.0.0", metadata={"author": "test"})
+    rows = await store.list_installed()
+    assert rows[0]["version"] == "2.0.0"
+    assert rows[0]["metadata"] == {"author": "test"}
+
+
+@pytest.mark.asyncio
+async def test_install_replace_existing(store):
+    await store.install("myapp", version="1.0.0", metadata={"old": "data"})
+    await store.install("myapp", version="2.0.0", metadata={"new": "data"})
+    rows = await store.list_installed()
+    assert len(rows) == 1
+    assert rows[0]["version"] == "2.0.0"
+    assert rows[0]["metadata"] == {"new": "data"}
+
+
+@pytest.mark.asyncio
+async def test_list_installed_order(store):
+    await store.install("app-a", version="1.0")
+    await store.install("app-b", version="1.0")
+    await store.install("app-c", version="1.0")
+    rows = await store.list_installed()
+    assert [r["app_id"] for r in rows] == ["app-c", "app-b", "app-a"]
+
+
+@pytest.mark.asyncio
+async def test_list_installed_empty(store):
+    rows = await store.list_installed()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_uninstall_returns_true_when_exists(store):
+    await store.install("myapp")
+    assert await store.uninstall("myapp") is True
+    assert not await store.is_installed("myapp")
+
+
+@pytest.mark.asyncio
+async def test_uninstall_returns_false_when_missing(store):
+    assert await store.uninstall("nonexistent") is False
+
+
+@pytest.mark.asyncio
+async def test_update_and_get_runtime_location(store):
+    await store.update_runtime_location("myapp", "localhost", 8080, backend="rkllama", ui_path="/ui")
+    loc = await store.get_runtime_location("myapp")
+    assert loc is not None
+    assert loc["runtime_host"] == "localhost"
+    assert loc["runtime_port"] == 8080
+    assert loc["backend"] == "rkllama"
+    assert loc["ui_path"] == "/ui"
+
+
+@pytest.mark.asyncio
+async def test_get_runtime_location_returns_none_when_missing(store):
+    assert await store.get_runtime_location("nonexistent") is None
+
+
+@pytest.mark.asyncio
+async def test_update_runtime_location_defaults(store):
+    await store.update_runtime_location("myapp", "host", 9000)
+    loc = await store.get_runtime_location("myapp")
+    assert loc["backend"] == ""
+    assert loc["ui_path"] == "/"
+
+
+@pytest.mark.asyncio
+async def test_update_runtime_location_overwrite(store):
+    await store.update_runtime_location("myapp", "host1", 1000)
+    await store.update_runtime_location("myapp", "host2", 2000, backend="b2", ui_path="/p")
+    loc = await store.get_runtime_location("myapp")
+    assert loc["runtime_host"] == "host2"
+    assert loc["runtime_port"] == 2000
+    assert loc["backend"] == "b2"
+    assert loc["ui_path"] == "/p"
+
+
+@pytest.mark.asyncio
+async def test_remove_runtime_location(store):
+    await store.update_runtime_location("myapp", "host", 8080)
+    await store.remove_runtime_location("myapp")
+    assert await store.get_runtime_location("myapp") is None
+
+
+@pytest.mark.asyncio
+async def test_remove_runtime_location_when_missing(store):
+    await store.remove_runtime_location("nonexistent")
+
+
+@pytest.mark.asyncio
+async def test_full_round_trip(store):
+    await store.install("myapp", version="1.0.0", metadata={"key": "val"})
+    assert await store.is_installed("myapp")
+
+    rows = await store.list_installed()
+    assert len(rows) == 1
+    assert rows[0]["app_id"] == "myapp"
+
+    await store.update_runtime_location("myapp", "127.0.0.1", 3000)
+    loc = await store.get_runtime_location("myapp")
+    assert loc["runtime_host"] == "127.0.0.1"
+    assert loc["runtime_port"] == 3000
+
+    assert await store.uninstall("myapp") is True
+    assert not await store.is_installed("myapp")
+    assert await store.get_runtime_location("myapp") is not None
+
+
+@pytest.mark.asyncio
+async def test_multiple_apps(store):
+    await store.install("app-1", version="1.0")
+    await store.install("app-2", version="2.0")
+    await store.install("app-3", version="3.0")
+
+    rows = await store.list_installed()
+    assert len(rows) == 3
+
+    assert await store.is_installed("app-1")
+    assert await store.is_installed("app-2")
+    assert await store.is_installed("app-3")
+
+    await store.uninstall("app-2")
+    assert not await store.is_installed("app-2")
+    assert await store.is_installed("app-1")
+    assert await store.is_installed("app-3")
+
+    rows = await store.list_installed()
+    assert len(rows) == 2
