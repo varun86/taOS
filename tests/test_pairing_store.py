@@ -496,3 +496,74 @@ async def test_list_pending_without_init_raises(tmp_path):
     s = ClusterPairingStore(tmp_path / "pairings.db")
     with pytest.raises(RuntimeError, match="not initialised"):
         await s.list_pending()
+
+
+# ------------------------------------------------------------------
+# manual pairing (free-tier: admin authorises {url, code}, worker polls)
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_manual_claim_before_authorize_is_none(tmp_path):
+    s = await _store(tmp_path)
+    # Worker polls before the admin has entered the IP + code.
+    assert await s.manual_claim("w1", "ABCD2345") is None
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_authorize_then_claim_returns_key_and_url(tmp_path):
+    s = await _store(tmp_path)
+    await s.manual_authorize("http://192.168.1.50:6970", "ABCD2345")
+    res = await s.manual_claim("w1", "ABCD2345")
+    assert res is not None
+    key, url = res
+    assert len(key) == 32
+    assert url == "http://192.168.1.50:6970"
+    # The key is persisted under the worker name so its signed requests authenticate.
+    assert await s.get_signing_key("w1") == key
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_claim_is_single_use(tmp_path):
+    s = await _store(tmp_path)
+    await s.manual_authorize("http://10.0.0.9:6970", "WXYZ7890")
+    first = await s.manual_claim("w1", "WXYZ7890")
+    assert first is not None
+    # A second claim of the same code must fail (single-use).
+    assert await s.manual_claim("w1", "WXYZ7890") is None
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_claim_wrong_code_is_none(tmp_path):
+    s = await _store(tmp_path)
+    await s.manual_authorize("http://10.0.0.9:6970", "RIGHT000")
+    assert await s.manual_claim("w1", "WRONG000") is None
+    # The right code still works afterward (a wrong guess does not consume it).
+    assert await s.manual_claim("w1", "RIGHT000") is not None
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_authorize_replaces_prior_for_same_code(tmp_path):
+    s = await _store(tmp_path)
+    await s.manual_authorize("http://1.1.1.1:6970", "SAMECODE")
+    await s.manual_authorize("http://2.2.2.2:6970", "SAMECODE")
+    res = await s.manual_claim("w1", "SAMECODE")
+    assert res is not None
+    _, url = res
+    assert url == "http://2.2.2.2:6970"
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_claim_expired_is_none(tmp_path, monkeypatch):
+    s = await _store(tmp_path)
+    await s.manual_authorize("http://10.0.0.9:6970", "EXPIRE00")
+    import tinyagentos.cluster.pairing_store as ps
+    base = time.time()
+    monkeypatch.setattr(ps, "_now", lambda: base + _EXPIRY_SECS + 1)
+    assert await s.manual_claim("w1", "EXPIRE00") is None
+    await s.close()

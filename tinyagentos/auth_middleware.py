@@ -50,6 +50,10 @@ _AUTH_REQUEST_PREFIX = "/api/agents/auth-requests/"
 # route-level HMAC dependency is the gate; GET workers is public.
 _CLUSTER_PAIRING_ANNOUNCE = "/api/cluster/pairing/announce"
 _CLUSTER_PAIRING_CLAIM = "/api/cluster/pairing/claim"
+# Free-tier manual pairing: the worker polls manual-claim unauthenticated (the
+# code it displayed is the proof). The matching authorize endpoint
+# (/api/cluster/pairing/manual) stays admin-gated and is NOT exempt.
+_CLUSTER_PAIRING_MANUAL_CLAIM = "/api/cluster/pairing/manual-claim"
 _CLUSTER_WORKERS = "/api/cluster/workers"
 _CLUSTER_HEARTBEAT = "/api/cluster/heartbeat"
 
@@ -112,6 +116,8 @@ def _is_exempt(method: str, path: str) -> bool:
     if method == "POST" and path == _CLUSTER_PAIRING_ANNOUNCE:
         return True
     if method == "POST" and path == _CLUSTER_PAIRING_CLAIM:
+        return True
+    if method == "POST" and path == _CLUSTER_PAIRING_MANUAL_CLAIM:
         return True
     # Cluster workers — GET is a public list; POST is session-exempt (HMAC gate).
     if method == "GET" and path == _CLUSTER_WORKERS:
