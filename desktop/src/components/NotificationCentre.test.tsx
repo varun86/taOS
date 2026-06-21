@@ -9,6 +9,8 @@ const closeCentre = vi.fn();
 const markAllRead = vi.fn();
 const clearAll = vi.fn();
 const dismiss = vi.fn();
+const archivedNotifications = vi.fn(() => []);
+const clearArchived = vi.fn();
 
 let notifications: Notification[] = [];
 
@@ -21,6 +23,8 @@ vi.mock("@/stores/notification-store", () => ({
     markAllRead,
     clearAll,
     dismiss,
+    archivedNotifications,
+    clearArchived,
   }),
 }));
 

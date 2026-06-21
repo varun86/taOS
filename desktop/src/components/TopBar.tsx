@@ -99,7 +99,7 @@ function PowerMenu() {
 export function TopBar({ onSearchOpen, onAssistantOpen }: Props) {
   const clock = useClock();
   const { showWidgets, toggleWidgets } = useWidgetStore();
-  const unreadCount = useNotificationStore((s) => s.notifications.filter((n) => !n.read).length);
+  const unreadCount = useNotificationStore((s) => s.notifications.filter((n) => !n.read && !n.archived).length);
   const toggleCentre = useNotificationStore((s) => s.toggleCentre);
 
   return (
