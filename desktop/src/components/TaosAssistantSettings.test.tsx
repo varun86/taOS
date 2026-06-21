@@ -5,20 +5,10 @@ import { TaosAssistantSettings } from "./TaosAssistantSettings";
 import { useTaosAgentStore } from "@/stores/taos-agent-store";
 
 vi.mock("@/lib/models", () => ({
-  fetchClusterWorkers: vi.fn(),
-  fetchCloudProviders: vi.fn(),
-  workersToAggregated: vi.fn(),
-  cloudProvidersToAggregated: vi.fn(),
-  localProvidersToAggregated: vi.fn(),
+  loadAgentModels: vi.fn(),
 }));
 
-import {
-  fetchClusterWorkers,
-  fetchCloudProviders,
-  workersToAggregated,
-  cloudProvidersToAggregated,
-  localProvidersToAggregated,
-} from "@/lib/models";
+import { loadAgentModels } from "@/lib/models";
 
 const mockFetch = vi.fn();
 
@@ -52,11 +42,7 @@ describe("TaosAssistantSettings", () => {
   beforeEach(() => {
     resetStore();
     setupFetch();
-    vi.mocked(fetchClusterWorkers).mockResolvedValue([]);
-    vi.mocked(fetchCloudProviders).mockResolvedValue([]);
-    vi.mocked(workersToAggregated).mockReturnValue([]);
-    vi.mocked(cloudProvidersToAggregated).mockReturnValue([]);
-    vi.mocked(localProvidersToAggregated).mockReturnValue([]);
+    vi.mocked(loadAgentModels).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -107,24 +93,20 @@ describe("TaosAssistantSettings", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("fetches models on open and passes loaded state to ModelPickerFlow", async () => {
-    vi.mocked(fetchClusterWorkers).mockResolvedValue([]);
-    vi.mocked(fetchCloudProviders).mockResolvedValue([]);
+  it("loads the unified agent model list on open", async () => {
     render(<TaosAssistantSettings open={true} onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/models");
+      expect(loadAgentModels).toHaveBeenCalledTimes(1);
     });
-    expect(fetchClusterWorkers).toHaveBeenCalledTimes(1);
-    expect(fetchCloudProviders).toHaveBeenCalledTimes(1);
   });
 
   it("sends PATCH to /api/taos-agent/settings with selected model and closes", async () => {
     const onClose = vi.fn();
     useTaosAgentStore.setState({ model: "old-model" });
 
-    vi.mocked(localProvidersToAggregated).mockReturnValue([
-      { id: "llama-3", name: "Llama 3", host: "controller", hostKind: "controller" },
+    vi.mocked(loadAgentModels).mockResolvedValue([
+      { key: "controller:llama-3", id: "llama-3", name: "Llama 3", host: "controller", hostKind: "controller" },
     ]);
 
     render(<TaosAssistantSettings open={true} onClose={onClose} />);

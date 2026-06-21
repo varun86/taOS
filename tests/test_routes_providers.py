@@ -182,6 +182,40 @@ class TestProviderAPI:
         ]
         assert "kilo-auto/free" in kilo_ids
 
+    async def test_list_providers_surfaces_seeded_models_when_probe_empty(self, client, app):
+        """A cloud provider whose live /models probe returns nothing (e.g.
+        DeepSeek, whose endpoint 401s without a key the probe can't reach)
+        must still report its config-seeded models, so the agent model picker
+        does not filter them out. Regression for the Discord report: 'added
+        deepseek but no deepseek model shows in the picker'."""
+        app.state.config.backends.append({
+            "name": "deepseek-test",
+            "type": "deepseek",
+            "url": "https://api.deepseek.com",
+            "models": [{"id": "deepseek-v4-pro"}, {"id": "deepseek-chat"}],
+        })
+
+        class _EmptyHealth:
+            async def health(self, *_a, **_k):
+                # ok connection, but no models returned without auth
+                return {"status": "ok", "response_ms": 5, "models": []}
+
+        with patch(
+            "tinyagentos.routes.providers.get_adapter",
+            return_value=_EmptyHealth(),
+        ), patch(
+            "tinyagentos.routes.providers._resolve_api_key_for_backend",
+            new=AsyncMock(return_value=None),
+        ):
+            resp = await client.get("/api/providers")
+        assert resp.status_code == 200
+        entry = next(
+            p for p in resp.json() if p.get("name") == "deepseek-test"
+        )
+        ids = [m.get("id") or m.get("name") for m in entry["models"]]
+        assert "deepseek-v4-pro" in ids
+        assert "deepseek-chat" in ids
+
 
 @pytest.mark.asyncio
 class TestModelsPassthrough:
