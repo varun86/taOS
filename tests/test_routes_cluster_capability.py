@@ -167,3 +167,61 @@ async def test_prune_drops_stale(client, app):
     resp = await client.get("/api/cluster/capability")
     assert all(n["node_id"] != "node-a" for n in resp.json()["nodes"])
     await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_registration_populates_capability_map(client, app):
+    """A paired worker's HMAC registration records its hardware into the map."""
+    import json
+
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key = await pair_worker(client, app, "rig-1", "http://10.2.0.1:9000")
+    reg = json.dumps(
+        {
+            "name": "rig-1",
+            "url": "http://10.2.0.1:9000",
+            "platform": "linux",
+            "host_lan_ip": "10.2.0.9",
+            "hardware": {
+                "cpu": {"cores": 8},
+                "ram_mb": 16000,
+                "gpu": {"name": "rtx3060"},
+                "npu": {},
+            },
+        }
+    ).encode()
+    headers = sign_worker_request(key, "rig-1", "POST", "/api/cluster/workers", reg)
+    headers["Content-Type"] = "application/json"
+    resp = await client.post("/api/cluster/workers", content=reg, headers=headers)
+    assert resp.status_code == 200, resp.text
+
+    nodes = (await client.get("/api/cluster/capability")).json()["nodes"]
+    node = next((n for n in nodes if n["node_id"] == "rig-1"), None)
+    assert node is not None
+    assert node["status"] == "online"
+    assert node["ram_mb"] == 16000
+    assert node["gpu"] == {"name": "rtx3060"}
+    assert node["hostname"] == "10.2.0.9"
+    await app.state.capability_map.close()
+
+
+@pytest.mark.asyncio
+async def test_registration_does_not_revive_drained_node(client, app):
+    """If an admin drained a node, re-registration keeps it draining."""
+    import json
+
+    await app.state.capability_map.init()
+    await app.state.cluster_pairing.init()
+    key = await pair_worker(client, app, "rig-2", "http://10.2.0.2:9000")
+    await app.state.capability_map.upsert({"node_id": "rig-2", "status": "draining"})
+
+    reg = json.dumps({"name": "rig-2", "url": "http://10.2.0.2:9000", "platform": "linux"}).encode()
+    headers = sign_worker_request(key, "rig-2", "POST", "/api/cluster/workers", reg)
+    headers["Content-Type"] = "application/json"
+    resp = await client.post("/api/cluster/workers", content=reg, headers=headers)
+    assert resp.status_code == 200
+
+    node = await app.state.capability_map.get("rig-2")
+    assert node["status"] == "draining"
+    await app.state.capability_map.close()

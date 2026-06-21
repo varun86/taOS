@@ -267,9 +267,40 @@ async def register_worker(request: Request, body: WorkerRegister):
         signing_key=signing_key,
     )
     await cluster.register_worker(info)
+    await _record_worker_capability(request.app, body.name, body.host_lan_ip, body.hardware)
     if body.pending_storage_backup:
         await _surface_storage_backup(request.app, body.name, body.pending_storage_backup)
     return {"status": "registered", "name": body.name}
+
+
+async def _record_worker_capability(app, name: str, host_lan_ip: str, hardware: dict) -> None:
+    """Populate the capability map from a registering worker (best effort).
+
+    The worker's detected hardware dict already carries cpu/ram_mb/gpu/npu, the
+    same shape the capability map stores, so registration doubles as a heartbeat
+    that marks the node online. A failure here must never fail registration; an
+    explicit admin set-status still owns 'draining'.
+    """
+    store = getattr(app.state, "capability_map", None)
+    if store is None:
+        return
+    hw = hardware or {}
+    try:
+        current = await store.get(name)
+        status = "draining" if current is not None and current["status"] == "draining" else "online"
+        await store.upsert(
+            {
+                "node_id": name,
+                "hostname": host_lan_ip or name,
+                "cpu": hw.get("cpu", {}),
+                "ram_mb": hw.get("ram_mb", 0),
+                "gpu": hw.get("gpu", {}),
+                "npu": hw.get("npu", {}),
+                "status": status,
+            }
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("capability-map upsert on worker registration failed for %s", name)
 
 
 async def _surface_storage_backup(app, worker_name: str, marker: dict) -> None:
