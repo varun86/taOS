@@ -25,6 +25,7 @@ import { NotificationToasts } from "@/components/NotificationToast";
 import { NotificationCentre } from "@/components/NotificationCentre";
 import { useNotificationStore } from "@/stores/notification-store";
 import { useServerNotifications } from "@/hooks/use-server-notifications";
+import { usePerfAutoDetect } from "@/lib/use-perf-autodetect";
 import { TaosAssistantPanel } from "@/components/TaosAssistantPanel";
 import { useTaosAgentStore } from "@/stores/taos-agent-store";
 import { InstallPromptBanner } from "@/shell/InstallPromptBanner";
@@ -190,6 +191,11 @@ export function App() {
   }, [setActiveWindowId]);
 
   useSessionPersistence();
+
+  // First-run GPU auto-detect: probe the frame rate once and enable Reduce
+  // effects on a struggling device, so low-end hardware is smooth out of the
+  // box (#58). An explicit user choice is always honored and never overridden.
+  usePerfAutoDetect();
 
   // Sync the persistent backend notification feed into the bell (desktop and
   // mobile both render NotificationCentre under this component).
