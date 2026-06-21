@@ -144,3 +144,78 @@ async def test_redirect_location_is_relayed(client, monkeypatch):
     r = await client.get("/api/account/me", follow_redirects=False)
     assert r.status_code == 302
     assert r.headers.get("location") == "https://taos.my/login"
+
+
+@pytest.mark.asyncio
+async def test_cluster_join_request_forwards(client, monkeypatch):
+    """/api/account/cluster/join/request forwards to {base}/api/cluster/join/request
+    with the body and the session cookie passed through."""
+    monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+    captured: dict[str, str] = {}
+
+    async def handler(method, url, **kw):
+        captured["method"] = method
+        captured["url"] = url
+        captured["cookie"] = kw.get("headers", {}).get("Cookie", "")
+        return _FakeResp(
+            content=b'{"request_id":"r1","status":"pending","expires_at":"2026-01-01T00:00:00Z"}',
+            headers={"content-type": "application/json"},
+        )
+
+    _patch_upstream(monkeypatch, handler)
+    # Do NOT override the cookie header: the `client` fixture carries the taOS
+    # controller session that the /api/account/* proxy (rightly) requires, and
+    # that session cookie is what gets forwarded upstream.
+    r = await client.post(
+        "/api/account/cluster/join/request",
+        json={"device_name": "Mac", "ttl": "10m"},
+    )
+    assert r.status_code == 200
+    assert r.json()["request_id"] == "r1"
+    assert captured["url"] == "https://taos.my/api/cluster/join/request"
+    assert captured["method"] == "POST"
+    assert captured["cookie"]  # the session cookie was passed through
+
+
+@pytest.mark.asyncio
+async def test_cluster_join_poll_forwards_rid(client, monkeypatch):
+    monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+    captured: dict[str, str] = {}
+
+    async def handler(method, url, **kw):
+        captured["url"] = url
+        return _FakeResp(content=b'{"status":"pending"}', headers={"content-type": "application/json"})
+
+    _patch_upstream(monkeypatch, handler)
+    r = await client.get("/api/account/cluster/join/requests/req-ABC_123/poll")
+    assert r.status_code == 200
+    assert captured["url"] == "https://taos.my/api/cluster/join/requests/req-ABC_123/poll"
+
+
+@pytest.mark.asyncio
+async def test_cluster_join_rejects_bad_request_id(client, monkeypatch):
+    """A request_id that could inject path/query never reaches the upstream: a
+    malformed token is rejected at the validator (400), and an encoded-slash
+    traversal attempt fails to match the route (404). Either way, no upstream
+    call is made (path-traversal / SSRF guard)."""
+    monkeypatch.setenv("TAOS_ACCOUNT_BASE_URL", "https://taos.my")
+    called = {"n": 0}
+
+    async def handler(method, url, **kw):
+        called["n"] += 1
+        return _FakeResp()
+
+    _patch_upstream(monkeypatch, handler)
+    # The encoded-slash case is blocked at routing (404); the others reach the
+    # validator and are rejected (400). Neither reaches the upstream.
+    for bad in ["..%2f..%2fauth%2fme", "r1;evil", "r1%20x", "x" * 65]:
+        r = await client.post(f"/api/account/cluster/join/requests/{bad}/approve")
+        assert r.status_code in (400, 404), bad
+    assert called["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_cluster_join_503_when_unconfigured(client, monkeypatch):
+    monkeypatch.delenv("TAOS_ACCOUNT_BASE_URL", raising=False)
+    r = await client.get("/api/account/cluster/join/requests")
+    assert r.status_code == 503
