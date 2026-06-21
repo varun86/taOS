@@ -258,6 +258,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     agent_grants_store = AgentGrantsStore(data_dir / "agent_grants.db")
     from tinyagentos.cluster.pairing_store import ClusterPairingStore
     cluster_pairing_store = ClusterPairingStore(data_dir / "cluster_pairing.db")
+    from tinyagentos.cluster.capability_map import CapabilityMap
+    capability_map_store = CapabilityMap(data_dir / "capability_map.db")
 
     metrics_store = MetricsStore(data_dir / "metrics.db")
     notif_store = NotificationStore(data_dir / "notifications.db")
@@ -411,6 +413,8 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
         app.state.agent_grants = agent_grants_store
         await cluster_pairing_store.init()
         app.state.cluster_pairing = cluster_pairing_store
+        await capability_map_store.init()
+        app.state.capability_map = capability_map_store
         await metrics_store.init()
         await notif_store.init()
         await qmd_client.init()
@@ -1370,6 +1374,7 @@ def create_app(data_dir: Path | None = None, catalog_dir: Path | None = None) ->
     app.state.auth_requests = auth_requests_store
     app.state.agent_grants = agent_grants_store
     app.state.cluster_pairing = cluster_pairing_store
+    app.state.capability_map = capability_map_store
 
     # Detect and set container runtime (eager, so tests work without lifespan)
     try:
