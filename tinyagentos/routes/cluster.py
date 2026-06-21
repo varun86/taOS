@@ -288,14 +288,23 @@ async def _record_worker_capability(app, name: str, host_lan_ip: str, hardware: 
     try:
         current = await store.get(name)
         status = "draining" if current is not None and current["status"] == "draining" else "online"
+        # The store does a full-row overwrite, so a legacy/flat-mode worker that
+        # re-registers without hardware would wipe previously-detected fields.
+        # Carry forward each field the incoming hardware omits.
+        prev = current or {}
+
+        def _keep(key, default):
+            val = hw.get(key)
+            return val if val else prev.get(key, default)
+
         await store.upsert(
             {
                 "node_id": name,
-                "hostname": host_lan_ip or name,
-                "cpu": hw.get("cpu", {}),
-                "ram_mb": hw.get("ram_mb", 0),
-                "gpu": hw.get("gpu", {}),
-                "npu": hw.get("npu", {}),
+                "hostname": host_lan_ip or prev.get("hostname") or name,
+                "cpu": _keep("cpu", {}),
+                "ram_mb": _keep("ram_mb", 0),
+                "gpu": _keep("gpu", {}),
+                "npu": _keep("npu", {}),
                 "status": status,
             }
         )
