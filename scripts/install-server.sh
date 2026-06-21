@@ -1024,12 +1024,6 @@ install_rk3588_perf_if_needed
 
 # --- python venv + controller deps ---------------------------------------
 
-# Pick a Python the controller's deps actually support. litellm (the proxy
-# extra) supports only >=3.10,<3.14, so a fresh distro that defaults python3 to
-# 3.14 must not be used for the venv or `pip install -e .[proxy]` aborts with
-# "No matching distribution found for litellm". Prefer the newest interpreter in
-# the [3.11,3.14) range; install one if none is present; fail with a clear
-# message otherwise.
 # Resolve a Python the controller deps support: litellm (the proxy extra) needs
 # >=3.10,<3.14. Prefer a system interpreter in range; otherwise provision a
 # standalone 3.13 with uv. The reported failure was a fresh WSL/Ubuntu 26.04 that
