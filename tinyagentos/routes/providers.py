@@ -430,6 +430,14 @@ async def list_providers(request: Request):
                 discovered = await _discover_provider_models(backend["url"], api_key)
                 if discovered:
                     models = [{"name": m.get("id", ""), "size_mb": 0} for m in discovered]
+        # Last resort: surface the models stored on the backend in config.
+        # add_provider seeds these (a /models probe or the per-type
+        # PROVIDER_DEFAULT_MODELS fallback), so a provider whose live probe
+        # needs an API key it can't reach here — e.g. DeepSeek, whose /models
+        # endpoint 401s without auth — still reports its routable models to the
+        # picker instead of an empty list that gets filtered out client-side.
+        if not models and backend.get("models"):
+            models = backend["models"]
         lifecycle_state = catalog.get_lifecycle_state(backend["name"]) if catalog else "running"
         entry = {
             **backend,
