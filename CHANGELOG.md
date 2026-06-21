@@ -7,6 +7,23 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 
 ## [Unreleased]
 
+## [1.0.0-beta.6] - 2026-06-21
+
+### Added
+- Coding Studio gains a model-agnostic tool-calling loop: agents read, edit, and verify files inside a workspace-jailed sandbox using filesystem tool primitives, driven by a LiteLLM-backed model step.
+- Cluster capability map: worker registration and heartbeats populate a per-node capability and hardware map with admin endpoints, plus a non-destructive stale-node offline sweep.
+- Append-only board audit log: every task transition is recorded, with a project-scoped activity feed and a task audit endpoint, indexed for unbounded growth.
+- `taos rollback`: a CLI recovery path that restores the previous branch and version, so a broken update can be recovered even when the dashboard is unreachable.
+
+### Changed
+- One Browser app: the separate streamed-browser app is gone. The Browser app attaches a Neko streamed session through a toggle, and a RAM-capable Pi host can serve the session itself instead of reporting that it is not capable.
+- The default store no longer seeds the X, Reddit, YouTube, and GitHub apps; they are optional installs.
+
+### Fixed
+- Browser sessions resolve the target worker before creating the session row, so a failed placement no longer leaves an orphaned session.
+- Auto-expiring notification toasts no longer archive themselves into the History view.
+- Dependabot majors updated: actions/checkout v7, dependabot/fetch-metadata v3, and the dev Python dependency group.
+
 ## [1.0.0-beta.5] - 2026-06-20
 
 ### Added
