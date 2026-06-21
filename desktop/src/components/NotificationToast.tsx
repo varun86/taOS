@@ -332,7 +332,7 @@ export function NotificationToasts() {
   const byId = new Map(notifications.map((n) => [n.id, n] as const));
   const active = toastIds
     .map((id) => byId.get(id))
-    .filter((n): n is Notification => !!n && !n.read)
+    .filter((n): n is Notification => !!n && !n.read && !n.archived)
     .slice(0, 3);
 
   return (

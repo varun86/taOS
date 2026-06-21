@@ -12,6 +12,8 @@ export interface Notification {
   timestamp: number;
   /** Extra typed payload for structured notifications like agent.paused. */
   meta?: Record<string, string>;
+  /** When true the notification has been dismissed/archived. */
+  archived?: boolean;
 }
 
 interface NotificationStore {
@@ -27,6 +29,8 @@ interface NotificationStore {
   toggleCentre: () => void;
   closeCentre: () => void;
   unreadCount: () => number;
+  archivedNotifications: () => Notification[];
+  clearArchived: () => void;
 }
 
 let counter = 0;
@@ -64,10 +68,13 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       const merged = items
         .filter((n) => !dismissedServerIds.has(n.id))
         .map((n) => (priorRead.get(n.id) ? { ...n, read: true } : n));
-      // Keep every client-origin item ("notif-N") untouched, drop the old
-      // server items (replaced by the fresh list), de-dupe, sort newest-first.
-      const client = s.notifications.filter((n) => !n.id.startsWith("srv-"));
-      const combined = [...merged, ...client];
+      // Keep every client-origin item ("notif-N") untouched, plus any archived
+      // server items (they must survive polls). Drop the old unarchived server
+      // items (replaced by the fresh list), de-dupe, sort newest-first.
+      const kept = s.notifications.filter(
+        (n) => !n.id.startsWith("srv-") || n.archived,
+      );
+      const combined = [...merged, ...kept];
       combined.sort((a, b) => b.timestamp - a.timestamp);
       return { notifications: combined.slice(0, 100) };
     });
@@ -85,7 +92,11 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
 
   dismiss(id) {
     if (id.startsWith("srv-")) dismissedServerIds.add(id);
-    set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
+    set((s) => ({
+      notifications: s.notifications.map((n) =>
+        n.id === id ? { ...n, archived: true } : n,
+      ),
+    }));
   },
 
   clearAll() {
@@ -93,7 +104,9 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       for (const n of s.notifications) {
         if (n.id.startsWith("srv-")) dismissedServerIds.add(n.id);
       }
-      return { notifications: [] };
+      return {
+        notifications: s.notifications.map((n) => ({ ...n, archived: true })),
+      };
     });
   },
 
@@ -106,6 +119,18 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   },
 
   unreadCount() {
-    return get().notifications.filter((n) => !n.read).length;
+    return get().notifications.filter((n) => !n.read && !n.archived).length;
+  },
+
+  archivedNotifications() {
+    return get().notifications
+      .filter((n) => n.archived)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  },
+
+  clearArchived() {
+    set((s) => ({
+      notifications: s.notifications.filter((n) => !n.archived),
+    }));
   },
 }));
