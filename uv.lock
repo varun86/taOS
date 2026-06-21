@@ -3582,7 +3582,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "libtorrent" },
     { name = "lxml" },
     { name = "pillow" },
     { name = "psutil" },
@@ -3615,6 +3614,9 @@ proxy = [
     { name = "litellm", extra = ["proxy"] },
     { name = "prisma" },
 ]
+torrent = [
+    { name = "libtorrent" },
+]
 worker = [
     { name = "pillow" },
     { name = "pystray" },
@@ -3628,7 +3630,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'dev'" },
     { name = "jinja2", specifier = ">=3.1.0" },
-    { name = "libtorrent", specifier = ">=2.0.9" },
+    { name = "libtorrent", marker = "extra == 'torrent'", specifier = ">=2.0.9" },
     { name = "litellm", extras = ["proxy"], marker = "extra == 'proxy'", specifier = ">=1.89.3" },
     { name = "lxml", specifier = ">=5.0.0" },
     { name = "pillow", specifier = ">=10.0" },
@@ -3654,7 +3656,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'dev'", specifier = ">=12.0" },
     { name = "zeroconf", specifier = ">=0.140" },
 ]
-provides-extras = ["worker", "proxy", "dev", "e2e"]
+provides-extras = ["worker", "proxy", "torrent", "dev", "e2e"]
 
 [[package]]
 name = "tokenizers"
