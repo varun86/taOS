@@ -7,6 +7,11 @@ Versions follow semver beta: `1.0.0-beta.N`, bumped on each dev->master promotio
 
 ## [Unreleased]
 
+## [1.0.0-beta.7] - 2026-06-21
+
+### Fixed
+- Install: libtorrent is no longer a core dependency, so a fresh install no longer aborts with "No matching distribution found for libtorrent>=2.0.9" on platforms without a libtorrent wheel (e.g. WSL). It is now an optional `torrent` extra; the model torrent mesh is enabled only where the OS-level package is present, and hosts without it fall back to a direct download.
+
 ## [1.0.0-beta.6] - 2026-06-21
 
 ### Added

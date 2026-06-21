@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tinyagentos"
-version = "1.0.0-beta.6"
+version = "1.0.0-beta.7"
 description = "Self-hosted AI agent memory system for low-power hardware"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
@@ -25,11 +25,6 @@ dependencies = [
     # Project canvas board renders low-fidelity PNG snapshots for vision
     # agents (tinyagentos/projects/canvas/render.py).
     "Pillow>=10.0",
-    # Model torrent mesh — every instance is a potential peer so
-    # downloads distribute across the swarm rather than hammering a
-    # single mirror. Worker install scripts install the OS-level
-    # libtorrent-rasterbar as a prerequisite on each platform.
-    "libtorrent>=2.0.9",
     "lxml>=5.0.0",
     "readability-lxml>=0.8.1",
     # Memory system — published to PyPI
@@ -47,6 +42,11 @@ dependencies = [
 [project.optional-dependencies]
 worker = ["pystray>=0.19.0", "Pillow>=10.0"]
 proxy = ["litellm[proxy]>=1.89.3", "prisma>=0.11.0"]
+# Model torrent mesh (optional): libtorrent has no PyPI wheel on most platforms
+# (OS-level libtorrent-rasterbar / python3-libtorrent), so it must not be a core
+# dependency or fresh installs abort. torrent_downloader guards the import and
+# falls back to a direct download when it is absent.
+torrent = ["libtorrent>=2.0.9"]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=0.23.0",
