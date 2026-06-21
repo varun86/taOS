@@ -17,6 +17,14 @@ from typing import Any
 from tinyagentos.agent_tools import fs_tools
 from tinyagentos.agent_tools.fs_tools import JailViolation
 
+# Cap how much a single read pulls into memory, matching the HTTP read route's
+# guard so the agent loop cannot fault the controller by reading a huge file.
+MAX_READ_BYTES = 2_000_000
+
+
+class _ReadTooLarge(ValueError):
+    """A read_file target exceeds MAX_READ_BYTES."""
+
 # Anthropic/OpenAI-style function schemas. Handed to the model so it knows the
 # available tools and their arguments; the names map 1:1 to _HANDLERS below.
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -65,7 +73,11 @@ TOOL_NAMES = {t["name"] for t in TOOL_SCHEMAS}
 
 
 def _h_read_file(root, args):
-    return fs_tools.read_file(root, args["path"])
+    # Resolve through the same jail fs_tools uses, then size-check before reading.
+    target = fs_tools._resolve(root, args["path"])
+    if target.stat().st_size > MAX_READ_BYTES:
+        raise _ReadTooLarge(f"file exceeds {MAX_READ_BYTES} byte read limit")
+    return target.read_text()
 
 
 def _h_write_file(root, args):
@@ -113,6 +125,12 @@ def dispatch(workspace_root, name: str, arguments: dict | None) -> dict:
         return {"ok": True, "result": fn(workspace_root, args)}
     except JailViolation as exc:
         return {"ok": False, "error": str(exc)}
+    except _ReadTooLarge as exc:
+        return {"ok": False, "error": str(exc)}
+    except UnicodeDecodeError:
+        # read_file decodes as UTF-8; a binary/non-UTF-8 file must come back as a
+        # soft error, not crash the loop turn.
+        return {"ok": False, "error": "binary or non-UTF-8 file"}
     except FileNotFoundError:
         return {"ok": False, "error": "file not found"}
     except OSError as exc:

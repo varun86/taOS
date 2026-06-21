@@ -43,6 +43,20 @@ def test_dispatch_read_missing_file(tmp_path):
     assert r["error"] == "file not found"
 
 
+def test_dispatch_read_binary_is_soft_error(tmp_path):
+    (tmp_path / "blob.bin").write_bytes(b"\xff\xfe\x00\x01\x80")
+    r = coding_tools.dispatch(tmp_path, "read_file", {"path": "blob.bin"})
+    assert r["ok"] is False
+    assert "UTF-8" in r["error"]
+
+
+def test_dispatch_read_too_large_is_soft_error(tmp_path):
+    (tmp_path / "big.txt").write_text("a" * (coding_tools.MAX_READ_BYTES + 1))
+    r = coding_tools.dispatch(tmp_path, "read_file", {"path": "big.txt"})
+    assert r["ok"] is False
+    assert "limit" in r["error"]
+
+
 def test_dispatch_list_dir_defaults_to_root(tmp_path):
     coding_tools.dispatch(tmp_path, "write_file", {"path": "one.txt", "content": "1"})
     r = coding_tools.dispatch(tmp_path, "list_dir", {})
