@@ -1024,7 +1024,14 @@ install_rk3588_perf_if_needed
 
 # --- python venv + controller deps ---------------------------------------
 
-pick_python() {
+# Resolve a Python the controller deps support: litellm (the proxy extra) needs
+# >=3.10,<3.14. Prefer a system interpreter in range; otherwise provision a
+# standalone 3.13 with uv. The reported failure was a fresh WSL/Ubuntu 26.04 that
+# ships only Python 3.14 and does not package python3.13, so apt cannot help and
+# uv (which downloads a standalone CPython on any distro) is the reliable path.
+# libtorrent is optional, so the venv is clean -- no system-site-packages binding
+# juggling (a 3.13 venv could not import a 3.14-built system binding anyway).
+pick_system_python() {
     local c v
     for c in python3.13 python3.12 python3.11 python3; do
         command -v "$c" >/dev/null 2>&1 || continue
@@ -1034,30 +1041,26 @@ pick_python() {
     return 1
 }
 
+ensure_uv() {
+    command -v uv >/dev/null 2>&1 && return 0
+    if [[ -x "$HOME/.local/bin/uv" ]]; then export PATH="$HOME/.local/bin:$PATH"; return 0; fi
+    log "installing uv to provision a supported Python"
+    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || return 1
+    export PATH="$HOME/.local/bin:$PATH"
+    command -v uv >/dev/null 2>&1
+}
+
 if [[ ! -d .venv ]]; then
-    # litellm (proxy extra) supports only >=3.10,<3.14, so a fresh distro that
-    # defaults python3 to 3.14 must not be used for the venv or the install aborts
-    # with "No matching distribution found for litellm". Pick a supported one.
-    PYBIN="$(pick_python || true)"
-    if [[ -z "$PYBIN" ]]; then
-        warn "no Python 3.11-3.13 found (litellm has no 3.14 build yet); installing python3.13"
-        if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get install -y -q python3.13 python3.13-venv >/dev/null 2>&1 || true
-        elif command -v dnf >/dev/null 2>&1; then
-            sudo dnf install -y -q python3.13 >/dev/null 2>&1 || true
-        elif command -v pacman >/dev/null 2>&1; then
-            sudo pacman -S --noconfirm python313 >/dev/null 2>&1 || true
-        fi
-        PYBIN="$(pick_python || true)"
-    fi
-    [[ -z "$PYBIN" ]] && die "taOS needs Python 3.11-3.13 (litellm does not support 3.14 yet). Install it (e.g. 'sudo apt install python3.13 python3.13-venv'), or create the venv with uv ('uv venv --python 3.13 .venv'), then re-run."
-    log "creating venv with $PYBIN ($("$PYBIN" --version 2>&1))"
-    # Fedora's libtorrent binding is a system package; inherit site-packages so
-    # `import libtorrent` resolves against it.
-    if command -v pacman >/dev/null 2>&1 || [[ -f /etc/fedora-release ]]; then
-        "$PYBIN" -m venv --system-site-packages .venv
-    else
+    PYBIN="$(pick_system_python || true)"
+    if [[ -n "$PYBIN" ]]; then
+        log "creating venv with $PYBIN ($("$PYBIN" --version 2>&1))"
         "$PYBIN" -m venv .venv
+    elif ensure_uv; then
+        log "no system Python 3.11-3.13; provisioning 3.13 with uv"
+        uv python install 3.13 >/dev/null 2>&1 || true
+        uv venv --seed --python 3.13 .venv || die "uv could not create a Python 3.13 venv"
+    else
+        die "taOS needs Python 3.11-3.13 (litellm has no 3.14 build yet) and uv could not be installed to provision one. Install python3.13 (e.g. 'sudo apt install python3.13 python3.13-venv') and re-run."
     fi
 fi
 
