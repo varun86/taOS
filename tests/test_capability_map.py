@@ -101,3 +101,19 @@ async def test_prune_stale(tmp_path):
     assert await s.get("old") is None
     assert await s.get("fresh") is not None
     await s.close()
+
+
+@pytest.mark.asyncio
+async def test_upsert_preserves_explicit_zero_last_seen(tmp_path):
+    s = await _store(tmp_path)
+    out = await s.upsert(_node(last_seen=0))
+    assert out["last_seen"] == 0
+    await s.close()
+
+
+@pytest.mark.asyncio
+async def test_upsert_requires_node_id(tmp_path):
+    s = await _store(tmp_path)
+    with pytest.raises(ValueError):
+        await s.upsert({"hostname": "x"})
+    await s.close()

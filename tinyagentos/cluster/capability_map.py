@@ -47,11 +47,14 @@ class CapabilityMap(BaseStore):
     SCHEMA = CAPABILITY_MAP_SCHEMA
 
     async def upsert(self, node: dict) -> dict:
-        node_id = node["node_id"]
+        node_id = node.get("node_id")
+        if not node_id:
+            raise ValueError("node requires a non-empty node_id")
         status = node.get("status", "offline")
         if status not in VALID_STATUS:
             raise ValueError(f"invalid status: {status!r}")
-        last_seen = int(node.get("last_seen") or time.time())
+        ls = node.get("last_seen")
+        last_seen = int(ls) if ls is not None else int(time.time())
         await self._db.execute(
             f"""INSERT INTO capability_map ({_COLS})
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
