@@ -125,6 +125,53 @@ async def pairing_claim(request: Request, body: PairingClaim):
     return {"signing_key": key.hex()}
 
 
+class ManualPairAuthorize(BaseModel):
+    url: str
+    code: str
+
+
+class ManualPairClaim(BaseModel):
+    name: str
+    code: str
+    platform: str = ""
+
+
+@router.post("/api/cluster/pairing/manual")
+async def pairing_manual(request: Request, body: ManualPairAuthorize):
+    """Admin session required -- the free-tier 'Add worker' path. The admin types
+    the worker's LAN address and the pairing code the worker displayed; this
+    authorises that code so the worker's poll can claim its signing key. No
+    announce or network discovery: the admin supplies the address by hand."""
+    ok, err = _require_admin(request)
+    if not ok:
+        return err
+    url = body.url.strip()
+    code = body.code.strip()
+    if not url or not code:
+        return JSONResponse({"error": "url and code are required"}, status_code=400)
+    if "://" not in url:
+        url = "http://" + url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return JSONResponse({"error": "invalid worker address"}, status_code=400)
+    store = request.app.state.cluster_pairing
+    await store.manual_authorize(url, code)
+    return {"status": "authorized"}
+
+
+@router.post("/api/cluster/pairing/manual-claim")
+async def pairing_manual_claim(request: Request, body: ManualPairClaim):
+    """Unauthenticated -- a manually-paired worker polls with its name + the code
+    it displayed. Returns the signing key + the admin-supplied url once the admin
+    has authorised the matching code; 202 awaiting otherwise."""
+    store = request.app.state.cluster_pairing
+    result = await store.manual_claim(body.name, body.code)
+    if result is None:
+        return JSONResponse({"status": "awaiting"}, status_code=202)
+    key, url = result
+    return {"signing_key": key.hex(), "url": url}
+
+
 class WorkerRegister(BaseModel):
     name: str
     url: str
